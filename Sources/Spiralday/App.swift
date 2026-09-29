@@ -14,6 +14,13 @@ struct SpiraldayApp: App {
                         .keyboardShortcut(",", modifiers: .command)
                 }
                 CommandGroup(replacing: .newItem) {}
+                CommandGroup(replacing: .help) {
+                    Button("Spiralday 웹사이트") { Links.open(Links.website) }
+                    Button("버그 신고 · 기능 제안…") { Links.open(Links.feedback) }
+                    Divider()
+                    Button("GitHub (오픈소스)") { Links.open(Links.github) }
+                    Button("린에자일헝그리") { Links.open(Links.company) }
+                }
                 CommandMenu("플래너") {
                     Button("주간 보기") { delegate.state.switchKind(.weekly) }.keyboardShortcut("1", modifiers: .command)
                     Button("일간 보기") { delegate.state.switchKind(.daily) }.keyboardShortcut("2", modifiers: .command)
@@ -29,6 +36,17 @@ struct SpiraldayApp: App {
                 }
             }
     }
+}
+
+/// 밖으로 나가는 링크 (사이트 푸터와 같은 곳)
+enum Links {
+    static let website = URL(string: "https://spiralday.com")!
+    static let github = URL(string: "https://github.com/Grwaywee/spiralday")!
+    static let company = URL(string: "https://leanagilehungry.com")!
+    /// 버그 신고·기능 제안 (구글 설문지가 생기면 그 주소로 바꾼다)
+    static let feedback = URL(string: "mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0%20%C2%B7%20%EA%B8%B0%EB%8A%A5%20%EC%A0%9C%EC%95%88")!
+
+    static func open(_ url: URL) { NSWorkspace.shared.open(url) }
 }
 
 @MainActor
@@ -67,6 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 손글씨 폰트는 어떤 창보다 먼저 등록한다
+        Fonts.register()
         if let i = Self.args.firstIndex(of: "--icon"), i + 1 < Self.args.count {
             let out = URL(fileURLWithPath: Self.args[i + 1])
             let variant = i + 2 < Self.args.count ? Int(Self.args[i + 2]) ?? 0 : 0

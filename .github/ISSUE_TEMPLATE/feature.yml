@@ -1,0 +1,15 @@
+name: ✨ 기능 제안
+description: 이런 게 있으면 좋겠어요
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: 어떤 기능이면 좋겠나요?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 어떤 때 쓰고 싶나요?
+      placeholder: 예) 종이 플래너에서는 월간 계획을 먼저 세우는데, 앱에도 월간 페이지가 있으면…

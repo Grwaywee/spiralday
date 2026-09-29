@@ -17,7 +17,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poor+Story&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
   :root {
     color-scheme: light;
@@ -36,9 +35,9 @@
     --sky: #A9CFF3;
     --lemon: #F3DB78;
     --lav: #CDB6EF;
-    --hand: "Poor Story", "Pretendard Variable", sans-serif;
-    --print: "Avenir Next", "Pretendard Variable", -apple-system, sans-serif;
-    --body: "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+    --hand: "Poor Story", "Apple SD Gothic Neo", sans-serif;
+    --print: var(--hand);
+    --body: var(--hand);
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -47,8 +46,8 @@
     background: var(--paper);
     color: var(--text);
     font-family: var(--body);
-    font-size: 17px;
-    line-height: 1.65;
+    font-size: 20px;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     word-break: keep-all;
     overflow-x: hidden;
@@ -80,8 +79,8 @@
   /* 인쇄된 라벨: LABEL ──── */
   .label {
     display: flex; align-items: center; gap: 14px;
-    font-family: var(--print); font-weight: 600;
-    font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    font-family: var(--print); font-weight: 400;
+    font-size: 17px; letter-spacing: .12em; text-transform: uppercase;
     color: var(--ink);
     margin: 0 0 18px;
   }
@@ -92,27 +91,27 @@
 
   /* 머리 */
   header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 8px; }
-  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 800; font-size: 20px; color: var(--ink); letter-spacing: -.01em; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 26px; color: var(--ink); }
   .brand img { width: 36px; height: 36px; }
-  nav a { text-decoration: none; color: var(--soft); font-weight: 600; font-size: 15px; margin-left: 22px; }
+  nav a { text-decoration: none; color: var(--soft); font-size: 19px; margin-left: 22px; }
   nav a:hover { color: var(--ink); }
 
   /* 대문 */
   .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 28px 0 64px; }
-  .hero h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.12; letter-spacing: -.035em; color: var(--ink); margin: 6px 0 22px; font-weight: 800; }
-  .hero .lead { font-size: 19px; color: var(--text); max-width: 520px; margin: 0 0 30px; }
+  .hero h1 { font-size: clamp(48px, 7vw, 84px); line-height: 1.08; letter-spacing: -.01em; color: var(--ink); margin: 6px 0 22px; font-weight: 400; }
+  .hero .lead { font-size: 22px; color: var(--text); max-width: 520px; margin: 0 0 30px; }
   .hero .note { font-family: var(--hand); font-size: 26px; color: var(--pink); margin: 0; transform: rotate(-2deg); display: inline-block; }
   .cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   .btn {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 15px 26px; border-radius: 14px; text-decoration: none;
-    font-weight: 700; font-size: 17px; transition: transform .15s ease, box-shadow .15s ease;
+    font-size: 20px; transition: transform .15s ease, box-shadow .15s ease;
   }
   .btn.primary { background: var(--plum); color: #fff; box-shadow: 0 10px 24px -8px rgba(60,51,87,.55); }
   .btn.primary:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -8px rgba(60,51,87,.6); }
   .btn.ghost { color: var(--ink); background: rgba(0,0,0,.05); }
   .btn.ghost:hover { background: rgba(0,0,0,.08); }
-  .meta { margin-top: 16px; font-size: 14px; color: var(--soft); }
+  .meta { margin-top: 16px; font-size: 17px; color: var(--soft); }
   .hero-shot { position: relative; }
   .hero-shot img { width: auto; max-width: 100%; max-height: min(640px, 74vh); margin: 0 auto; filter: drop-shadow(0 30px 40px rgba(40,30,20,.18)); transform: rotate(1.2deg); }
   .hero-shot .tag {
@@ -124,8 +123,8 @@
 
   /* 섹션 */
   section { padding: 64px 0; }
-  section h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.03em; line-height: 1.2; color: var(--ink); margin: 0 0 16px; font-weight: 800; }
-  section p.desc { font-size: 18px; max-width: 640px; margin: 0 0 30px; }
+  section h2 { font-size: clamp(36px, 4.6vw, 54px); line-height: 1.15; color: var(--ink); margin: 0 0 16px; font-weight: 400; }
+  section p.desc { font-size: 21px; max-width: 640px; margin: 0 0 30px; }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
   .split.rev > :first-child { order: 2; }
   .shot { border-radius: 18px; overflow: hidden; box-shadow: 0 22px 50px -24px rgba(40,30,20,.35), 0 0 0 1px rgba(0,0,0,.05); background: #fff; }
@@ -134,15 +133,16 @@
 
   /* 체크 목록 (펜 표시) */
   ul.marks { list-style: none; padding: 0; margin: 0; }
-  ul.marks li { display: flex; gap: 14px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--rule); font-size: 17px; }
+  ul.marks li { display: flex; gap: 14px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--rule); font-size: 20px; }
   ul.marks li:last-child { border-bottom: 0; }
-  ul.marks .m { flex: 0 0 26px; font-family: var(--print); font-weight: 700; font-size: 20px; color: var(--pen); text-align: center; }
+  ul.marks .m { flex: 0 0 26px; font-size: 24px; color: var(--pen); text-align: center; }
+  ul.marks b { background: linear-gradient(transparent 55%, #F7C3CD 55% 92%, transparent 92%); }
 
   /* 기능 격자 */
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
   .card { background: #fff; border: 1px solid rgba(0,0,0,.06); border-radius: 18px; padding: 24px 22px 22px; box-shadow: 0 10px 30px -22px rgba(0,0,0,.4); }
-  .card h3 { margin: 10px 0 6px; font-size: 19px; color: var(--ink); letter-spacing: -.02em; }
-  .card p { margin: 0; font-size: 15.5px; color: var(--text); }
+  .card h3 { margin: 10px 0 6px; font-size: 24px; font-weight: 400; color: var(--ink); }
+  .card p { margin: 0; font-size: 18px; color: var(--text); }
   .chip { display: inline-block; width: 38px; height: 12px; border-radius: 3px; background: var(--c); transform: rotate(-3deg); }
 
   /* 형광펜 색 줄 */
@@ -156,8 +156,8 @@
   .steps { counter-reset: s; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
   .step { position: relative; background: #fff; border-radius: 18px; padding: 26px 22px; border: 1px solid rgba(0,0,0,.06); }
   .step::before { counter-increment: s; content: counter(s); font-family: var(--hand); font-size: 40px; color: var(--pink); line-height: 1; display: block; margin-bottom: 8px; }
-  .step h3 { margin: 0 0 6px; font-size: 18px; color: var(--ink); }
-  .step p { margin: 0; font-size: 15.5px; }
+  .step h3 { margin: 0 0 6px; font-size: 23px; font-weight: 400; color: var(--ink); }
+  .step p { margin: 0; font-size: 18px; }
   code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; background: var(--paper-2); padding: 2px 6px; border-radius: 6px; }
   pre { background: #2B2B2F; color: #F4F2EC; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: 13.5px; margin: 12px 0 0; }
   pre code { background: none; padding: 0; color: inherit; }
@@ -166,7 +166,8 @@
   .privacy { background: var(--plum); color: #EDEAF5; border-radius: 28px; padding: 54px 48px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; }
   .privacy h2 { color: #fff; }
   .privacy ul { margin: 0; padding: 0; list-style: none; }
-  .privacy li { padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.14); font-size: 16.5px; }
+  .privacy li { padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.14); font-size: 19px; }
+  .privacy li b, b, strong { font-weight: 400; }
   .privacy li:last-child { border: 0; }
   .privacy li b { color: #fff; }
 
@@ -176,9 +177,18 @@
   .final h2 { margin-bottom: 10px; }
   .final .cta { justify-content: center; margin-top: 26px; }
 
-  footer { border-top: 1px solid var(--rule); padding: 28px 0 44px; font-size: 14px; color: var(--soft); }
-  footer .row { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  footer a { color: var(--soft); }
+  footer { position: relative; z-index: 1; border-top: 1px solid var(--rule); background: var(--paper-2); padding: 44px 0 36px; font-size: 17px; color: var(--soft); }
+  footer a { color: var(--soft); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  .foot { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; }
+  .lah { display: inline-flex; align-items: center; gap: 10px; font-size: 24px; color: var(--ink) !important; }
+  .lah img { width: 30px; height: 30px; }
+  .made { margin: 10px 0 12px; color: var(--text); }
+  .biz { list-style: none; padding: 0; margin: 0; font-size: 16px; line-height: 1.75; }
+  .links { display: flex; flex-direction: column; gap: 8px; }
+  .links h4 { margin: 0 0 4px; font-weight: 400; font-size: 20px; color: var(--ink); }
+  .legal { margin: 30px 0 0; padding-top: 18px; border-top: 1px dashed var(--dot); font-size: 15px; }
+  @media (max-width: 900px) { .foot { grid-template-columns: 1fr; } }
 
   @media (max-width: 900px) {
     .hero, .split, .privacy { grid-template-columns: 1fr; }
@@ -378,9 +388,30 @@
 </div>
 
 <footer>
-  <div class="wrap row">
-    <span>© 2026 Spiralday · <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">MIT License</a></span>
-    <span>손글씨 폰트 Poor Story © YoonDesign Inc. (SIL OFL 1.1) · <a href="https://github.com/Grwaywee/spiralday">GitHub</a></span>
+  <div class="wrap">
+    <div class="foot">
+      <div class="company">
+        <a class="lah" href="https://leanagilehungry.com" target="_blank" rel="noopener">
+          <img src="assets/lah-logo.svg" alt="" width="30" height="30">LeanAgileHungry.Inc
+        </a>
+        <p class="made">Spiralday 는 린에자일헝그리가 만들고 운영해요.</p>
+        <ul class="biz">
+          <li>상호 주식회사 린에자일헝그리 (LeanAgileHungry.Inc)</li>
+          <li>대표자 위관우</li>
+          <li>사업자등록번호 791-88-03659</li>
+          <li>주소 전남광주통합특별시 동구 동계천로 150, 205-2호 (동명동, I-Plex 광주)</li>
+          <li>이메일 <a href="mailto:contact@leanagilehungry.com">contact@leanagilehungry.com</a></li>
+        </ul>
+      </div>
+      <div class="links">
+        <h4>Spiralday</h4>
+        <a href="https://github.com/Grwaywee/spiralday/releases">다운로드</a>
+        <a href="mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0%20%C2%B7%20%EA%B8%B0%EB%8A%A5%20%EC%A0%9C%EC%95%88">버그 신고 · 기능 제안</a>
+        <a href="https://github.com/Grwaywee/spiralday">GitHub (오픈소스)</a>
+        <a href="https://leanagilehungry.com" target="_blank" rel="noopener">회사 소개</a>
+      </div>
+    </div>
+    <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday 는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">MIT 라이선스</a> 오픈소스예요 · 손글씨 폰트 Poor Story © YoonDesign Inc. (SIL OFL 1.1)</p>
   </div>
 </footer>
 </body>

@@ -78,6 +78,16 @@ enum Fonts {
     /// 앱에 들어 있는 폰트(Resources/Fonts)를 이 프로세스에 등록한다.
     /// .app 에서는 Contents/Resources/Fonts, 개발 빌드에서는 저장소의 Resources/Fonts 를 쓴다.
     static func activate(_ done: @escaping @Sendable () -> Void) {
+        register()
+        DispatchQueue.main.async { done() }
+    }
+
+    private static var registered = false
+
+    /// 창을 그리기 전에 반드시 먼저 불러야 한다 (늦게 등록하면 첫 화면이 기본 글꼴로 그려진다)
+    static func register() {
+        guard !registered else { return }
+        registered = true
         let repoFonts = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Resources/Fonts")
@@ -90,7 +100,6 @@ enum Fonts {
             }
             break
         }
-        DispatchQueue.main.async { done() }
     }
 }
 

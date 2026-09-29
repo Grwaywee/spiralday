@@ -49,7 +49,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>NSHumanReadableCopyright</key><string>© 2026 LeanAgileHungry Inc. · MIT License</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 LeanAgileHungry.Inc · MIT License</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>ATSApplicationFontsPath</key><string>Fonts</string>

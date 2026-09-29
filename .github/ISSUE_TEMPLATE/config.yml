@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ✉️ 메일로 보내기
+    url: mailto:contact@leanagilehungry.com
+    about: GitHub 계정이 없다면 메일로 편하게 보내 주세요.
+  - name: 🌐 Spiralday 웹사이트
+    url: https://spiralday.com
+    about: 설치 방법과 사용법
