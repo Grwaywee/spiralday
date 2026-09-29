@@ -55,6 +55,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let i = Self.args.firstIndex(of: "--icon"), i + 1 < Self.args.count {
+            let out = URL(fileURLWithPath: Self.args[i + 1])
+            let variant = i + 2 < Self.args.count ? Int(Self.args[i + 2]) ?? 0 : 0
+            Fonts.activate {
+                Task { @MainActor in
+                    let r = ImageRenderer(content: AppIconArt(variant: variant))
+                    r.scale = 1
+                    if let img = r.cgImage { Snapshotter.write(img, out) }
+                    exit(0)
+                }
+            }
+            return
+        }
         if let i = Self.args.firstIndex(of: "--pdf-test"), i + 1 < Self.args.count {
             let dir = URL(fileURLWithPath: Self.args[i + 1])
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

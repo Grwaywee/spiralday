@@ -2578,3 +2578,158 @@ private struct HighlighterPen: View {
         .fixedSize()
     }
 }
+
+// MARK: - App icon art
+
+/// 앱 아이콘: 튜토리얼 그림의 느낌(스프링 제본 종이 · 형광펜 줄 · 빨간 체크 · 민트 형광펜)을
+/// 아이콘 크기에서도 읽히도록 굵고 단순하게 다시 그린 것. macOS 아이콘 격자(1024 안에 824 몸통).
+/// `PaperPlanner --icon <out.png> [variant]` 로 1024 px PNG 를 만든다.
+struct AppIconArt: View {
+    var variant = 0
+
+    static let backgrounds: [[Color]] = [
+        [Color(hex: "F9D2DC"), Color(hex: "EC9BB1")],   // 0 핑크
+        [Color(hex: "6A5C92"), Color(hex: "3C3357")],   // 1 플럼
+        [Color(hex: "C7EDE3"), Color(hex: "86CFBE")],   // 2 민트
+    ]
+
+    var body: some View {
+        let bg = Self.backgrounds[min(max(variant, 0), Self.backgrounds.count - 1)]
+        ZStack {
+            RoundedRectangle(cornerRadius: 185, style: .continuous)
+                .fill(LinearGradient(colors: bg, startPoint: .top, endPoint: .bottom))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 185, style: .continuous)
+                        .fill(LinearGradient(colors: [.white.opacity(0.25), .clear], startPoint: .top, endPoint: .center))
+                )
+                .frame(width: 824, height: 824)
+                .shadow(color: .black.opacity(0.3), radius: 16, y: 10)
+
+            // 뒤 장 (책 두께)
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(Color(hex: "EDE7DC"))
+                .frame(width: 500, height: 620)
+                .rotationEffect(.degrees(-10))
+                .offset(x: -8, y: 22)
+                .shadow(color: .black.opacity(0.14), radius: 10, y: 6)
+
+            IconSheet()
+                .rotationEffect(.degrees(-4))
+                .offset(x: 10, y: -4)
+
+            IconHighlighter()
+                .rotationEffect(.degrees(-40))
+                .offset(x: 215, y: 205)
+        }
+        .frame(width: 1024, height: 1024)
+    }
+}
+
+/// 아이콘의 종이 한 장 (500 × 620)
+private struct IconSheet: View {
+    static let size = CGSize(width: 500, height: 620)
+
+    var body: some View {
+        let w = Self.size.width, h = Self.size.height
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(LinearGradient(colors: [Color(hex: "FFFEFB"), Color(hex: "F6F2EA")], startPoint: .top, endPoint: .bottom))
+                .shadow(color: .black.opacity(0.22), radius: 16, y: 10)
+
+            Canvas { ctx, _ in
+                let ink = Color(hex: "3A3940")
+                // 날짜 줄 + 빨간 TOTAL
+                ctx.fill(Path(roundedRect: CGRect(x: 78, y: 62, width: 170, height: 26), cornerRadius: 13), with: .color(ink))
+                ctx.fill(Path(roundedRect: CGRect(x: 318, y: 48, width: 118, height: 54), cornerRadius: 14),
+                         with: .color(Color(hex: "E0474C")))
+                ctx.fill(Path(CGRect(x: 60, y: 130, width: w - 104, height: 6)), with: .color(Color(hex: "CFC8BC")))
+
+                // 할 일 네 줄: 형광펜(끝낸 일) + 손글씨 줄 + 펜 표시
+                let rows: [(Color?, CGFloat, Int)] = [
+                    (Color(hex: "8EDCD2"), 210, 0),
+                    (Color(hex: "F8B38A"), 170, 0),
+                    (nil, 190, 1),
+                    (Color(hex: "CDB6EF"), 150, 0),
+                ]
+                for (i, r) in rows.enumerated() {
+                    let y = 186 + CGFloat(i) * 92
+                    if let hl = r.0 {
+                        var c = ctx
+                        c.blendMode = .multiply
+                        c.fill(Path(roundedRect: CGRect(x: 70, y: y - 6, width: r.1 + 36, height: 44), cornerRadius: 12),
+                               with: .color(hl))
+                    }
+                    ctx.fill(Path(roundedRect: CGRect(x: 86, y: y + 8, width: r.1, height: 16), cornerRadius: 8),
+                             with: .color(ink.opacity(0.85)))
+                    let m = CGRect(x: 368, y: y - 4, width: 44, height: 44)
+                    var p = Path()
+                    if r.2 == 0 {
+                        p.addEllipse(in: m)
+                    } else {
+                        p.move(to: CGPoint(x: m.midX, y: m.minY))
+                        p.addLine(to: CGPoint(x: m.maxX, y: m.maxY))
+                        p.addLine(to: CGPoint(x: m.minX, y: m.maxY))
+                        p.closeSubpath()
+                    }
+                    ctx.stroke(p, with: .color(Color(hex: "E0474C")), style: StrokeStyle(lineWidth: 9, lineJoin: .round))
+                    ctx.fill(Path(CGRect(x: 60, y: y + 62, width: w - 104, height: 3)), with: .color(Color(hex: "E3DED4")))
+                }
+            }
+            .frame(width: w, height: h)
+
+            // 스프링 링
+            ForEach(0..<7, id: \.self) { i in
+                let y = 70 + CGFloat(i) * 80
+                ZStack {
+                    Circle().fill(Color(hex: "4A4C53")).frame(width: 18, height: 18).offset(x: 12)
+                    Capsule()
+                        .stroke(LinearGradient(colors: [Color(hex: "6E7178"), Color(hex: "F4F5F7"), Color(hex: "8C8F96")],
+                                               startPoint: .top, endPoint: .bottom), lineWidth: 9)
+                        .frame(width: 70, height: 26)
+                        .offset(x: -10)
+                        .shadow(color: .black.opacity(0.25), radius: 2, y: 2)
+                }
+                .offset(x: -8, y: y)
+            }
+        }
+        .frame(width: w, height: h, alignment: .topLeading)
+    }
+}
+
+/// 아이콘의 민트 형광펜 (세로로 그리고 돌려서 쓴다): 납작한 심 → 원뿔 → 흰 몸통 → 민트 뚜껑 끝
+private struct IconHighlighter: View {
+    var body: some View {
+        let mint = Color(hex: "7FD6C4"), deep = Color(hex: "3FAF98")
+        VStack(spacing: 0) {
+            Path { p in
+                p.move(to: CGPoint(x: 6, y: 0))
+                p.addLine(to: CGPoint(x: 40, y: 12))
+                p.addLine(to: CGPoint(x: 40, y: 30))
+                p.addLine(to: CGPoint(x: 6, y: 30))
+                p.closeSubpath()
+            }
+            .fill(deep)
+            .frame(width: 46, height: 30)
+            Path { p in
+                p.move(to: CGPoint(x: 18, y: 0))
+                p.addLine(to: CGPoint(x: 70, y: 0))
+                p.addLine(to: CGPoint(x: 88, y: 46))
+                p.addLine(to: CGPoint(x: 0, y: 46))
+                p.closeSubpath()
+            }
+            .fill(LinearGradient(colors: [mint, deep], startPoint: .leading, endPoint: .trailing))
+            .frame(width: 88, height: 46)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(LinearGradient(colors: [.white, Color(hex: "EEF7F4"), Color(hex: "D3EBE4")], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 88, height: 250)
+                .overlay(alignment: .top) { Rectangle().fill(mint).frame(height: 18).padding(.top, 28) }
+                .overlay(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.9)).frame(width: 9, height: 170).padding(.leading, 12)
+                }
+            UnevenRoundedRectangle(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous)
+                .fill(LinearGradient(colors: [mint, deep], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 92, height: 56)
+        }
+        .shadow(color: .black.opacity(0.25), radius: 12, x: 4, y: 10)
+    }
+}

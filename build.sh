@@ -20,13 +20,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/PaperPlanner"
 
-if [ ! -f build/AppIcon.icns ]; then
+# 아이콘: Resources/AppIcon-1024.png (PaperPlanner --icon 으로 그린 것) → .icns
+ICON_SRC=Resources/AppIcon-1024.png
+if [ ! -f build/AppIcon.icns ] || [ "$ICON_SRC" -nt build/AppIcon.icns ]; then
   ICONSET=build/AppIcon.iconset
-  mkdir -p $ICONSET
-  swift Tools/make_icon.swift build/icon_1024.png
+  rm -rf $ICONSET && mkdir -p $ICONSET
   for s in 16 32 128 256 512; do
-    sips -z $s $s build/icon_1024.png --out $ICONSET/icon_${s}x${s}.png >/dev/null
-    sips -z $((s*2)) $((s*2)) build/icon_1024.png --out $ICONSET/icon_${s}x${s}@2x.png >/dev/null
+    sips -z $s $s "$ICON_SRC" --out $ICONSET/icon_${s}x${s}.png >/dev/null
+    sips -z $((s*2)) $((s*2)) "$ICON_SRC" --out $ICONSET/icon_${s}x${s}@2x.png >/dev/null
   done
   iconutil -c icns $ICONSET -o build/AppIcon.icns
 fi
