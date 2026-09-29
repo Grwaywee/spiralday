@@ -38,6 +38,12 @@ struct DailyPage: View {
 
             SlotPainter(date: date, cellW: F.cell * u, rowH: F.hourPitch * u)
                 .offset(x: F.slotsLeft * u, y: F.gridTop * u)
+
+            // 오른쪽 아래 워드마크: 누르면 spiralday.com
+            if !isSnapshot {
+                WordmarkLink()
+                    .place(CGRect(x: F.wordmarkRight - 190, y: F.wordmarkBaseline - 36, width: 196, height: 48), u)
+            }
         }
         .frame(width: PageKind.daily.design.width * u, height: PageKind.daily.design.height * u, alignment: .topLeading)
     }
@@ -250,6 +256,22 @@ struct DailyPage: View {
                 .onTapGesture { state.editingKey = "mt|\(dk)|\(n)" }
                 .place(CGRect(x: F.left + 4, y: F.memoTop + CGFloat(r) * p, width: F.categoryX - F.left - 8, height: p), u)
         }
+    }
+}
+
+/// 인쇄된 워드마크 위의 투명한 링크
+private struct WordmarkLink: View {
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture { Links.open(Links.website) }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active: NSCursor.pointingHand.set()
+                case .ended: NSCursor.arrow.set()
+                }
+            }
+            .help("spiralday.com 열기")
     }
 }
 

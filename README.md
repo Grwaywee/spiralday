@@ -52,7 +52,7 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
 
 ### 받아서 쓰기
 
-1. [Releases](https://github.com/Grwaywee/spiralday/releases) 에서 `Spiralday-x.y.z-macOS.zip` 을 받아 압축을 풉니다.
+1. [spiralday.com](https://spiralday.com) 또는 [Releases](https://github.com/Grwaywee/spiralday/releases/latest) 에서 `Spiralday.zip` 을 받아 압축을 풉니다.
 2. `Spiralday.app` 을 **응용 프로그램** 폴더로 옮깁니다.
 3. 처음 한 번은 앱을 **오른쪽 클릭 → 열기** 로 엽니다.
    개인이 만든 앱이라 Apple 공증을 받지 않아서, 그냥 더블클릭하면 macOS 가 막습니다. 그래도 막히면:
@@ -62,6 +62,7 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
    ```
 
 - macOS 14 Sonoma 이상, Apple Silicon · Intel 모두 지원
+- **자동 업데이트** — 하루 한 번 새 버전을 확인하고, 있으면 알려 줘요 (메뉴 Spiralday → 업데이트 확인…). [Sparkle](https://sparkle-project.org) 로 서명을 확인한 뒤 설치해요.
 
 ### 직접 빌드
 
@@ -176,6 +177,15 @@ swift build
 .build/debug/Spiralday --snapshot ./out      # 페이지 · 넘김 프레임 PNG
 .build/debug/Spiralday --pdf-test ./out      # PDF 레이아웃 4종 샘플
 ```
+
+### 새 버전 배포
+
+1. `build.sh` 의 `VERSION` 을 올리고 `BUILD` 를 1 늘립니다.
+2. `Docs/release-notes/<VERSION>.md` 에 바뀐 점을 적습니다.
+3. `./release.sh` — 유니버설 빌드 → Sparkle EdDSA 서명 → `site/appcast.xml` → GitHub Release → 사이트 배포까지 한 번에.
+
+업데이트 서명 비밀 키는 배포하는 Mac 의 키체인(`spiralday` 계정)에만 있습니다. 잃어버리면 기존 사용자에게 업데이트를 보낼 수 없으니 반드시 백업하세요:
+`.build/artifacts/sparkle/Sparkle/bin/
 
 ### 소개 페이지 (spiralday.com)
 

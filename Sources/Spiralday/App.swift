@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Sparkle
 
 @main
 struct SpiraldayApp: App {
@@ -9,6 +10,9 @@ struct SpiraldayApp: App {
         // 창은 AppDelegate 가 직접 만든다 (창 = 종이, 비율 고정, 옆 팔레트)
         Settings { EmptyView() }
             .commands {
+                CommandGroup(after: .appInfo) {
+                    Button("업데이트 확인…") { delegate.checkForUpdates() }
+                }
                 CommandGroup(replacing: .appSettings) {
                     Button("설정…") { SettingsWindowController.shared.show(store: delegate.store, state: delegate.state) }
                         .keyboardShortcut(",", modifiers: .command)
@@ -54,6 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let store: PlannerStore
     let state: AppState
     private var windowController: MainWindowController?
+    /// 원격 업데이트 (Sparkle). 데모·스냅샷 같은 개발 실행에서는 켜지 않는다.
+    private var updater: SPUStandardUpdaterController?
+
+    var canCheckForUpdates: Bool { updater != nil }
+
+    func checkForUpdates() { updater?.checkForUpdates(nil) }
 
     private static let args = CommandLine.arguments
 
@@ -129,6 +139,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let demo = Self.args.contains("--demo")
+        // .app 으로 실행될 때만 (Info.plist 에 SUFeedURL 이 있을 때) 업데이트를 확인한다
+        if !demo, Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
+            updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        }
         if !demo && (store.books.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
             OnboardingController.shared.show(store: store, state: state) { [weak self] in self?.openPlanner() }
         } else {
