@@ -53,6 +53,10 @@ enum DailyForm {
 
     // 라벨 뒤에서 시작하는 머리선
     static let commentRuleX: CGFloat = 173.7
+    /// 화면: COMMENT 라벨 바로 뒤의 ▾ 메뉴 (작성하기 · DAY OFF). 라벨은 x 56.1 ~ 160.3 (AvenirNext-Medium 19.35).
+    /// ▾ 가 들어갈 만큼 머리선을 뒤로 민다. 넘김 스냅샷도 화면과 같고, PDF 에는 ▾ 가 없어서 머리선도 제자리다.
+    static let commentLabelEnd: CGFloat = 160.3
+    static let commentMenuShift: CGFloat = 19
     static let totalRuleX: CGFloat = 949.1
     static let tasksRuleX: CGFloat = 131.2
     static let memoRuleX: CGFloat = 134.4
@@ -122,6 +126,8 @@ struct DailyFormPrint: View {
     /// 할 일 / 메모 칸 수 (기본 15 / 3, 넘치면 늘어난다)
     var taskRows = DailyForm.taskCount
     var memoRows = DailyForm.memoCount
+    /// COMMENT ▾ 메뉴 자리를 비운다 (화면 · 넘김 스냅샷, PDF 는 아니다)
+    var commentMenu = false
 
     private typealias F = DailyForm
 
@@ -147,7 +153,7 @@ struct DailyFormPrint: View {
     private func drawRules(_ ctx: inout GraphicsContext) {
         let ink = Ink.print, hair = Ink.rule
         // COMMENT · TOTAL TIME
-        hline(&ctx, F.commentRuleX, F.leftEnd, F.headerY, F.heavy, ink)
+        hline(&ctx, F.commentRuleX + (commentMenu ? F.commentMenuShift : 0), F.leftEnd, F.headerY, F.heavy, ink)
         hline(&ctx, F.totalRuleX, F.timeRight, F.headerY, F.heavy, ink)
         hline(&ctx, F.left, F.leftEnd, F.closeY, F.heavy, ink)
         hline(&ctx, F.timeLeft, F.timeRight, F.closeY, F.heavy, ink)

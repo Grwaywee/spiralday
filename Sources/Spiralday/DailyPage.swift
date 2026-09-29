@@ -21,7 +21,7 @@ struct DailyPage: View {
         let tasksL = taskLayout(day.tasks)
         let memoL = memoLayout(day)
         ZStack(alignment: .topLeading) {
-            DailyFormPrint(u: u, taskRows: tasksL.rows, memoRows: memoL.rows)
+            DailyFormPrint(u: u, taskRows: tasksL.rows, memoRows: memoL.rows, commentMenu: reservesCommentMenu)
 
             // DATE · D-DAY 칸 (양식 위 여백)
             dateField
@@ -29,8 +29,23 @@ struct DailyPage: View {
             ddayField
                 .place(F.ddayBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
 
-            comment
-                .place(F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
+            if day.dayOff {
+                DayOffStamp(color: concept.accent, u: u)
+                    .place(F.commentBox, u)
+            } else {
+                comment
+                    .place(F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
+            }
+            // COMMENT ▾ : 작성하기 · DAY OFF (화면에서만 누를 수 있다. PDF 에는 없다)
+            if showsCommentMenu {
+                CommentModeMenu(date: date, u: u)
+                    .place(CommentModeMenu.rect, u)
+            } else if reservesCommentMenu {
+                // 넘김 스냅샷: 같은 자리에 누를 수 없는 ▾ 만 (넘기는 동안 ▾ 와 머리선이 움직이지 않게)
+                DownTriangle()
+                    .fill(Ink.print)
+                    .place(CommentModeMenu.arrowRect, u)
+            }
             TotalTime(minutes: store.minutes(date), color: concept.accent, u: u)
                 .place(F.totalBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
 
@@ -104,6 +119,11 @@ struct DailyPage: View {
     }
 
     // MARK: COMMENT
+
+    /// ▾ 자리를 비운다: 화면과 넘김 스냅샷은 같은 모양 (PDF 는 인쇄 양식 그대로)
+    private var reservesCommentMenu: Bool { !isPrinting }
+    /// 누를 수 있는 ▾ 메뉴는 화면에서만
+    private var showsCommentMenu: Bool { reservesCommentMenu && !isSnapshot }
 
     private static let commentFont: CGFloat = 50
     private var commentRect: CGRect { F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16) }
@@ -328,6 +348,108 @@ private struct RuledEntry: View {
             .contentShape(Rectangle())
             .onTapGesture { state.editingKey = key }
         }
+    }
+}
+
+// MARK: - COMMENT ▾ (작성하기 · DAY OFF)
+
+/// 인쇄된 COMMENT 라벨 바로 뒤의 작은 ▾. 누르면 작성하기 / DAY OFF 를 고른다 (지금 것에 체크).
+/// 라벨과 ▾ 를 함께 누를 수 있다. 화면에서만 누를 수 있고 (넘김 스냅샷에는 같은 자리에 ▾ 모양만, PDF 에는 없다),
+/// 그 자리만큼 양식의 머리선이 뒤로 물러난다 (DailyFormPrint.commentMenu).
+private struct CommentModeMenu: View {
+    let date: Date
+    let u: CGFloat
+
+    @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
+    @State private var hover = false
+
+    private typealias F = DailyForm
+
+    /// 누르는 자리 (디자인 단위): 라벨 앞부터 ▾ 뒤까지, 머리선 위아래로 조금
+    static var rect: CGRect {
+        CGRect(x: F.left - 6, y: F.headerY - 19, width: F.commentLabelEnd + 30 - (F.left - 6), height: 34)
+    }
+    /// ▾ 크기와 가운데 (디자인 단위). 라벨 대문자의 가운데 높이 (DailyFormPrint: 머리선 + 0.5)
+    static let arrowSize = CGSize(width: 13, height: 8)
+    static var arrowCenter: CGPoint { CGPoint(x: F.commentLabelEnd + 12.5, y: F.headerY + 0.5) }
+    /// ▾ 가 그려지는 자리 (디자인 단위). 넘김 스냅샷의 누를 수 없는 ▾ 도 여기에 그린다.
+    static var arrowRect: CGRect {
+        CGRect(x: arrowCenter.x - arrowSize.width / 2, y: arrowCenter.y - arrowSize.height / 2,
+               width: arrowSize.width, height: arrowSize.height)
+    }
+
+    var body: some View {
+        let off = store.day(date).dayOff
+        let accent = store.concept(date).accent
+        Menu {
+            Picker("COMMENT", selection: Binding(get: { store.isDayOff(date) },
+                                                 set: { v in state.endEditing(); store.setDayOff(date, v) })) {
+                Text("작성하기").tag(false)
+                Text("DAY OFF").tag(true)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 6 * u)
+                    .fill(Ink.pen.opacity(hover ? 0.08 : 0))
+                DownTriangle()
+                    .fill(hover ? accent : Ink.print)
+                    .frame(width: Self.arrowSize.width * u, height: Self.arrowSize.height * u)
+                    .offset(x: (Self.arrowCenter.x - Self.arrowSize.width / 2 - Self.rect.minX) * u,
+                            y: (Self.arrowCenter.y - Self.arrowSize.height / 2 - Self.rect.minY) * u)
+            }
+            .frame(width: Self.rect.width * u, height: Self.rect.height * u, alignment: .topLeading)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: NSCursor.pointingHand.set()
+            case .ended: NSCursor.arrow.set()
+            }
+        }
+        .onDisappear { if hover { NSCursor.arrow.set() } }
+        .help(off ? "쉬는 날 (DAY OFF) — 눌러서 작성하기로 돌아가요. 적어 둔 COMMENT 는 그대로 있어요"
+                  : "COMMENT — 눌러서 DAY OFF(쉬는 날)로 바꿀 수 있어요")
+    }
+}
+
+/// 아래를 향한 작은 삼각형 (▾)
+private struct DownTriangle: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// DAY OFF: COMMENT 칸 한가운데에 그날 컬러로 크게. TOTAL TIME 과 같은 둥근 굵은 스탬프 글자.
+/// 칸 크기에 맞춰 u 로 함께 커지고 줄어든다. 누르는 자리가 아니라서 COMMENT 편집이 열리지 않는다.
+private struct DayOffStamp: View {
+    let color: Color
+    let u: CGFloat
+
+    var body: some View {
+        Text("DAY OFF")
+            .font(Fonts.rounded(96 * u, .black))
+            .kerning(2 * u)
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
+            .padding(.horizontal, 24 * u)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 둥근 글꼴은 줄 상자의 아래(내림) 몫이 커서, 대문자 가운데를 칸 가운데에 맞추려고 조금 올린다
+            .offset(y: -2.5 * u)
+            .allowsHitTesting(false)
     }
 }
 

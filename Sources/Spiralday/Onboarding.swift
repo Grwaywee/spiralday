@@ -5,6 +5,7 @@ import SwiftUI
 // 처음 실행할 때의 안내. 본 창처럼 스프링이 달린 종이 한 장 위에 그린 작은 창에서
 //   1 환영 → 2 플래너 만들기 → 3–6 사용법 네 장 → 7 시작하기
 // 플래너(책)가 한 권도 없으면 2 에서 만들기 전에는 앞으로 넘어갈 수 없다.
+// 앱이 꽂아 둔 예시 플래너는 세지 않는다 (예시만 있어도 처음처럼 내 플래너부터 만든다).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // MARK: - Window
@@ -83,7 +84,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
     /// ‘시작하기’ 또는 창 닫기
     private func finish(closing: Bool) {
         guard let window else { return }
-        if let store, store.books.isEmpty {
+        if let store, store.userBooks.isEmpty {
             store.createBook(name: BookDraft.defaultName, start: Date(), end: nil)
         }
         UserDefaults.standard.set(true, forKey: Self.doneKey)
@@ -232,17 +233,31 @@ final class OnboardingModel: ObservableObject {
     var onFinish: (() -> Void)?
     private var turning = false
 
-    init(store: PlannerStore) {
+    /// step: 스냅샷에서 다른 장부터 그려 볼 때
+    init(store: PlannerStore, step: Step = .welcome) {
         self.store = store
-        draft = BookDraft.fresh(avoiding: store.books)
-        plannerMode = store.books.isEmpty ? .create : .existing
+        self.step = step
+        draft = Self.freshDraft(store)
+        plannerMode = store.userBooks.isEmpty ? .create : .existing
     }
 
-    /// 플래너가 한 권도 없다 → 만들기 전에는 앞으로 못 간다
-    var needsBook: Bool { store.books.isEmpty }
+    /// 새 초안. 첫 플래너는 예시 플래너와 상관없이 늘 같은 이름·표지("내 플래너", 체리)로 시작하고,
+    /// 한 권 더 만들 때는 책장의 모든 책(예시 포함)과 겹치지 않게 고른다.
+    private static func freshDraft(_ store: PlannerStore) -> BookDraft {
+        BookDraft.fresh(avoiding: store.userBooks.isEmpty ? [] : store.books)
+    }
+
+    /// 내 플래너가 한 권도 없다 (예시 플래너는 세지 않는다) → 만들기 전에는 앞으로 못 간다
+    var needsBook: Bool { store.userBooks.isEmpty }
     var isCreating: Bool { step == .planner && plannerMode == .create }
-    /// 이미 책이 있는데 한 권 더 만드는 중
-    var isComposingExtra: Bool { plannerMode == .create && !store.books.isEmpty }
+    /// 이미 내 플래너가 있는데 한 권 더 만드는 중
+    var isComposingExtra: Bool { plannerMode == .create && !store.userBooks.isEmpty }
+
+    /// 이 안내에서 보여 줄 내 플래너: 펼친 책이 내 책이면 그 책, 예시 플래너를 펼쳐 뒀으면 내 첫 책
+    var myBook: BookInfo? {
+        if let b = store.activeBook, !b.isSample { return b }
+        return store.userBooks.first
+    }
 
     func canVisit(_ s: Step) -> Bool { s.rawValue <= Step.planner.rawValue || !needsBook }
 
@@ -286,7 +301,7 @@ final class OnboardingModel: ObservableObject {
     func skip() { go(.ready) }
 
     func composeAnother() {
-        draft = BookDraft.fresh(avoiding: store.books)
+        draft = Self.freshDraft(store)
         withAnimation(.snappy(duration: 0.3)) { plannerMode = .create }
     }
 
@@ -820,7 +835,7 @@ private struct PlannerPage: View {
 
     var body: some View {
         let creating = model.plannerMode == .create
-        let book = creating ? model.draft.preview : (store.activeBook ?? model.draft.preview)
+        let book = creating ? model.draft.preview : (model.myBook ?? model.draft.preview)
         HStack(alignment: .top, spacing: 34) {
             VStack(spacing: 16) {
                 BookCover(book: book, width: 170)
@@ -838,8 +853,8 @@ private struct PlannerPage: View {
             Group {
                 if creating {
                     CreateForm(model: model)
-                } else if let active = store.activeBook {
-                    ExistingBook(model: model, book: active)
+                } else if let mine = model.myBook {
+                    ExistingBook(model: model, book: mine)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -855,7 +870,7 @@ private struct CreateForm: View {
     var body: some View {
         let accent = ColorConcept.of(model.draft.cover).accent
         VStack(alignment: .leading, spacing: 0) {
-            Headline(text: store.books.isEmpty ? "첫 플래너를 만들어요" : "플래너를 한 권 더 만들어요",
+            Headline(text: store.userBooks.isEmpty ? "첫 플래너를 만들어요" : "플래너를 한 권 더 만들어요",
                      tint: OnboardingModel.Step.planner.tint, size: 32)
             BodyText(text: "플래너는 한 권의 책이에요. 시작일이 첫 장이 되고, 종료일을 정하면 그날이 마지막 장이 돼요.",
                      size: 12.5)
@@ -930,11 +945,13 @@ private struct ExistingBook: View {
 
     var body: some View {
         let created = model.createdID == book.id
+        let open = book.id == store.activeBook?.id
         VStack(alignment: .leading, spacing: 0) {
             Headline(text: created ? "플래너를 만들었어요" : "이미 플래너가 있어요",
                      tint: OnboardingModel.Step.planner.tint, size: 32)
             BodyText(text: created ? "‘\(book.name)’을(를) 펼쳐 두었어요. 이대로 써 나가면 돼요."
-                                   : "지금 펼쳐 둔 ‘\(book.name)’ 플래너로 이어 쓰면 돼요. 한 권 더 만들어도 좋아요.",
+                                   : open ? "지금 펼쳐 둔 ‘\(book.name)’ 플래너로 이어 쓰면 돼요. 한 권 더 만들어도 좋아요."
+                                          : "‘\(book.name)’ 플래너로 이어 쓰면 돼요. 팔레트 맨 위에서 펼칠 수 있어요.",
                      size: 12.5)
                 .padding(.top, 8)
 
@@ -962,7 +979,7 @@ private struct ExistingBook: View {
                         Text("플래너 \(store.books.count)권")
                             .font(Fonts.hand(20))
                             .foregroundStyle(Ink.text)
-                        Text("설정에서 관리해요")
+                        Text(store.hasSampleBook ? "예시 플래너 포함 · 설정에서 관리해요" : "설정에서 관리해요")
                             .font(Fonts.print(11, .medium))
                             .foregroundStyle(Ink.soft)
                         Spacer(minLength: 0)
@@ -2189,7 +2206,7 @@ private struct ReadyPage: View {
     @EnvironmentObject private var store: PlannerStore
 
     var body: some View {
-        let book = store.activeBook ?? model.draft.preview
+        let book = model.myBook ?? model.draft.preview
         HStack(alignment: .top, spacing: 40) {
             ZStack(alignment: .bottomTrailing) {
                 BookCover(book: book, width: 182)
@@ -2232,9 +2249,16 @@ private struct ReadyPage: View {
                 .modifier(PaperCard())
                 .padding(.top, 26)
 
+                // 책장에 꽂아 둔 예시 플래너 (있을 때만)
+                if store.hasSampleBook {
+                    PenNote(text: "책장에 ‘예시 플래너’도 한 권 꽂아 뒀어요")
+                        .frame(width: 360, alignment: .leading)
+                        .padding(.top, 14)
+                }
+
                 StickyNote(text: "이 안내는 설정(⌘,)에서\n언제든 다시 볼 수 있어요")
                     .rotationEffect(.degrees(2))
-                    .padding(.top, 24)
+                    .padding(.top, store.hasSampleBook ? 16 : 24)
                     .padding(.leading, 150)
             }
             .padding(.top, 8)

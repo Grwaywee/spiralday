@@ -179,7 +179,7 @@ struct HomePage: View {
     private func dayHelp(_ d: HomeStats.DayCell) -> String {
         let c = Dates.comp(d.date)
         let (h, m) = formatHM(d.minutes)
-        return "\(c.month!)월 \(c.day!)일 · \(h)시간 \(m)분 — 눌러서 일간 페이지 열기"
+        return "\(c.month!)월 \(c.day!)일 · \(d.dayOff ? "DAY OFF · " : "")\(h)시간 \(m)분 — 눌러서 일간 페이지 열기"
     }
 }
 
@@ -501,7 +501,9 @@ private struct HomeInk: View {
             "\(s.month)월 1일부터",
             s.monthDays > 0 ? "기록한 \(s.monthDays)일 평균" : "기록한 날 평균",
             "\(s.month)월에 타임테이블을 칠한 날",
-            s.streak == 0 ? "오늘 칠하면 1일째" : s.streakIncludesToday ? "오늘까지 이어서 기록" : "어제까지 · 오늘도 칠해요",
+            // 쉬는 날은 연속 기록을 끊지 않는다 (HomeStats)
+            s.todayOff && !s.streakIncludesToday ? (s.streak == 0 ? "오늘은 DAY OFF" : "오늘은 DAY OFF · 이어서 기록")
+                : s.streak == 0 ? "오늘 칠하면 1일째" : s.streakIncludesToday ? "오늘까지 이어서 기록" : "어제까지 · 오늘도 칠해요",
             s.marked > 0 ? "표시한 할 일 \(s.marked)개 중 ○ \(s.done)개" : "할 일에 ○△×→ 를 표시해요",
         ]
         for i in 0..<6 {
@@ -825,9 +827,15 @@ private struct HomeInk: View {
             }
             let other = c.month != month
             let label = c.day == 1 ? "\(c.month!)/1" : "\(c.day!)"
-            ctx.draw(Text(label).font(Fonts.hand(26))
-                        .foregroundStyle(d.isFuture ? (lv > 0 ? Ink.soft : Ink.faint) : other ? Ink.soft : Ink.text),
-                     at: CGPoint(x: r.minX + 9, y: r.minY + 16), anchor: .leading)
+            let dayText = ctx.resolve(Text(label).font(Fonts.hand(26))
+                .foregroundStyle(d.isFuture ? (lv > 0 ? Ink.soft : Ink.faint) : other ? Ink.soft : Ink.text))
+            ctx.draw(dayText, at: CGPoint(x: r.minX + 9, y: r.minY + 16), anchor: .leading)
+            // 쉬는 날 (DAY OFF): 날짜 옆에 그날 컬러로 작은 점
+            if d.dayOff {
+                let x = min(r.minX + 9 + dayText.measure(in: Self.big).width + 7, r.maxX - 7)
+                ctx.fill(Path(ellipseIn: CGRect(x: x - 4, y: r.minY + 16 - 4, width: 8, height: 8)),
+                         with: .color(ColorConcept.of(d.theme ?? defaultTheme).accent))
+            }
             if d.minutes > 0 {
                 let t = fit(ctx, r.width - 12, size: 1) { k in
                     hm(d.minutes, 14.5 * k, unit: 9 * k).foregroundStyle(Ink.text.opacity(0.75))

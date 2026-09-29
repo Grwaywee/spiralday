@@ -84,13 +84,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         Self.migrateDefaults()
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
-            || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon") {
+            || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
+            || Self.args.contains("--sample-book-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
             store.useDemoBook(start: Dates.add(days: -42, to: Dates.weekStart(Date())))
         } else {
             store = PlannerStore()
+            // 책장을 읽고 옮기기까지 끝난 뒤, 설치 후 처음 한 번만 예시 플래너를 꽂아 둔다 (펼치지는 않는다)
+            store.seedSampleBookIfNeeded()
         }
         state = AppState(kind: Self.args.contains("--weekly") ? .weekly
                             : Self.args.contains("--home") ? .home : store.data.prefs.lastKind)
@@ -157,6 +160,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // 예시 플래너 확인용: 오늘 기준으로 만들어 JSON 과 모든 장을 PNG 로 찍고 끝낸다 (메모리에서만)
+        if let i = Self.args.firstIndex(of: "--sample-book-test") {
+            guard i + 1 < Self.args.count else {
+                print("사용법: Spiralday --sample-book-test <결과 폴더>")
+                exit(2)
+            }
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            Fonts.activate {
+                Task { @MainActor in exit(await SampleBookTest.run(to: dir)) }
+            }
+            return
+        }
         let demo = Self.args.contains("--demo")
         // .app 으로 실행될 때만 (Info.plist 에 SUFeedURL 이 있을 때) 업데이트를 확인한다
         if !demo, Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
@@ -171,7 +186,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !demo {
             StarPrompt.start(store: store, window: mainWindow)
         }
-        if !demo && (store.books.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
+        // 예시 플래너만 있으면 아직 처음이다: 튜토리얼에서 내 플래너를 만든다
+        if !demo && (store.userBooks.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
             OnboardingController.shared.show(store: store, state: state) { [weak self] in self?.openPlanner() }
         } else {
             openPlanner()

@@ -182,7 +182,9 @@ private struct BookMenu: View {
         Menu {
             ForEach(store.books) { b in
                 Button { store.activate(b.id) } label: {
-                    Text((b.id == book?.id ? "✓ " : "   ") + b.name)
+                    // 예시 플래너는 이름에 "예시" 가 없을 때(이름을 바꿨을 때)만 표시를 붙인다
+                    Text((b.id == book?.id ? "✓ " : "   ") + b.name
+                         + (b.isSample && !b.name.contains("예시") ? "  · 예시" : ""))
                 }
             }
             Divider()

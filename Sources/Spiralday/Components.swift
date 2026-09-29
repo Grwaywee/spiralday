@@ -176,7 +176,7 @@ struct MarkButton: View {
         .onTapGesture {
             withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { action() }
         }
-        .help("클릭: ○ 완료 → △ 일부 → × 못함 → → 미룸")
+        .help("클릭: ○ 완료 → △ 일부 → × 못함 → → 미룸 (다음 날로 넘어가요)")
     }
 }
 
@@ -186,6 +186,7 @@ struct TaskMenu: View {
     let date: Date
     let task: PlanTask
     @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
 
     var body: some View {
         Menu("형광펜 색") {
@@ -198,13 +199,25 @@ struct TaskMenu: View {
         }
         Menu("체크 표시") {
             ForEach(Mark.allCases, id: \.self) { m in
-                Button(m.label) { store.setMark(date, task.id, m) }
+                Button(m.label) { markNextDayEdit(); store.setMark(date, task.id, m) }
             }
         }
         Divider()
-        Button("내일로 미루기") { store.postpone(date, task.id) }
+        // → 표시와 같다: 다음 날로 한 번만 넘어간다 (이 플래너의 마지막 날이면 표시만 한다)
+        Button("내일로 미루기") { markNextDayEdit(); store.postpone(date, task.id) }
         Divider()
         Button("삭제", role: .destructive) { store.delete(date, task.id) }
+    }
+
+    /// → 로 다음 날 할 일이 늘거나 줄 수 있어서, 다음 날 할 일을 쓰는 중이면 먼저 끝낸다
+    private func markNextDayEdit() { state.endEditingTasks(on: Dates.add(days: 1, to: date)) }
+}
+
+extension AppState {
+    /// 그날 할 일을 쓰는 중이면 편집을 끝낸다. 주간 페이지의 할 일 칸은 순서로 묶여 있어서
+    /// 쓰는 도중에 그날 할 일이 늘거나 줄면 (→ 로 넘기기 · 거두기) 다른 줄에 써질 수 있다.
+    func endEditingTasks(on d: Date) {
+        if editingKey?.hasPrefix("t|\(Dates.key(d))|") == true { endEditing() }
     }
 }
 

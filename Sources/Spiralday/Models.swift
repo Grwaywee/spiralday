@@ -25,6 +25,9 @@ struct PlanTask: Identifiable, Codable, Equatable {
     var text = ""
     var mark: Mark = .none
     var cat: Int? = nil
+    /// → (미룸) 으로 전날에서 넘어온 할 일이면: 전날 할 일의 id (1.0.4).
+    /// 없으면 nil — 예전 파일에는 없는 키라 nil 로 읽고, nil 이면 JSON 에 적지 않는다 (자동 Codable 의 Optional 규칙).
+    var carriedFrom: UUID? = nil
 }
 
 /// 타임테이블 위에 쓰는 것: 손글씨 메모, 밥시간(아이콘 → 화살표)
@@ -56,9 +59,12 @@ struct DayRecord: Codable, Equatable {
     /// 이 날에 붙인 D-day (최대 Prefs.maxDDays 개). 저장한 D-day 를 복사해 둔 것이라
     /// 목록에서 고치거나 지워도, 다른 날에 붙인 것을 바꿔도 이 날은 그대로다.
     var ddays: [DDay] = []
+    /// 쉬는 날 (1.0.4). COMMENT 칸에 DAY OFF 가 찍히고, 연속 기록을 끊지 않는다.
+    /// 적어 둔 COMMENT 는 지우지 않고 그대로 둔다 (작성하기로 돌아오면 다시 보인다).
+    var dayOff = false
 
     private enum CodingKeys: String, CodingKey {
-        case tasks, slots, comment, memoTags, memos, theme, notes, ddays
+        case tasks, slots, comment, memoTags, memos, theme, notes, ddays, dayOff
     }
 
     init() {}
@@ -74,6 +80,7 @@ struct DayRecord: Codable, Equatable {
         theme = try c.decodeIfPresent(Int.self, forKey: .theme)
         notes = try c.decodeIfPresent([TimeNote].self, forKey: .notes) ?? []
         ddays = try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []
+        dayOff = try c.decodeIfPresent(Bool.self, forKey: .dayOff) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -87,20 +94,23 @@ struct DayRecord: Codable, Equatable {
         try c.encode(notes, forKey: .notes)
         // D-day 를 붙인 날만 적는다 (붙이지 않은 날은 예전 파일 모양 그대로)
         if !ddays.isEmpty { try c.encode(ddays, forKey: .ddays) }
+        // 쉬는 날만 적는다
+        if dayOff { try c.encode(true, forKey: .dayOff) }
     }
 
     private static func pad<T>(_ a: [T], _ n: Int, _ fill: T) -> [T] {
         a.count >= n ? a : a + Array(repeating: fill, count: n - a.count)
     }
 
-    /// D-day 말고 적거나 칠하거나 고른 것이 있는지. "기록한 날" 은 이것으로 센다 (D-day 만 붙인 날은 기록이 아니다).
+    /// D-day 말고 적거나 칠하거나 고른 것이 있는지. "기록한 날" 은 이것으로 센다
+    /// (D-day 만 붙인 날, DAY OFF 만 고른 날은 기록이 아니다).
     var hasRecord: Bool {
         !(tasks.isEmpty && slots.allSatisfy { $0 < 0 } && comment.isEmpty
             && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil && notes.isEmpty)
     }
 
-    /// 저장할 것이 하나도 없는지. D-day 만 붙인 날도 비어 있지 않다 (지우지 않고 저장한다).
-    var isEmpty: Bool { !hasRecord && ddays.isEmpty }
+    /// 저장할 것이 하나도 없는지. D-day 만 붙인 날, DAY OFF 만 고른 날도 비어 있지 않다 (지우지 않고 저장한다).
+    var isEmpty: Bool { !hasRecord && ddays.isEmpty && !dayOff }
 }
 
 struct WeekRecord: Codable, Equatable {
@@ -241,6 +251,11 @@ struct BookInfo: Codable, Identifiable, Equatable {
     /// 표지 색 (ColorConcept id)
     var cover = 0
     var created = Date()
+    /// 앱이 꽂아 둔 예시 플래너인지 (1.0.4). 다른 책과 똑같이 쓰고 지울 수 있고, 표시만 다르다.
+    /// "플래너가 없다(첫 실행)" 를 셀 때는 빼고 센다 (PlannerStore.userBooks).
+    var isSample = false
+
+    private enum CodingKeys: String, CodingKey { case id, name, start, end, cover, created, isSample }
 
     /// 날짜가 이 책 안에 있는지
     func contains(_ d: Date) -> Bool {
@@ -258,9 +273,48 @@ struct BookInfo: Codable, Identifiable, Equatable {
     }
 }
 
+// 예시 표시는 1.0.4 부터: 예전 파일은 false 로 읽고, 예시가 아닌 책은 예전 모양 그대로 적는다
+extension BookInfo {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        start = try c.decode(Date.self, forKey: .start)
+        end = try c.decodeIfPresent(Date.self, forKey: .end)
+        cover = try c.decode(Int.self, forKey: .cover)
+        created = try c.decode(Date.self, forKey: .created)
+        isSample = try c.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(start, forKey: .start)
+        try c.encodeIfPresent(end, forKey: .end)
+        try c.encode(cover, forKey: .cover)
+        try c.encode(created, forKey: .created)
+        if isSample { try c.encode(true, forKey: .isSample) }
+    }
+}
+
 struct Library: Codable {
     var books: [BookInfo] = []
     var activeID: UUID? = nil
+    /// 예시 플래너를 한 번 꽂아 뒀는지 (1.0.4). 사용자가 지운 뒤에 저절로 다시 만들지 않으려고
+    /// 책 목록과 같은 파일에 적는다 (책과 표시가 한 번에 같이 저장되고, 데이터 폴더를 따라다닌다).
+    var sampleSeeded = false
+}
+
+extension Library {
+    private enum Keys: String, CodingKey { case books, activeID, sampleSeeded }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        books = try c.decodeIfPresent([BookInfo].self, forKey: .books) ?? []
+        activeID = try c.decodeIfPresent(UUID.self, forKey: .activeID)
+        sampleSeeded = try c.decodeIfPresent(Bool.self, forKey: .sampleSeeded) ?? false
+    }
 }
 
 @MainActor
@@ -275,9 +329,22 @@ final class PlannerStore: ObservableObject {
     /// 저장 폴더 (메모리 전용이면 nil)
     let folder: URL?
     private var saveWork: DispatchWorkItem?
+    /// library.json 이 있는데 읽지 못했다 → 앱이 저절로 덮어쓰지 않는다 (예시 플래너를 꽂지 않는다)
+    private var libraryUnreadable = false
+    /// 메모리 전용일 때 펼치지 않은 책의 내용 (파일 대신)
+    private var memoryBooks: [UUID: PlannerData] = [:]
 
     var books: [BookInfo] { library.books }
     var activeBook: BookInfo? { library.books.first { $0.id == library.activeID } }
+    /// 사용자가 만든 책 (예시 플래너는 뺀다). "플래너가 한 권도 없다 = 처음" 은 이것으로 센다.
+    var userBooks: [BookInfo] { library.books.filter { !$0.isSample } }
+    var hasSampleBook: Bool { library.books.contains(where: \.isSample) }
+
+    /// 이 책 말고 펼칠 책: 사용자가 만든 책이 먼저, 없으면 예시 플래너
+    func fallbackBook(excluding id: UUID?) -> BookInfo? {
+        let rest = library.books.filter { $0.id != id }
+        return rest.first { !$0.isSample } ?? rest.first
+    }
 
     private static let enc: JSONEncoder = {
         let e = JSONEncoder()
@@ -291,24 +358,35 @@ final class PlannerStore: ObservableObject {
         return d
     }()
 
-    init(inMemory: Bool = false) {
-        data = PlannerData()
-        if inMemory {
-            folder = nil
+    /// 앱의 저장 폴더(~/Library/Application Support/Spiralday)를 쓰거나, 메모리에서만 쓴다
+    convenience init(inMemory: Bool = false) {
+        guard !inMemory else {
+            self.init(folder: nil)
             return
         }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = support.appendingPathComponent("Spiralday", isDirectory: true)
-        Self.migrateFolder(from: support.appendingPathComponent("PaperPlanner", isDirectory: true), to: dir)
+        PlannerStore.migrateFolder(from: support.appendingPathComponent("PaperPlanner", isDirectory: true), to: dir)
+        self.init(folder: dir)
+    }
+
+    /// folder 에 저장하는 저장소 (nil = 메모리 전용). `--sample-book-test` 는 임시 폴더로 첫 실행 · 업데이트를 흉내 낸다.
+    init(folder dir: URL?) {
+        data = PlannerData()
         folder = dir
+        guard let dir else { return }
         try? FileManager.default.createDirectory(at: dir.appendingPathComponent("books", isDirectory: true),
                                                  withIntermediateDirectories: true)
-        if let raw = try? Data(contentsOf: libraryURL!), let lib = try? Self.dec.decode(Library.self, from: raw) {
+        let rawLibrary = try? Data(contentsOf: libraryURL!)
+        if let rawLibrary, let lib = try? Self.dec.decode(Library.self, from: rawLibrary) {
             library = lib
         } else {
+            libraryUnreadable = rawLibrary != nil
             migrateLegacy()
         }
-        if activeBook == nil { library.activeID = library.books.first?.id }
+        // 펼친 책이 없으면 사용자가 만든 첫 책을 편다. 예시 플래너만 있으면(첫 실행 도중) 펴지 않고
+        // 튜토리얼에서 만든 책이 펼쳐지게 둔다.
+        if activeBook == nil { library.activeID = userBooks.first?.id }
         if let id = library.activeID { data = loadBook(id) }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
                                                object: nil, queue: .main) { [weak self] _ in
@@ -329,6 +407,7 @@ final class PlannerStore: ObservableObject {
     var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
 
     private func loadBook(_ id: UUID) -> PlannerData {
+        if folder == nil { return memoryBooks[id] ?? PlannerData() }
         guard let url = bookURL(id),
               var d = Self.openBookFile(url, book: library.books.first { $0.id == id })?.data else { return PlannerData() }
         // 예전 기록도 같은 형광펜끼리 모아 둔다
@@ -421,18 +500,28 @@ final class PlannerStore: ObservableObject {
     // MARK: books
 
     /// 새 책을 만들고 펼친다. 형광펜 구성과 기본 컬러는 지금 책에서 이어받는다.
+    /// 지금 펼친 책이 예시 플래너면 예시의 형광펜 대신 내가 만든 첫 책의 것을 (없으면 기본값을) 쓴다.
     @discardableResult
     func createBook(name: String, start: Date, end: Date?, cover: Int = 0) -> UUID {
         var book = BookInfo(name: name, start: Dates.day(start), end: end.map(Dates.day), cover: cover)
         if let e = book.end, e < book.start { book.end = book.start }
         var fresh = PlannerData()
-        if activeBook != nil {
-            fresh.prefs.categories = data.prefs.categories
-            fresh.prefs.defaultTheme = data.prefs.defaultTheme
+        // 이어받을 곳: 펼친 책. 예시 플래너면 내가 만든 첫 책 (없으면 기본값)
+        var inherit: Prefs? = activeBook == nil ? nil : data.prefs
+        if activeBook?.isSample == true { inherit = userBooks.first.map { loadBook($0.id).prefs } }
+        if let inherit {
+            fresh.prefs.categories = inherit.categories
+            fresh.prefs.defaultTheme = inherit.defaultTheme
         }
         fresh.prefs.lastKind = data.prefs.lastKind
         saveNow()
-        library.books.append(book)
+        stashMemoryBook()
+        // 예시 플래너는 책장 맨 끝에 둔다
+        if let i = library.books.firstIndex(where: \.isSample) {
+            library.books.insert(book, at: i)
+        } else {
+            library.books.append(book)
+        }
         library.activeID = book.id
         data = fresh
         bump()
@@ -453,22 +542,26 @@ final class PlannerStore: ObservableObject {
     func activate(_ id: UUID) {
         guard id != library.activeID, library.books.contains(where: { $0.id == id }) else { return }
         saveNow()
+        stashMemoryBook()
         library.activeID = id
         data = loadBook(id)
         bump()
         writeLibrary()
     }
 
-    /// 책을 지운다 (파일도, D-day 옮기기 백업 사본도). 펼친 책이면 남은 첫 책을 펼친다.
+    /// 책을 지운다 (파일도, D-day 옮기기 백업 사본도). 펼친 책이면 남은 책 가운데 사용자가 만든 첫 책을
+    /// (없으면 예시 플래너를) 펼친다.
     func deleteBook(_ id: UUID) {
+        let next = fallbackBook(excluding: id)?.id
         library.books.removeAll { $0.id == id }
+        memoryBooks[id] = nil
         if let url = bookURL(id) {
             try? FileManager.default.removeItem(at: url)
             // "영구히 지워져요" 약속대로 1.0.3 옮기기 때 남긴 원본 사본도 지운다
             try? FileManager.default.removeItem(at: Self.ddayBackupURL(url))
         }
         if library.activeID == id {
-            library.activeID = library.books.first?.id
+            library.activeID = next
             data = library.activeID.map(loadBook) ?? PlannerData()
         }
         bump()
@@ -476,6 +569,55 @@ final class PlannerStore: ObservableObject {
     }
 
     private func bump() { version &+= 1 }
+
+    /// 메모리 전용이면 다른 책으로 바꾸기 전에 지금 책의 내용을 들고 있는다 (파일 대신)
+    private func stashMemoryBook() {
+        guard folder == nil, let id = library.activeID else { return }
+        memoryBooks[id] = data
+    }
+
+    // MARK: 예시 플래너 (1.0.4)
+
+    /// 설치 후 처음 한 번만: 예시 플래너를 책장 끝에 꽂아 둔다. 펼친 책은 바꾸지 않는다
+    /// (책이 한 권도 없던 첫 실행이면 튜토리얼에서 만든 책이 펼쳐진다).
+    /// 한 번 꽂은 뒤에는 사용자가 지워도 다시 만들지 않는다 (library.sampleSeeded).
+    /// 일반 실행에서 책장을 읽고 옮기기까지 끝난 뒤에 부른다. 메모리 전용 저장소에서는 아무것도 하지 않는다.
+    func seedSampleBookIfNeeded(today: Date = Date()) {
+        guard folder != nil, !libraryUnreadable, !library.sampleSeeded else { return }
+        if hasSampleBook {
+            library.sampleSeeded = true
+            writeLibrary()
+        } else {
+            addSampleBook(today: today)
+        }
+    }
+
+    /// 오늘까지 14일치 예시 플래너를 새로 만들어 책장 끝에 꽂는다 (펼치지는 않는다).
+    /// 이미 예시 플래너가 있거나 책 파일을 쓰지 못하면 nil. 설정의 ‘예시 플래너 다시 넣기’도 이것을 쓴다.
+    @discardableResult
+    func addSampleBook(today: Date = Date()) -> UUID? {
+        guard !hasSampleBook else { return nil }
+        let sample = Self.makeSampleBook(today: today)
+        if folder == nil {
+            memoryBooks[sample.book.id] = sample.data
+        } else {
+            guard let url = bookURL(sample.book.id), let raw = try? Self.enc.encode(sample.data),
+                  (try? raw.write(to: url, options: .atomic)) != nil else { return nil }
+        }
+        library.books.append(sample.book)
+        library.sampleSeeded = true
+        bump()
+        writeLibrary()
+        return sample.book.id
+    }
+
+    /// 메모리 전용(스냅샷/QA)에서 이 책 한 권만 꽂고 펼친다
+    func useBook(_ book: BookInfo, data: PlannerData) {
+        guard folder == nil else { return }
+        library = Library(books: [book], activeID: book.id)
+        self.data = data
+        bump()
+    }
 
     // MARK: saving
 
@@ -781,16 +923,53 @@ final class PlannerStore: ObservableObject {
         regroup(d)
     }
 
+    /// 펜 클릭: ○ → △ → × → → → 없음
     func cycleMark(_ d: Date, _ id: UUID) {
-        editDay(d) { r in
-            if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].mark = r.tasks[i].mark.next }
+        guard let t = day(d).tasks.first(where: { $0.id == id }) else { return }
+        setMark(d, id, t.mark.next)
+    }
+
+    /// 체크 표시를 바꾼다. 일간 · 주간의 펜 클릭, 오른쪽 클릭 메뉴, 내일로 미루기가 모두 여기를 지난다.
+    /// → (미룸) 이 되면 다음 날로 넘기고, → 를 떼면 다음 날에 넘긴 것을 손대지 않았을 때만 거둔다.
+    func setMark(_ d: Date, _ id: UUID, _ m: Mark) {
+        guard let t = day(d).tasks.first(where: { $0.id == id }) else { return }
+        if t.mark != m {
+            editDay(d) { r in
+                if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].mark = m }
+            }
+        }
+        if m == .moved {
+            carryForward(d, t)
+        } else if t.mark == .moved {
+            withdrawCarry(d, t)
         }
     }
 
-    func setMark(_ d: Date, _ id: UUID, _ m: Mark) {
-        editDay(d) { r in
-            if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].mark = m }
+    /// 다음 날에 이 할 일에서 넘어온 할 일 (없으면 nil)
+    func carriedCopy(of id: UUID, from d: Date) -> PlanTask? {
+        day(Dates.add(days: 1, to: d)).tasks.first { $0.carriedFrom == id }
+    }
+
+    /// → : 다음 날에 같은 글 · 같은 형광펜 · 표시 없는 할 일을 하나 만든다 (같은 형광펜 묶음 끝).
+    /// 이미 넘긴 것이 있거나, 다음 날이 이 플래너의 기간 밖이거나, 빈 할 일이면 하지 않는다.
+    /// 넘어간 할 일은 보통 할 일과 같아서 고치고 표시하고 또 → 로 넘길 수 있다.
+    private func carryForward(_ d: Date, _ t: PlanTask) {
+        let next = Dates.add(days: 1, to: d)
+        guard !t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              activeBook?.contains(next) ?? true,
+              carriedCopy(of: t.id, from: d) == nil else { return }
+        editDay(next) { r in
+            r.tasks.append(PlanTask(text: t.text, cat: t.cat, carriedFrom: t.id))
+            r.tasks = Self.grouped(r.tasks)
         }
+    }
+
+    /// → 를 뗐을 때: 다음 날에 넘긴 할 일을 그대로 두었으면 (표시 없음 · 글과 형광펜이 같으면) 지운다.
+    /// 거기서 고쳐 쓰거나 표시했으면 이제 그날의 할 일이라 남긴다.
+    private func withdrawCarry(_ d: Date, _ t: PlanTask) {
+        guard let copy = carriedCopy(of: t.id, from: d),
+              copy.mark == .none, copy.text == t.text, copy.cat == t.cat else { return }
+        editDay(Dates.add(days: 1, to: d)) { $0.tasks.removeAll { $0.id == copy.id } }
     }
 
     func setCategory(_ d: Date, _ id: UUID, _ cat: Int?) {
@@ -810,16 +989,22 @@ final class PlannerStore: ObservableObject {
         regroup(d)
     }
 
+    /// 할 일을 지운다. 이미 다음 날로 넘긴 할 일은 그날의 할 일이라 그대로 둔다.
     func delete(_ d: Date, _ id: UUID) {
         editDay(d) { $0.tasks.removeAll { $0.id == id } }
     }
 
-    func postpone(_ d: Date, _ id: UUID) {
-        guard let t = day(d).tasks.first(where: { $0.id == id }) else { return }
-        setMark(d, id, .moved)
-        let next = Dates.add(days: 1, to: d)
-        editDay(next) { $0.tasks.append(PlanTask(text: t.text, cat: t.cat)) }
-        regroup(next)
+    /// 내일로 미루기 = → 표시 (다음 날로 한 번만 넘어간다)
+    func postpone(_ d: Date, _ id: UUID) { setMark(d, id, .moved) }
+
+    // MARK: DAY OFF
+
+    func isDayOff(_ d: Date) -> Bool { day(d).dayOff }
+
+    /// 쉬는 날로 두거나 되돌린다. COMMENT 글은 그대로 남는다.
+    func setDayOff(_ d: Date, _ on: Bool) {
+        guard isDayOff(d) != on else { return }
+        editDay(d) { $0.dayOff = on }
     }
 
     // Sample content for previews / snapshots

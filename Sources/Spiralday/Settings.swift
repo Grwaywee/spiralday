@@ -179,18 +179,32 @@ private struct SettingsBooksPane: View {
         ScrollViewReader { proxy in
             Form {
                 Section {
-                    if books.isEmpty {
+                    // 예시 플래너만 있으면 아직 내 플래너가 없는 것
+                    if store.userBooks.isEmpty {
                         SettingsBooksEmpty { editor = .create }
                     }
                     ForEach(books) { b in
                         let isOpen = b.id == openID
                         SettingsBookRow(book: b, isOpen: isOpen,
                                         recordDays: isOpen ? store.recordedDayCount : nil,
-                                        canDelete: books.count > 1,
+                                        canDelete: canDelete(b),
+                                        deleteBlocked: deleteBlockedHelp,
                                         open: { open(b.id) },
                                         edit: { editor = .edit(b) },
                                         delete: { pendingDelete = b })
                             .id(b.id)
+                    }
+                    // 예시 플래너를 지웠으면 다시 꽂을 수 있다
+                    if !store.hasSampleBook {
+                        SettingsSampleBookRow {
+                            var added: UUID?
+                            withAnimation(.snappy(duration: 0.25)) { added = store.addSampleBook() }
+                            if let added {
+                                DispatchQueue.main.async {
+                                    withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo(added, anchor: .center) }
+                                }
+                            }
+                        }
                     }
                 } header: {
                     VStack(alignment: .leading, spacing: 18) {
@@ -203,7 +217,7 @@ private struct SettingsBooksPane: View {
                         }
                     }
                 } footer: {
-                    SettingsFootnote(text: footnote(books.count))
+                    SettingsFootnote(text: footnote(store.userBooks.count))
                 }
 
                 Section {
@@ -232,17 +246,39 @@ private struct SettingsBooksPane: View {
         .confirmationDialog(pendingDelete.map { "‘\($0.name)’\(SettingsJosa.pick($0.name, "을", "를")) 지울까요?" } ?? "",
                             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             presenting: pendingDelete) { b in
-            Button("영구히 지우기", role: .destructive) { delete(b.id) }
+            Button(b.isSample ? "지우기" : "영구히 지우기", role: .destructive) { delete(b.id) }
             Button("취소", role: .cancel) {}
         } message: { b in
             Text(deleteMessage(b))
         }
     }
 
+    /// count: 내가 만든 플래너 수 (예시 플래너는 세지 않는다)
     private func footnote(_ count: Int) -> String {
-        var s = "플래너마다 기록, 형광펜, 기본 컬러, D-day 가 따로 있어요. 새 플래너는 지금 펼친 플래너의 형광펜과 기본 컬러를 이어받아요."
-        if count == 1 { s += " 플래너가 한 권뿐일 때는 지울 수 없어요. 새 플래너를 만든 뒤에 지울 수 있어요." }
+        var s = "플래너마다 기록, 형광펜, 기본 컬러, D-day 가 따로 있어요. "
+        // 새 플래너가 이어받는 곳 (PlannerStore.createBook): 펼친 플래너, 예시 플래너면 내 첫 플래너
+        if store.activeBook?.isSample == true {
+            s += store.userBooks.first.map { "새 플래너는 예시 플래너 대신 내 첫 플래너 ‘\($0.name)’의 형광펜과 기본 컬러를 이어받아요." }
+                ?? "새 플래너는 기본 형광펜과 기본 컬러로 시작해요."
+        } else {
+            s += "새 플래너는 지금 펼친 플래너의 형광펜과 기본 컬러를 이어받아요."
+        }
+        if count == 1 {
+            s += store.hasSampleBook
+                ? " 내 플래너가 한 권뿐일 때는 지울 수 없어요 (예시 플래너는 세지 않아요). 새 플래너를 만든 뒤에 지울 수 있어요."
+                : " 플래너가 한 권뿐일 때는 지울 수 없어요. 새 플래너를 만든 뒤에 지울 수 있어요."
+        }
         return s
+    }
+
+    /// 책장에는 내 플래너가 적어도 한 권 남아야 한다: 예시 플래너는 내 플래너가 있으면 언제든,
+    /// 내 플래너는 한 권 더 있을 때만 지운다 (예시만 남는 일은 없다)
+    private func canDelete(_ b: BookInfo) -> Bool { b.isSample ? !store.userBooks.isEmpty : store.userBooks.count > 1 }
+
+    private var deleteBlockedHelp: String {
+        store.hasSampleBook
+            ? "내 플래너는 적어도 한 권은 있어야 해요 (예시 플래너는 세지 않아요). 새 플래너를 만든 뒤에 지울 수 있어요."
+            : "플래너는 적어도 한 권은 있어야 해요. 새 플래너를 만든 뒤에 지울 수 있어요."
     }
 
     private func open(_ id: UUID) {
@@ -251,10 +287,18 @@ private struct SettingsBooksPane: View {
 
     private func deleteMessage(_ b: BookInfo) -> String {
         var lines: [String] = []
+        if b.isSample {
+            lines.append("앱이 꽂아 둔 예시 플래너예요. 지워도 내 플래너와 기록에는 아무 영향이 없어요. 여기에 직접 적어 본 것은 함께 지워져요.")
+            if b.id == store.activeBook?.id, let next = store.fallbackBook(excluding: b.id) {
+                lines.append("지우고 나면 ‘\(next.name)’\(SettingsJosa.pick(next.name, "을", "를")) 펼쳐요.")
+            }
+            lines.append("나중에 다시 보고 싶으면 이 화면의 ‘예시 플래너 다시 넣기’로 언제든 다시 넣을 수 있어요.")
+            return lines.joined(separator: "\n\n")
+        }
         if b.id == store.activeBook?.id {
             let n = store.recordedDayCount
             lines.append("이 플래너의 기록\(n > 0 ? "(기록한 날 \(n)일)" : "")과 형광펜·D-day 설정이 모두 영구히 지워져요. 되돌릴 수 없어요.")
-            if let next = store.books.first(where: { $0.id != b.id }) {
+            if let next = store.fallbackBook(excluding: b.id) {
                 lines.append("지우고 나면 ‘\(next.name)’\(SettingsJosa.pick(next.name, "을", "를")) 펼쳐요.")
             }
         } else {
@@ -265,9 +309,14 @@ private struct SettingsBooksPane: View {
     }
 
     private func delete(_ id: UUID) {
-        guard store.books.count > 1 else { return }
+        guard let b = store.books.first(where: { $0.id == id }), canDelete(b) else { return }
         withAnimation(.snappy(duration: 0.25)) { store.deleteBook(id) }
     }
+}
+
+/// 설정 → 플래너 화면만 (`--sample-book-test` 가 예시 표시를 그려 볼 때)
+struct SettingsBooksPanePreview: View {
+    var body: some View { SettingsBooksPane().formStyle(.grouped) }
 }
 
 /// 만들기 / 편집 시트를 여는 요청
@@ -295,6 +344,8 @@ private struct SettingsBookRow: View {
     /// 기록한 날 수 (펼친 책만 알 수 있다)
     let recordDays: Int?
     let canDelete: Bool
+    /// 지울 수 없을 때 휴지통 버튼의 도움말
+    let deleteBlocked: String
     let open: () -> Void
     let edit: () -> Void
     let delete: () -> Void
@@ -309,6 +360,9 @@ private struct SettingsBookRow: View {
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
+                    if book.isSample {
+                        SettingsSampleBadge()
+                    }
                     if isOpen {
                         SettingsOpenBadge(cover: book.cover)
                     }
@@ -318,11 +372,19 @@ private struct SettingsBookRow: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(status)
-                    .font(.system(size: 11.5))
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                if book.isSample {
+                    // 예시 플래너: 날짜 대신 안내 한 줄
+                    Text("마음껏 써 보고 지워도 돼요")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                } else {
+                    Text(status)
+                        .font(.system(size: 11.5))
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
             .layoutPriority(1)
             Spacer(minLength: 8)
@@ -340,7 +402,7 @@ private struct SettingsBookRow: View {
             }
             .buttonStyle(.borderless)
             .disabled(!canDelete)
-            .help(canDelete ? "이 플래너 지우기" : "플래너는 적어도 한 권은 있어야 해요. 새 플래너를 만든 뒤에 지울 수 있어요.")
+            .help(canDelete ? (book.isSample ? "예시 플래너 지우기 (나중에 다시 넣을 수 있어요)" : "이 플래너 지우기") : deleteBlocked)
         }
         .padding(.vertical, 3)
         .contentShape(Rectangle())
@@ -386,6 +448,49 @@ private struct SettingsOpenBadge: View {
             .padding(.vertical, 1.5)
             .background(Capsule().fill(ColorConcept.of(cover).accent))
             .help("지금 이 플래너가 펼쳐져 있어요")
+    }
+}
+
+/// 앱이 꽂아 둔 예시 플래너 표시
+private struct SettingsSampleBadge: View {
+    var body: some View {
+        Text("예시")
+            .font(.system(size: 10.5, weight: .bold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
+            .help("앱이 꽂아 둔 예시 플래너예요. 쓰는 법을 둘러보고 마음껏 고치거나 지워도 돼요.")
+    }
+}
+
+/// 예시 플래너를 지운 뒤: 다시 꽂는 줄 (펼치지는 않는다)
+private struct SettingsSampleBookRow: View {
+    let add: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            SettingsBookCover(cover: PlannerStore.sampleBookCover, width: 34)
+                .saturation(0.3)
+                .opacity(0.55)
+                .padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(PlannerStore.sampleBookName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("오늘까지 \(SampleBook.dayCount)일을 미리 채워 둔 예시예요. 둘러보며 쓰는 법을 익혀요.")
+                    .lineLimit(3)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("예시 플래너 다시 넣기", action: add)
+                .fixedSize()
+                .help("오늘까지 \(SampleBook.dayCount)일치 예시가 담긴 플래너를 책장 끝에 꽂아요. 지금 펼친 플래너는 그대로예요.")
+        }
+        .padding(.vertical, 3)
     }
 }
 

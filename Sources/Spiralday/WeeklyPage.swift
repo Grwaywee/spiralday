@@ -77,6 +77,29 @@ private enum WK {
 
     static let weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
     static func weekdayColor(_ i: Int) -> Color { i == 5 ? Ink.saturday : i == 6 ? Ink.red : Ink.soft }
+    /// DAY OFF 꼬리표의 세로 가운데 (칸 위 테두리와 인쇄된 요일 사이, 요일 가운데는 dayHeadH × 0.56)
+    static let dayOffTagMidY: CGFloat = 13
+}
+
+/// 쉬는 날 꼬리표: 인쇄 글자 "DAY OFF" 를 그날 컬러 테두리로 감싼다
+private struct DayOffTag: View {
+    let color: Color
+    let u: CGFloat
+
+    var body: some View {
+        Text("DAY OFF")
+            .font(Fonts.print(10 * u, .bold))
+            .tracking(1.2 * u)
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.leading, 5 * u)
+            .padding(.trailing, 3.8 * u)
+            .padding(.vertical, 1.2 * u)
+            .background(RoundedRectangle(cornerRadius: 3 * u).fill(color.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 3 * u).stroke(color, lineWidth: max(0.6, 1.1 * u)))
+            .allowsHitTesting(false)
+    }
 }
 
 private extension View {
@@ -219,6 +242,11 @@ private struct WeekDayColumn: View {
             }
             .frame(height: WK.dayHeadH * u)
             .offset(x: 16 * u, y: 1 * u)
+            // 쉬는 날: 인쇄된 요일 위에 작은 DAY OFF 꼬리표 (그날 컬러)
+            if store.day(date).dayOff {
+                DayOffTag(color: store.concept(date).accent, u: u)
+                    .frame(width: (WK.colW - WK.pad - 3) * u, height: WK.dayOffTagMidY * 2 * u, alignment: .trailing)
+            }
         }
         .frame(width: WK.colW * u, height: WK.dayHeadH * u, alignment: .topLeading)
         .contentShape(Rectangle())
@@ -287,6 +315,8 @@ private struct WeekDayColumn: View {
             let b = WK.box(i)
             MarkButton(mark: task.mark, size: b.width * 0.98 * u, color: store.concept(d).accent,
                        lineWidth: b.width * 0.133 * u, showsPlaceholder: false) {
+                // → 로 다음 날 칸에 할 일이 늘거나 줄 수 있어서, 그 칸을 쓰는 중이면 먼저 끝낸다
+                st.endEditingTasks(on: Dates.add(days: 1, to: d))
                 store.cycleMark(d, task.id)
             }
             .position(x: b.midX * u, y: b.midY * u)

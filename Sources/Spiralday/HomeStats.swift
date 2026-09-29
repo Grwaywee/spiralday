@@ -6,6 +6,7 @@ import Foundation
 // data.days 는 한 번만 훑는다. 날짜 키 "yyyy-MM-dd" 는 DateFormatter 없이 정수 일련번호
 // (1970-01-01 = 0) 로 바꿔서, 모든 기간 비교를 정수 비교로 한다.
 // "기록한 날" = 타임테이블에 (지금 있는) 형광펜을 한 칸이라도 칠한 날.
+// DAY OFF(쉬는 날)는 기록한 날로 세지 않지만 연속 기록을 끊지도 않는다 (건너뛴다).
 // 시간 합계는 TOTAL TIME 과 같이 counts 인 형광펜만 더한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,8 @@ struct HomeStats {
         let theme: Int?
         let isToday: Bool
         let isFuture: Bool
+        /// 쉬는 날 (DAY OFF)
+        var dayOff = false
     }
 
     // 요약 숫자
@@ -59,6 +62,8 @@ struct HomeStats {
     var streak = 0
     /// 오늘도 기록했는지 (아니면 streak 는 어제까지)
     var streakIncludesToday = false
+    /// 오늘이 쉬는 날인지 (칠하지 않았어도 연속 기록이 이어진다)
+    var todayOff = false
 
     // 이번 달 할 일 표시
     var done = 0, partial = 0, missed = 0, moved = 0, unmarked = 0
@@ -120,7 +125,10 @@ struct HomeStats {
         var calMin = [Int](repeating: 0, count: calCount)
         var calRec = [Bool](repeating: false, count: calCount)
         var calTheme = [Int?](repeating: nil, count: calCount)
+        var calOff = [Bool](repeating: false, count: calCount)
         var recordedPast = Set<Int>()
+        /// 오늘까지의 쉬는 날
+        var offPast = Set<Int>()
         var firstRecorded = Int.max
         var perCat = [Int](repeating: 0, count: nc)
 
@@ -137,6 +145,7 @@ struct HomeStats {
             var minutes = 0
             for i in 0..<nc where counted[i] { minutes += perCat[i] * 10 }
             let recorded = painted > 0
+            if day.dayOff, o <= t { offPast.insert(o) }
 
             if recorded {
                 s.hasTime = true
@@ -173,6 +182,7 @@ struct HomeStats {
                 calMin[o - calFrom] = minutes
                 calRec[o - calFrom] = recorded
                 calTheme[o - calFrom] = day.theme
+                calOff[o - calFrom] = day.dayOff
             }
         }
 
@@ -191,10 +201,18 @@ struct HomeStats {
             .sorted { a, b in a.element.minutes != b.element.minutes ? a.element.minutes > b.element.minutes : a.offset < b.offset }
             .map(\.element)
 
-        // 연속 기록: 오늘부터 (오늘이 비어 있으면 어제부터) 거꾸로
+        // 연속 기록: 오늘부터 (오늘이 비어 있으면 어제부터) 거꾸로. 칠하지 않은 쉬는 날은 세지 않고 건너뛴다.
         s.streakIncludesToday = recordedPast.contains(t)
-        var o = s.streakIncludesToday ? t : t - 1
-        while recordedPast.contains(o) { s.streak += 1; o -= 1 }
+        s.todayOff = offPast.contains(t)
+        var o = s.streakIncludesToday || s.todayOff ? t : t - 1
+        while true {
+            if recordedPast.contains(o) {
+                s.streak += 1
+            } else if !offPast.contains(o) {
+                break
+            }
+            o -= 1
+        }
 
         // 요일별 평균: 처음 기록한 날 이후의 그 요일 수로 나눈다
         if firstRecorded <= t {
@@ -225,7 +243,7 @@ struct HomeStats {
         s.calendar = (0..<calCount).map { i in
             let o = calFrom + i
             return DayCell(date: Dates.add(days: o - t, to: today), minutes: calMin[i], recorded: calRec[i],
-                           theme: calTheme[i], isToday: o == t, isFuture: o > t)
+                           theme: calTheme[i], isToday: o == t, isFuture: o > t, dayOff: calOff[i])
         }
         return s
     }
