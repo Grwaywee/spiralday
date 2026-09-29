@@ -57,6 +57,7 @@ struct PaletteView: View {
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @State private var editing: Int? = nil
+    @State private var editingDDay = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -79,6 +80,17 @@ struct PaletteView: View {
                 }
                 .buttonStyle(.plain)
                 .help("오늘로 (T)")
+                Button { editingDDay = true } label: {
+                    Label("D-day", systemImage: "flag.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.primary.opacity(0.07)))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $editingDDay, arrowEdge: .leading) { DDayEditor().environmentObject(store) }
+                .help("D-day 설정")
             }
 
             Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.horizontal, 6)
@@ -201,7 +213,7 @@ private struct PenRow: View {
                     .overlay(alignment: .leading) { Rectangle().fill(color).frame(width: 3).padding(.leading, 4) }
             }
             .shadow(color: selected ? color.opacity(0.9) : .black.opacity(0.18), radius: selected ? 6 : 1.5, y: 1)
-            .offset(x: selected ? -7 : hover ? -3 : 0)
+            .offset(x: selected ? -4 : hover ? -2 : 0)
 
             Text(name)
                 .font(.system(size: 9, weight: selected ? .bold : .medium, design: .rounded))
@@ -231,7 +243,7 @@ private struct EraserRow: View {
                     .overlay(Text("ERASE").font(.system(size: 5.5, weight: .black, design: .rounded)).foregroundStyle(.white))
             }
             .shadow(color: selected ? Color(hex: "7FA7E0").opacity(0.9) : .black.opacity(0.18), radius: selected ? 6 : 1.5, y: 1)
-            .offset(x: selected ? -7 : hover ? -3 : 0)
+            .offset(x: selected ? -4 : hover ? -2 : 0)
             Text("지우개")
                 .font(.system(size: 9, weight: selected ? .bold : .medium, design: .rounded))
                 .foregroundStyle(.primary.opacity(selected ? 0.95 : 0.6))

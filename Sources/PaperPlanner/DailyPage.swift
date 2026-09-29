@@ -8,12 +8,18 @@ struct DailyPage: View {
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
 
+    @State private var editingDDay = false
+
     private typealias F = DailyForm
 
     var body: some View {
         let day = store.day(date)
         ZStack(alignment: .topLeading) {
             DailyFormPrint(u: u)
+
+            // 양식 위쪽 빈 여백: 날짜 · 요일 (왼쪽), D-day (오른쪽)
+            header
+                .place(CGRect(x: F.left + 4, y: 46, width: F.timeRight - F.left - 8, height: 112), u)
 
             comment
                 .place(F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
@@ -31,6 +37,57 @@ struct DailyPage: View {
                 .offset(x: F.slotsLeft * u, y: F.gridTop * u)
         }
         .frame(width: PageKind.daily.design.width * u, height: PageKind.daily.design.height * u, alignment: .topLeading)
+    }
+
+    // MARK: 날짜 · D-day
+
+    private var header: some View {
+        let c = Dates.comp(date)
+        let wd = c.weekday!
+        return HStack(alignment: .bottom, spacing: 0) {
+            VStack(alignment: .leading, spacing: -6 * u) {
+                Text(String(format: "%d. %02d. %02d", c.year!, c.month!, c.day!))
+                    .font(Fonts.print(23 * u, .demiBold))
+                    .tracking(2.5 * u)
+                    .foregroundStyle(Ink.soft)
+                Text(Dates.weekdayEN[wd])
+                    .font(Fonts.rounded(60 * u, .black))
+                    .tracking(0.5 * u)
+                    .foregroundStyle(wd == 1 ? Ink.red : wd == 7 ? Ink.saturday : Ink.plum)
+            }
+            .fixedSize()
+            Spacer(minLength: 0)
+            ddayBadge
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    private var ddayBadge: some View {
+        let prefs = store.data.prefs
+        return Group {
+            if let target = prefs.ddayDate {
+                let n = Dates.daysBetween(date, target)
+                VStack(alignment: .trailing, spacing: -8 * u) {
+                    Text(prefs.ddayTitle.isEmpty ? "D-DAY" : "\(prefs.ddayTitle)까지")
+                        .font(Fonts.hand(40 * u))
+                        .foregroundStyle(Ink.text)
+                    Text(n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)")
+                        .font(Fonts.rounded(60 * u, .black))
+                        .foregroundStyle(Ink.plum)
+                        .monospacedDigit()
+                }
+            } else {
+                Text("+ D-day")
+                    .font(Fonts.hand(40 * u))
+                    .foregroundStyle(Ink.faint)
+                    .padding(.bottom, 10 * u)
+            }
+        }
+        .fixedSize()
+        .contentShape(Rectangle())
+        .onTapGesture { editingDDay = true }
+        .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor().environmentObject(store) }
+        .help("D-day 설정")
     }
 
     // MARK: COMMENT

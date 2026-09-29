@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             store = PlannerStore()
         }
-        state = AppState(kind: store.data.prefs.lastKind)
+        state = AppState(kind: Self.args.contains("--weekly") ? .weekly : store.data.prefs.lastKind)
         super.init()
     }
 

@@ -106,8 +106,6 @@ struct RootView: View {
                     .opacity(state.morphing ? 0 : 1)
                 CurlOverlay(controller: state.curl)
                     .allowsHitTesting(false)
-                BindingRings(kind: state.kind, size: g.size)
-                    .opacity(state.morphing ? 0 : 1)
                 if !state.morphing {
                     CornerZones(size: g.size, kind: state.kind)
                 }

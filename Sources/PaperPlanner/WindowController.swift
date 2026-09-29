@@ -14,6 +14,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private let state: AppState
     private let snapshotter: PageSnapshotter
     private var palette: PaletteController?
+    private var rings: RingWindowController?
     private var bag = Set<AnyCancellable>()
 
     static let paletteGap: CGFloat = 14
@@ -31,7 +32,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
+        // 날짜는 종이 위에 직접 쓰므로 창 제목은 숨긴다 (창 목록/미션 컨트롤용으로만 쓴다)
+        window.titleVisibility = .hidden
         window.appearance = NSAppearance(named: .aqua)   // 종이는 늘 밝다
         window.backgroundColor = NSColor(Ink.paper)
         window.isMovableByWindowBackground = false
@@ -51,11 +53,13 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         wire()
         updateTitle()
         palette = PaletteController(parent: window, store: store, state: state)
+        rings = RingWindowController(parent: window)
     }
 
     func show() {
         window.makeKeyAndOrderFront(nil)
         palette?.attach()
+        rings?.attach(state.kind)
         state.curl.backingScale = window.backingScaleFactor
         snapshotter.schedulePrewarm(delay: 0.8)
     }
@@ -83,8 +87,6 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     private func updateTitle() {
-        // 주간은 위쪽이 스프링이라 제목을 숨긴다 (창 목록/미션 컨트롤에는 계속 쓰인다)
-        window.titleVisibility = state.kind == .daily ? .visible : .hidden
         let f = DateFormatter()
         f.locale = Locale(identifier: "ko_KR")
         switch state.kind {
@@ -150,6 +152,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         if target.maxY > vis.maxY { target.origin.y = vis.maxY - target.height }
 
         withAnimation(.easeIn(duration: 0.14)) { state.morphing = true }
+        rings?.setVisible(false, animated: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { [self] in
             apply()
             store.editPrefs { $0.lastKind = kind }
@@ -164,6 +167,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
                 MainActor.assumeIsolated {
                     applyConstraints(kind)
                     palette?.reposition()
+                    rings?.update(kind)
+                    rings?.setVisible(true, animated: true)
                     withAnimation(.easeOut(duration: 0.24)) { state.morphing = false }
                     snapshotter.schedulePrewarm(delay: 0.5)
                 }
@@ -184,7 +189,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
                       width: size.width.rounded(), height: size.height.rounded())
     }
 
-    func windowDidResize(_ notification: Notification) { palette?.reposition() }
+    func windowDidResize(_ notification: Notification) {
+        palette?.reposition()
+        if !state.morphing { rings?.update(state.kind) }
+    }
     func windowDidEndLiveResize(_ notification: Notification) {
         saveContentSize()
         snapshotter.schedulePrewarm(delay: 0.3)

@@ -283,3 +283,31 @@ struct SlotPainter: View {
         if next != current { store.editDay(date) { $0.slots = next } }
     }
 }
+
+// MARK: - D-day editor (페이지의 D-day, 팔레트 버튼에서 같이 쓴다)
+
+struct DDayEditor: View {
+    @EnvironmentObject private var store: PlannerStore
+
+    var body: some View {
+        let p = store.data.prefs
+        VStack(alignment: .leading, spacing: 12) {
+            Text("D-day").font(.system(size: 15, weight: .bold, design: .rounded))
+            TextField("무엇까지? (예: 런칭)", text: Binding(get: { p.ddayTitle },
+                                                        set: { v in store.editPrefs { $0.ddayTitle = v } }))
+                .textFieldStyle(.roundedBorder)
+            Toggle("날짜 정하기", isOn: Binding(get: { p.ddayDate != nil }, set: { on in
+                store.editPrefs { $0.ddayDate = on ? ($0.ddayDate ?? Dates.add(days: 30, to: Dates.day(Date()))) : nil }
+            }))
+            if p.ddayDate != nil {
+                DatePicker("", selection: Binding(get: { p.ddayDate ?? Date() },
+                                                  set: { v in store.editPrefs { $0.ddayDate = Dates.day(v) } }),
+                           displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+            }
+        }
+        .padding(16)
+        .frame(width: 280)
+    }
+}

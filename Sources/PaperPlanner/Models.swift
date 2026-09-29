@@ -79,6 +79,9 @@ struct Category: Codable, Identifiable, Equatable {
 struct Prefs: Codable, Equatable {
     var categories: [Category] = Prefs.defaultCategories
     var lastKind: PageKind = .daily
+    /// D-day: "런칭" 까지 며칠
+    var ddayTitle = ""
+    var ddayDate: Date? = nil
 
     static let defaultCategories: [Category] = [
         Category(id: 0, name: "집중 업무", hex: "8EDCD2", counts: true),
@@ -97,6 +100,8 @@ struct Prefs: Codable, Equatable {
         let cats = try c.decodeIfPresent([Category].self, forKey: .categories) ?? []
         categories = cats.count == Prefs.defaultCategories.count ? cats : Prefs.defaultCategories
         lastKind = try c.decodeIfPresent(PageKind.self, forKey: .lastKind) ?? .daily
+        ddayTitle = try c.decodeIfPresent(String.self, forKey: .ddayTitle) ?? ""
+        ddayDate = try c.decodeIfPresent(Date.self, forKey: .ddayDate)
     }
 }
 
@@ -316,6 +321,7 @@ final class PlannerStore: ObservableObject {
     func fillSample(around today: Date) {
         let ws = Dates.weekStart(today)
         editWeek(ws) { $0.goal = "런칭 전 QA 끝내고 금요일 전에 배포 준비 완료하기"; $0.review = "집중 시간이 늘었다!"; $0.stars = 4 }
+        editPrefs { $0.ddayTitle = "런칭"; $0.ddayDate = Dates.add(days: 9, to: ws) }
         let sample: [[(String, Int?, Mark)]] = [
             [("주간 회의 자료 정리", 1, .done), ("디자인 리뷰 피드백", 0, .done), ("API 스펙 문서", 3, .partial), ("메일 답장", 2, .done), ("운동 30분", 5, .missed)],
             [("QA 시나리오 작성", 0, .done), ("버그 리포트 정리", 0, .done), ("파트너사 미팅", 1, .done), ("회고 준비", 3, .partial),

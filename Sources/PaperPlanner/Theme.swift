@@ -34,13 +34,18 @@ enum Ink {
     static let pen = Color(hex: "E7728F")
     static let red = Color(hex: "E0474C")
     static let saturday = Color(hex: "5E86D6")
+    /// 요일·D-day 같은 큰 인쇄 글자
+    static let plum = Color(hex: "3C3357")
 }
 
 // MARK: - Fonts
 
 enum Fonts {
-    /// 손글씨 (Nanum Pen Script, macOS 다운로드형 시스템 폰트)
-    static func hand(_ size: CGFloat) -> Font { .custom("NanumPen", size: size) }
+    /// 손글씨 — 배민 연성체 (macOS 다운로드형 시스템 폰트). 손으로 쓴 느낌이면서 또렷하게 읽힌다.
+    static let handName = "BMYEONSUNG-OTF"
+    /// 페이지들의 크기 값은 가는 펜글씨 기준이라, 글자 몸이 큰 연성체에 맞게 줄여 쓴다.
+    static let handScale: CGFloat = 0.8
+    static func hand(_ size: CGFloat) -> Font { .custom(handName, size: size * handScale) }
 
     /// 양식에 인쇄된 글자 (기하학적 산세리프)
     static func print(_ size: CGFloat, _ weight: PrintWeight = .medium) -> Font {
@@ -63,9 +68,9 @@ enum Fonts {
         .system(size: size, weight: weight, design: .rounded)
     }
 
-    /// Nanum Pen Script 는 처음 한 번 macOS 에 활성화 요청이 필요하다.
+    /// 손글씨 폰트는 처음 한 번 macOS 에 활성화(다운로드) 요청이 필요하다.
     static func activate(_ done: @escaping @Sendable () -> Void) {
-        let desc = CTFontDescriptorCreateWithAttributes([kCTFontNameAttribute: "NanumPen"] as CFDictionary)
+        let desc = CTFontDescriptorCreateWithAttributes([kCTFontNameAttribute: handName] as CFDictionary)
         CTFontDescriptorMatchFontDescriptorsWithProgressHandler([desc] as CFArray, nil) { state, _ in
             if state == .didFinish { DispatchQueue.main.async { done() } }
             return true
@@ -173,41 +178,6 @@ struct PaperSurface: View {
                 }
             }
         }
-        .allowsHitTesting(false)
-    }
-}
-
-/// 구멍을 통과하는 금속 링. 넘어가는 종이 위에 그려져서 제본은 제자리에 남는다.
-struct BindingRings: View {
-    let kind: PageKind
-    let size: CGSize
-
-    var body: some View {
-        let u = size.width / kind.design.width
-        let metal = Gradient(colors: [Color(hex: "6F7279"), Color(hex: "F7F8FA"), Color(hex: "B8BBC1"),
-                                      Color(hex: "7B7E85"), Color(hex: "DADCE0")])
-        Canvas { ctx, _ in
-            ctx.scaleBy(x: u, y: u)
-            for h in SpiralBinding.holes(kind) {
-                for d: CGFloat in [-3.4, 3.4] {
-                    let r: CGRect
-                    let shade: GraphicsContext.Shading
-                    if kind.edge == .leading {
-                        r = CGRect(x: -14, y: h.midY + d - 2.8, width: h.midX + 14, height: 5.6)
-                        shade = .linearGradient(metal, startPoint: CGPoint(x: 0, y: r.minY), endPoint: CGPoint(x: 0, y: r.maxY))
-                    } else {
-                        r = CGRect(x: h.midX + d - 2.8, y: -14, width: 5.6, height: h.midY + 14)
-                        shade = .linearGradient(metal, startPoint: CGPoint(x: r.minX, y: 0), endPoint: CGPoint(x: r.maxX, y: 0))
-                    }
-                    let p = Path(roundedRect: r, cornerRadius: 2.8)
-                    var s = ctx
-                    s.translateBy(x: 1.4, y: 2)
-                    s.stroke(p, with: .color(.black.opacity(0.25)), lineWidth: 2.2)
-                    ctx.stroke(p, with: shade, lineWidth: 2.3)
-                }
-            }
-        }
-        .frame(width: size.width, height: size.height)
         .allowsHitTesting(false)
     }
 }
