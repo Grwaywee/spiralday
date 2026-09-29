@@ -1678,6 +1678,9 @@ private struct SettingsDataPane: View {
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @State private var result: SettingsDataResult?
+    /// 익명 사용 통계 (Telemetry). 설치 번호는 앱을 켤 때 만들어진다.
+    @AppStorage(Telemetry.enabledKey) private var telemetryEnabled = true
+    @AppStorage(Telemetry.installIDKey) private var installID = ""
 
     private static let isDemo = CommandLine.arguments.contains("--demo")
 
@@ -1744,6 +1747,35 @@ private struct SettingsDataPane: View {
                 LabeledContent("칠한 시간", value: s.hours)
             } header: {
                 SettingsSectionTitle(title: "‘\(bookName)’에 담긴 기록")
+            }
+
+            Section {
+                Toggle(isOn: $telemetryEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("익명 사용 통계 보내기")
+                        Text("하루 한 번 앱 버전 · macOS 버전 · 칩 종류 · 언어와 무작위 설치 번호만 보내요. 플래너 내용이나 개인정보는 보내지 않아요.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.vertical, 2)
+                LabeledContent("설치 번호") {
+                    Text(installID.isEmpty ? "아직 없어요" : installID)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                }
+                HStack {
+                    Button { Links.open(Links.privacy) } label: { Label("개인정보 처리방침", systemImage: "hand.raised") }
+                        .help("spiralday.com 에서 무엇을 왜 보내는지 자세히 봐요")
+                    Spacer(minLength: 0)
+                }
+            } header: {
+                SettingsSectionTitle(title: "익명 사용 통계")
+            } footer: {
+                SettingsFootnote(text: "설치 번호를 contact@leanagilehungry.com 으로 보내 주시면 그 번호로 쌓인 통계를 지워 드려요.")
             }
 
             Section {

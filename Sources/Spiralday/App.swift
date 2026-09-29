@@ -23,6 +23,7 @@ struct SpiraldayApp: App {
                     Button("버그 신고 · 기능 제안…") { Links.open(Links.feedback) }
                     Divider()
                     Button("GitHub (오픈소스)") { Links.open(Links.github) }
+                    Button("개인정보 처리방침") { Links.open(Links.privacy) }
                     Button("린에자일헝그리") { Links.open(Links.company) }
                 }
                 CommandMenu("플래너") {
@@ -47,6 +48,7 @@ enum Links {
     static let website = URL(string: "https://spiralday.com")!
     static let github = URL(string: "https://github.com/Grwaywee/spiralday")!
     static let company = URL(string: "https://leanagilehungry.com")!
+    static let privacy = URL(string: "https://spiralday.com/privacy.html")!
     /// 버그 신고·기능 제안 (구글 설문지가 생기면 그 주소로 바꾼다)
     static let feedback = URL(string: "mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0%20%C2%B7%20%EA%B8%B0%EB%8A%A5%20%EC%A0%9C%EC%95%88")!
 
@@ -80,7 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     override init() {
         Self.migrateDefaults()
-        if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test") {
+        if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
+            || Self.args.contains("--ping-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -95,6 +98,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 통계 전송 확인용: 창 없이 한 번 보내고 결과를 찍은 뒤 끝낸다
+        if Self.args.contains("--ping-test") {
+            Telemetry.runPingTest()
+            return
+        }
         // 손글씨 폰트는 어떤 창보다 먼저 등록한다
         Fonts.register()
         if let i = Self.args.firstIndex(of: "--icon"), i + 1 < Self.args.count {
@@ -143,6 +151,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !demo, Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
             updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         }
+        // 익명 사용 통계 (하루 한 번, 설정에서 끌 수 있다). 데모에서는 보내지 않는다.
+        if !demo { Telemetry.start() }
         if !demo && (store.books.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
             OnboardingController.shared.show(store: store, state: state) { [weak self] in self?.openPlanner() }
         } else {
