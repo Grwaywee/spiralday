@@ -54,11 +54,13 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
 
 1. [spiralday.com](https://spiralday.com) 또는 [Releases](https://github.com/Grwaywee/spiralday/releases/latest) 에서 `Spiralday.zip` 을 받아 압축을 풉니다.
 2. `Spiralday.app` 을 **응용 프로그램** 폴더로 옮깁니다.
-3. 처음 한 번은 앱을 **오른쪽 클릭 → 열기** 로 엽니다.
-   개인이 만든 앱이라 Apple 공증을 받지 않아서, 그냥 더블클릭하면 macOS 가 막습니다. 그래도 막히면:
+3. 처음 열면 macOS 가 막습니다 (개인이 만든 앱이라 Apple 공증이 없어요). 한 번만 허용해 주세요.
+   - **macOS 15 이상**: 막혔다는 창을 닫고 **시스템 설정 → 개인정보 보호 및 보안** 맨 아래의 **그래도 열기** → 암호 입력
+   - **macOS 14**: 앱을 **오른쪽 클릭 → 열기**
+   - 또는 터미널에서 한 번에:
 
    ```bash
-   xattr -dr com.apple.quarantine "/Applications/Spiralday.app"
+   xattr -dr com.apple.quarantine /Applications/Spiralday.app
    ```
 
 - macOS 14 Sonoma 이상, Apple Silicon · Intel 모두 지원
