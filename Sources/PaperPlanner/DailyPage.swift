@@ -117,26 +117,30 @@ struct DailyPage: View {
     /// 줄바꿈 계산 폭: 편집 칸보다 살짝 좁게 잡아서 입력 중에도 줄 수가 어긋나지 않게 한다
     private var taskTextRect: (x: CGFloat, width: CGFloat) { (F.categoryX + 16, F.boxMinX - 14 - (F.categoryX + 16)) }
 
-    private func taskKey(_ i: Int) -> String { "t|\(Dates.key(date))|\(i)" }
+    private func taskKey(_ id: UUID) -> String { "t|\(Dates.key(date))|\(id.uuidString)" }
 
     /// 긴 할 일은 아래 칸으로 이어 쓰고, 칸이 모자라면 줄 수를 늘려(간격·글자를 조금씩 줄여) 모두 담는다.
     private func taskLayout(_ tasks: [PlanTask]) -> RuledText.Layout {
-        var items = tasks.map(\.text)
-        if state.editingKey == taskKey(tasks.count) { items.append("") }   // 새 할 일을 쓰기 시작한 줄
-        return RuledText.layout(items, minRows: F.taskCount, fontSize: Self.taskFont, width: taskTextRect.width - 12)
+        RuledText.layout(tasks.map(\.text), minRows: F.taskCount, fontSize: Self.taskFont, width: taskTextRect.width - 12)
+    }
+
+    /// 빈 칸을 누르면: 고른 형광펜 묶음 끝에 새 할 일을 만들고 바로 쓰기
+    private func startNewTask() {
+        let cat = state.tool >= 0 ? state.tool : nil
+        state.editingKey = taskKey(store.addTask(date, after: nil, cat: cat))
     }
 
     @ViewBuilder
     private func tasksView(_ tasks: [PlanTask], _ L: RuledText.Layout) -> some View {
         let p = F.taskPitch(L.rows)
-        ForEach(0..<L.lines.count, id: \.self) { i in
-            taskEntry(i, tasks, L)
+        ForEach(Array(tasks.enumerated()), id: \.element.id) { i, _ in
+            if i < L.lines.count { taskEntry(i, tasks, L) }
         }
         // 빈 칸: 누르면 새 할 일
         ForEach(L.used..<L.rows, id: \.self) { r in
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture { state.editingKey = taskKey(tasks.count) }
+                .onTapGesture { startNewTask() }
                 .place(CGRect(x: taskTextRect.x, y: F.gridTop + CGFloat(r) * p, width: taskTextRect.width, height: p), u)
         }
     }
@@ -145,11 +149,11 @@ struct DailyPage: View {
     private func taskEntry(_ i: Int, _ tasks: [PlanTask], _ L: RuledText.Layout) -> some View {
         let p = F.taskPitch(L.rows)
         let sc = L.scale
-        let task = i < tasks.count ? tasks[i] : nil
+        let task: PlanTask? = tasks[i]
         let cat = store.category(task?.cat)
         let r0 = L.start[i]
         let lines = L.lines[i]
-        let key = taskKey(i)
+        let key = taskKey(tasks[i].id)
 
         // 같은 형광펜이 이어지는 묶음의 첫 줄에만 카테고리 이름 + 그 색으로 칠한 시간
         if let task, let cat, i == 0 || tasks[i - 1].cat != task.cat {
@@ -158,13 +162,22 @@ struct DailyPage: View {
                               height: p - 6 * sc), u)
         }
 
+        let id = tasks[i].id
         RuledEntry(
-            text: store.taskText(date, i, defaultCat: { [state] in state.tool >= 0 ? state.tool : nil }),
+            text: store.taskText(date, id: id),
             lines: lines, key: key, fontSize: Self.taskFont * sc, pitch: p, u: u,
             // 형광펜은 끝낸 일에만 긋는다
             highlight: task?.mark == .done ? (cat?.color ?? concept.tint) : nil,
-            onSubmit: { [state] in state.editingKey = taskKey(i + 1) },
-            onEnd: { [store, date] in store.cleanup(date) }
+            // Enter: 같은 형광펜으로 바로 아래에 이어 쓰기
+            onSubmit: { [store, state, date] in
+                let nid = store.addTask(date, after: id, cat: tasks[i].cat)
+                state.editingKey = "t|\(Dates.key(date))|\(nid.uuidString)"
+            },
+            onEnd: { [store, state, date] in
+                let dk = "t|\(Dates.key(date))|"
+                let keep = state.editingKey.flatMap { $0.hasPrefix(dk) ? UUID(uuidString: String($0.dropFirst(dk.count))) : nil }
+                store.cleanup(date, keep: keep)
+            }
         )
         .place(CGRect(x: taskTextRect.x, y: F.gridTop + CGFloat(r0) * p, width: taskTextRect.width,
                       height: CGFloat(lines.count) * p), u)

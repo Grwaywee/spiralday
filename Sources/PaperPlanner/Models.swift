@@ -215,6 +215,8 @@ final class PlannerStore: ObservableObject {
             let dec = JSONDecoder()
             dec.dateDecodingStrategy = .iso8601
             data = (try? dec.decode(PlannerData.self, from: raw)) ?? PlannerData()
+            // 예전 기록도 같은 형광펜끼리 모아 둔다
+            for (k, r) in data.days where Self.grouped(r.tasks) != r.tasks { data.days[k]?.tasks = Self.grouped(r.tasks) }
         } else {
             data = PlannerData()
         }
@@ -347,6 +349,47 @@ final class PlannerStore: ObservableObject {
     }
 
     // Bindings
+    /// 같은 형광펜(카테고리)끼리 모은다. 묶음 순서는 처음 나온 순서, 묶음 안 순서는 그대로.
+    static func grouped(_ tasks: [PlanTask]) -> [PlanTask] {
+        var order: [Int?] = []
+        var buckets: [Int?: [PlanTask]] = [:]
+        for t in tasks {
+            if buckets[t.cat] == nil { order.append(t.cat) }
+            buckets[t.cat, default: []].append(t)
+        }
+        return order.flatMap { buckets[$0] ?? [] }
+    }
+
+    private func regroup(_ d: Date) {
+        let t = day(d).tasks
+        let g = Self.grouped(t)
+        if g != t { editDay(d) { $0.tasks = g } }
+    }
+
+    /// 빈 할 일을 만들어 그 id 를 돌려준다.
+    /// after 가 있으면 그 바로 아래, 없으면 같은 형광펜 묶음의 끝 (없으면 맨 끝).
+    @discardableResult
+    func addTask(_ d: Date, after id: UUID?, cat: Int?) -> UUID {
+        let t = PlanTask(text: "", cat: cat)
+        editDay(d) { r in
+            if let id, let i = r.tasks.firstIndex(where: { $0.id == id }) {
+                r.tasks.insert(t, at: i + 1)
+            } else if cat != nil, let last = r.tasks.lastIndex(where: { $0.cat == cat }) {
+                r.tasks.insert(t, at: last + 1)
+            } else {
+                r.tasks.append(t)
+            }
+        }
+        return t.id
+    }
+
+    func taskText(_ d: Date, id: UUID) -> Binding<String> {
+        Binding(
+            get: { self.day(d).tasks.first { $0.id == id }?.text ?? "" },
+            set: { v in self.editDay(d) { r in if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].text = v } } }
+        )
+    }
+
     func taskText(_ d: Date, _ i: Int, defaultCat: @escaping () -> Int?) -> Binding<String> {
         Binding(
             get: { let t = self.day(d).tasks; return i < t.count ? t[i].text : "" },
@@ -384,9 +427,12 @@ final class PlannerStore: ObservableObject {
         Binding(get: { self.week(s)[keyPath: kp] }, set: { v in self.editWeek(s) { $0[keyPath: kp] = v } })
     }
 
-    func cleanup(_ d: Date) {
-        guard day(d).tasks.contains(where: { $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) else { return }
-        editDay(d) { $0.tasks.removeAll { $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
+    /// 비어 있는 할 일을 지우고(지금 쓰고 있는 것은 남긴다) 형광펜별로 다시 모은다.
+    func cleanup(_ d: Date, keep: UUID? = nil) {
+        if day(d).tasks.contains(where: { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            editDay(d) { $0.tasks.removeAll { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
+        }
+        regroup(d)
     }
 
     func cycleMark(_ d: Date, _ id: UUID) {
@@ -403,8 +449,19 @@ final class PlannerStore: ObservableObject {
 
     func setCategory(_ d: Date, _ id: UUID, _ cat: Int?) {
         editDay(d) { r in
-            if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].cat = cat }
+            if let i = r.tasks.firstIndex(where: { $0.id == id }) {
+                let t = r.tasks.remove(at: i)
+                var moved = t
+                moved.cat = cat
+                // 새 형광펜 묶음의 끝으로 옮긴다 (그 묶음이 없으면 제자리)
+                if cat != nil, let last = r.tasks.lastIndex(where: { $0.cat == cat }) {
+                    r.tasks.insert(moved, at: last + 1)
+                } else {
+                    r.tasks.insert(moved, at: min(i, r.tasks.count))
+                }
+            }
         }
+        regroup(d)
     }
 
     func delete(_ d: Date, _ id: UUID) {
@@ -414,7 +471,9 @@ final class PlannerStore: ObservableObject {
     func postpone(_ d: Date, _ id: UUID) {
         guard let t = day(d).tasks.first(where: { $0.id == id }) else { return }
         setMark(d, id, .moved)
-        editDay(Dates.add(days: 1, to: d)) { $0.tasks.append(PlanTask(text: t.text, cat: t.cat)) }
+        let next = Dates.add(days: 1, to: d)
+        editDay(next) { $0.tasks.append(PlanTask(text: t.text, cat: t.cat)) }
+        regroup(next)
     }
 
     // Sample content for previews / snapshots
