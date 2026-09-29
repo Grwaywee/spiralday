@@ -66,5 +66,7 @@ if [ $RELEASE = 1 ]; then
   rm -f "$ZIP"
   ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
   shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
-  echo "✓ $ZIP"
+  # 소개 페이지의 "최신 버전 받기" 링크용 (releases/latest/download/Spiralday.zip)
+  cp "$ZIP" dist/Spiralday.zip
+  echo "✓ $ZIP  (+ dist/Spiralday.zip)"
 fi

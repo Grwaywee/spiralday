@@ -177,6 +177,14 @@ swift build
 .build/debug/Spiralday --pdf-test ./out      # PDF 레이아웃 4종 샘플
 ```
 
+### 소개 페이지 (spiralday.com)
+
+`site/` 가 [spiralday.com](https://spiralday.com) 입니다. `main` 에 푸시하면 GitHub Actions 가 GitHub Pages 로 배포합니다 (`.github/workflows/pages.yml`, 도메인은 `site/CNAME`).
+
+```bash
+python3 -m http.server 8123 --directory site   # 로컬 미리보기 → http://localhost:8123
+```
+
 ## 로드맵
 
 - [ ] 월간 페이지

@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spiralday — 창 하나가 종이 한 장인 macOS 플래너</title>
+<meta name="description" content="10분 단위 종이 플래너 형식으로 만든 macOS 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄까지. 무료, 내 Mac 에만 저장.">
+<meta name="theme-color" content="#FCFBF7">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://spiralday.com/">
+<meta property="og:title" content="Spiralday — 창 하나가 종이 한 장인 macOS 플래너">
+<meta property="og:description" content="10분 단위 플래너 양식 그대로, 진짜 종이처럼 넘어가는 Mac 플래너. 무료.">
+<meta property="og:image" content="https://spiralday.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poor+Story&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #FCFBF7;
+    --paper-2: #F4F0E8;
+    --ink: #2B2B2F;
+    --text: #3A3940;
+    --soft: #85818C;
+    --rule: #D9D4CA;
+    --dot: #BDB8AF;
+    --pen: #E0474C;
+    --pink: #E7728F;
+    --plum: #3C3357;
+    --mint: #8EDCD2;
+    --peach: #F8B38A;
+    --sky: #A9CFF3;
+    --lemon: #F3DB78;
+    --lav: #CDB6EF;
+    --hand: "Poor Story", "Pretendard Variable", sans-serif;
+    --print: "Avenir Next", "Pretendard Variable", -apple-system, sans-serif;
+    --body: "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    word-break: keep-all;
+    overflow-x: hidden;
+  }
+  /* 종이 결 */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity: .5;
+    z-index: 0;
+  }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* 위쪽 스프링 링 */
+  .rings {
+    position: relative; z-index: 2;
+    height: 34px;
+    background:
+      radial-gradient(circle at 50% 78%, #55575E 0 5px, transparent 5.5px) 0 0 / 34px 34px repeat-x,
+      linear-gradient(90deg, transparent 0 13px, #B9BCC2 13px 14.5px, #F4F5F7 14.5px 16px, #8C8F96 16px 17.5px, transparent 17.5px 34px) 0 0 / 34px 26px repeat-x;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* 인쇄된 라벨: LABEL ──── */
+  .label {
+    display: flex; align-items: center; gap: 14px;
+    font-family: var(--print); font-weight: 600;
+    font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 18px;
+  }
+  .label::after { content: ""; flex: 1; height: 2.5px; background: var(--ink); border-radius: 2px; }
+
+  .hl { background: linear-gradient(transparent 58%, var(--c, var(--mint)) 58% 92%, transparent 92%); padding: 0 .08em; }
+  .hand { font-family: var(--hand); }
+
+  /* 머리 */
+  header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 8px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 800; font-size: 20px; color: var(--ink); letter-spacing: -.01em; }
+  .brand img { width: 36px; height: 36px; }
+  nav a { text-decoration: none; color: var(--soft); font-weight: 600; font-size: 15px; margin-left: 22px; }
+  nav a:hover { color: var(--ink); }
+
+  /* 대문 */
+  .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 28px 0 64px; }
+  .hero h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.12; letter-spacing: -.035em; color: var(--ink); margin: 6px 0 22px; font-weight: 800; }
+  .hero .lead { font-size: 19px; color: var(--text); max-width: 520px; margin: 0 0 30px; }
+  .hero .note { font-family: var(--hand); font-size: 26px; color: var(--pink); margin: 0; transform: rotate(-2deg); display: inline-block; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 15px 26px; border-radius: 14px; text-decoration: none;
+    font-weight: 700; font-size: 17px; transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn.primary { background: var(--plum); color: #fff; box-shadow: 0 10px 24px -8px rgba(60,51,87,.55); }
+  .btn.primary:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -8px rgba(60,51,87,.6); }
+  .btn.ghost { color: var(--ink); background: rgba(0,0,0,.05); }
+  .btn.ghost:hover { background: rgba(0,0,0,.08); }
+  .meta { margin-top: 16px; font-size: 14px; color: var(--soft); }
+  .hero-shot { position: relative; }
+  .hero-shot img { width: auto; max-width: 100%; max-height: min(640px, 74vh); margin: 0 auto; filter: drop-shadow(0 30px 40px rgba(40,30,20,.18)); transform: rotate(1.2deg); }
+  .hero-shot .tag {
+    position: absolute; left: -18px; bottom: 16%;
+    background: var(--paper); border: 1.5px dashed var(--dot); border-radius: 12px;
+    padding: 10px 16px; font-family: var(--hand); font-size: 22px; color: var(--ink);
+    transform: rotate(-4deg); box-shadow: 0 8px 20px -10px rgba(0,0,0,.25);
+  }
+
+  /* 섹션 */
+  section { padding: 64px 0; }
+  section h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.03em; line-height: 1.2; color: var(--ink); margin: 0 0 16px; font-weight: 800; }
+  section p.desc { font-size: 18px; max-width: 640px; margin: 0 0 30px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .split.rev > :first-child { order: 2; }
+  .shot { border-radius: 18px; overflow: hidden; box-shadow: 0 22px 50px -24px rgba(40,30,20,.35), 0 0 0 1px rgba(0,0,0,.05); background: #fff; }
+  .shot.bare { box-shadow: none; background: none; border-radius: 0; overflow: visible; }
+  .shot.bare img { filter: drop-shadow(0 24px 30px rgba(40,30,20,.16)); }
+
+  /* 체크 목록 (펜 표시) */
+  ul.marks { list-style: none; padding: 0; margin: 0; }
+  ul.marks li { display: flex; gap: 14px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--rule); font-size: 17px; }
+  ul.marks li:last-child { border-bottom: 0; }
+  ul.marks .m { flex: 0 0 26px; font-family: var(--print); font-weight: 700; font-size: 20px; color: var(--pen); text-align: center; }
+
+  /* 기능 격자 */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card { background: #fff; border: 1px solid rgba(0,0,0,.06); border-radius: 18px; padding: 24px 22px 22px; box-shadow: 0 10px 30px -22px rgba(0,0,0,.4); }
+  .card h3 { margin: 10px 0 6px; font-size: 19px; color: var(--ink); letter-spacing: -.02em; }
+  .card p { margin: 0; font-size: 15.5px; color: var(--text); }
+  .chip { display: inline-block; width: 38px; height: 12px; border-radius: 3px; background: var(--c); transform: rotate(-3deg); }
+
+  /* 형광펜 색 줄 */
+  .pens { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 26px; }
+  .pens span { font-family: var(--hand); font-size: 21px; padding: 0 10px; background: linear-gradient(transparent 38%, var(--c) 38% 92%, transparent 92%); }
+
+  /* 넓은 이미지 */
+  .wide { margin-top: 10px; }
+
+  /* 설치 */
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .step { position: relative; background: #fff; border-radius: 18px; padding: 26px 22px; border: 1px solid rgba(0,0,0,.06); }
+  .step::before { counter-increment: s; content: counter(s); font-family: var(--hand); font-size: 40px; color: var(--pink); line-height: 1; display: block; margin-bottom: 8px; }
+  .step h3 { margin: 0 0 6px; font-size: 18px; color: var(--ink); }
+  .step p { margin: 0; font-size: 15.5px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; background: var(--paper-2); padding: 2px 6px; border-radius: 6px; }
+  pre { background: #2B2B2F; color: #F4F2EC; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: 13.5px; margin: 12px 0 0; }
+  pre code { background: none; padding: 0; color: inherit; }
+
+  /* 개인정보 */
+  .privacy { background: var(--plum); color: #EDEAF5; border-radius: 28px; padding: 54px 48px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; }
+  .privacy h2 { color: #fff; }
+  .privacy ul { margin: 0; padding: 0; list-style: none; }
+  .privacy li { padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.14); font-size: 16.5px; }
+  .privacy li:last-child { border: 0; }
+  .privacy li b { color: #fff; }
+
+  /* 마지막 다운로드 */
+  .final { text-align: center; padding: 90px 0 70px; }
+  .final img.icon { width: 120px; margin: 0 auto 18px; filter: drop-shadow(0 14px 22px rgba(0,0,0,.18)); }
+  .final h2 { margin-bottom: 10px; }
+  .final .cta { justify-content: center; margin-top: 26px; }
+
+  footer { border-top: 1px solid var(--rule); padding: 28px 0 44px; font-size: 14px; color: var(--soft); }
+  footer .row { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  footer a { color: var(--soft); }
+
+  @media (max-width: 900px) {
+    .hero, .split, .privacy { grid-template-columns: 1fr; }
+    .split.rev > :first-child { order: 0; }
+    .grid, .steps { grid-template-columns: 1fr; }
+    .hero { padding-top: 24px; gap: 30px; }
+    .hero-shot .tag { left: 6px; }
+    .hero-shot img { max-height: none; }
+    nav a:not(.dl) { display: none; }
+    .privacy { padding: 36px 26px; }
+    section { padding: 48px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="rings" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#"><img src="assets/icon-512.png" alt="">Spiralday</a>
+    <nav>
+      <a href="#features">기능</a>
+      <a href="#pdf">PDF 인쇄</a>
+      <a href="#install">설치</a>
+      <a class="dl" href="#download">다운로드</a>
+    </nav>
+  </header>
+
+  <!-- 대문 -->
+  <div class="hero">
+    <div>
+      <p class="label">macOS Planner</p>
+      <h1>창 하나가<br><span class="hl" style="--c: #F7C3CD">종이 한 장.</span></h1>
+      <p class="lead">10분 단위 종이 플래너 형식으로 만든 Mac 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.zip">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          Mac용 무료 다운로드
+        </a>
+        <a class="btn ghost" href="https://github.com/Grwaywee/spiralday">GitHub</a>
+      </div>
+      <p class="meta">무료 · 오픈소스 · macOS 14 이상 · Apple Silicon &amp; Intel</p>
+    </div>
+    <div class="hero-shot">
+      <img src="assets/hero-daily.webp" alt="Spiralday 일간 페이지. 창 왼쪽에 스프링 링, 오른쪽에 형광펜 팔레트" width="920" height="1257">
+      <div class="tag">오늘 하루 9시간 칠했다! ✏️</div>
+    </div>
+  </div>
+
+  <!-- 일간 -->
+  <section id="features">
+    <p class="label">Daily</p>
+    <div class="split">
+      <div>
+        <h2>익숙한 그 양식, <span class="hl">그대로</span>.</h2>
+        <p class="desc">DATE · D-DAY · COMMENT · TOTAL TIME · TASKS 15줄 · MEMO · 06시부터 다음 날 05시까지의 10분 타임테이블. 종이 플래너에서 쓰던 칸이 같은 비율로 들어 있어요.</p>
+        <ul class="marks">
+          <li><span class="m">○</span><div>체크 박스를 누를 때마다 <b>완료 → 일부 → 못함 → 미룸</b></div></li>
+          <li><span class="m">△</span><div>끝낸 일에만 <b>형광펜</b>이 그어지고, 같은 형광펜끼리 모여요</div></li>
+          <li><span class="m">×</span><div>길게 쓰면 <b>아래 칸으로 이어서</b>, 칸이 모자라면 글씨가 조금씩 작아져요</div></li>
+          <li><span class="m">→</span><div>날마다 고르는 <b>컬러 컨셉</b> — TOTAL TIME, 요일, D-day 색이 함께 바뀌어요</div></li>
+        </ul>
+      </div>
+      <div class="shot"><img src="assets/tasks.webp" alt="할 일 목록과 ○△× 체크, 형광펜" loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- 넘기기 -->
+  <section>
+    <p class="label">Page turn</p>
+    <div class="split rev">
+      <div>
+        <h2>진짜 종이처럼 <span class="hl" style="--c: #F3DB78">넘어가요</span>.</h2>
+        <p class="desc">종이 모서리를 잡고 끌면 손가락을 따라 말려 올라가고, 놓으면 스프링 쪽으로 넘어가요. 트랙패드 두 손가락 스와이프, ← → 키도 돼요. 종이 뒷면에 앞면 잉크가 살짝 비치는 것까지 Metal 로 그렸어요.</p>
+        <p class="hand" style="font-size:24px;color:var(--soft);margin:0">스프링 링은 창 밖으로 튀어나와 있어요 — 정말 노트처럼.</p>
+      </div>
+      <div class="shot bare" style="max-width:440px;justify-self:center"><img src="assets/curl.gif" alt="페이지가 말려 넘어가는 모습" loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- 타임테이블 -->
+  <section>
+    <p class="label">Timetable</p>
+    <div class="split">
+      <div>
+        <h2>형광펜으로 하루를 <span class="hl" style="--c: #A9CFF3">칠하세요</span>.</h2>
+        <p class="desc">오른쪽 팔레트에서 형광펜을 고르고 10분 칸을 드래그하면 끝. 칠한 시간이 TOTAL TIME 과 형광펜별 시간으로 바로 계산돼요. 타임테이블 위에 손글씨 메모를 쓰고, 🍴 밥시간은 화살표로 이어요.</p>
+        <div class="pens">
+          <span style="--c:#8EDCD2">집중 업무</span><span style="--c:#F8B38A">미팅</span><span style="--c:#A9CFF3">소통·메일</span><span style="--c:#F3DB78">기획</span><span style="--c:#CDB6EF">학습</span><span style="--c:#F6AEC5">개인</span>
+        </div>
+        <p class="desc" style="font-size:16px;color:var(--soft)">형광펜 이름·색·순서는 마음대로 바꿀 수 있고, 최대 12개까지 만들 수 있어요.</p>
+      </div>
+      <div class="shot" style="max-width:360px;justify-self:center"><img src="assets/timetable.webp" alt="10분 단위 타임테이블과 밥시간 화살표" loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- 주간 -->
+  <section>
+    <p class="label">Weekly</p>
+    <h2>한 주는 <span class="hl" style="--c: #CDB6EF">가로로 한 장</span>.</h2>
+    <p class="desc">MY GOAL 과 주간 회고, 월–일 7칸에 할 일 10줄과 타임테이블. 주간으로 바꾸면 창이 가로 비율로 부드럽게 변하고, 스프링은 위로 올라가요.</p>
+    <div class="shot bare wide"><img src="assets/weekly.webp" alt="주간 페이지" loading="lazy"></div>
+  </section>
+
+  <!-- 홈 -->
+  <section>
+    <p class="label">Home</p>
+    <div class="split rev">
+      <div>
+        <h2>쌓인 하루들을 <span class="hl" style="--c: #F8B38A">한눈에</span>.</h2>
+        <p class="desc">이번 주·이번 달 시간, 하루 평균, 연속 기록, 할 일 완료율, 최근 12주, 형광펜별 시간, 가장 자주 칠한 시간대와 요일, 최근 35일 달력까지. 날짜를 누르면 그날로 바로 가요.</p>
+      </div>
+      <div class="shot bare"><img src="assets/home.webp" alt="홈 통계 페이지" loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- 여러 권 -->
+  <section>
+    <p class="label">Planners</p>
+    <div class="split">
+      <div>
+        <h2>플래너는 <span class="hl">책처럼</span>, 여러 권.</h2>
+        <p class="desc">권마다 이름, 시작일, 종료일, 표지 색을 정해요. 시작일보다 앞으로는 넘어가지 않고, 종료일을 정하면 그날에서 멈춰요. 업무용 한 권, 공부용 한 권 — 기록과 형광펜이 권마다 따로 저장돼요.</p>
+      </div>
+      <div class="shot"><img src="assets/settings-books.webp" alt="설정의 플래너 책장" loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- PDF -->
+  <section id="pdf">
+    <p class="label">Print</p>
+    <div class="split rev">
+      <div>
+        <h2>A4 반쪽으로 뽑으면 <span class="hl" style="--c: #F7C3CD">실물 크기</span>.</h2>
+        <p class="desc">일간은 A4 가로 한 장에 이틀씩 — 가운데 선을 따라 자르면 종이 플래너 크기 그대로예요. A4 세로로 하루 한 장, 주간과 홈은 A4 가로. 기간을 정해 한 번에 뽑고, 벡터라 인쇄가 선명해요.</p>
+        <p class="hand" style="font-size:24px;color:var(--soft);margin:0">기록이 없는 날은 빈 양식 — 종이로도 쓸 수 있어요.</p>
+      </div>
+      <div class="shot"><img src="assets/pdf-half.webp" alt="A4 가로에 일간 두 장이 나란히 있는 PDF" loading="lazy"></div>
+    </div>
+  </section>
+
+  <!-- 기능 요약 -->
+  <section>
+    <p class="label">And more</p>
+    <div class="grid">
+      <div class="card"><span class="chip" style="--c:#8EDCD2"></span><h3>튜토리얼로 시작</h3><p>처음 열면 플래너 만들기부터 사용법까지 차근차근 안내해요.</p></div>
+      <div class="card"><span class="chip" style="--c:#F8B38A"></span><h3>D-day 두 개</h3><p>런칭까지, 시험까지 — 일간 위쪽에 남은 날을 세어 적어 줘요.</p></div>
+      <div class="card"><span class="chip" style="--c:#CDB6EF"></span><h3>키보드로 다</h3><p>← → 넘기기, T 오늘, W · D · H 보기, 1–7 형광펜, E 지우개.</p></div>
+      <div class="card"><span class="chip" style="--c:#F3DB78"></span><h3>9가지 컬러 컨셉</h3><p>날마다 다른 강조색. 기본 컬러는 설정에서.</p></div>
+      <div class="card"><span class="chip" style="--c:#A9CFF3"></span><h3>손글씨 폰트</h3><p>또박또박 볼펜 느낌의 Poor Story 로 적혀요.</p></div>
+      <div class="card"><span class="chip" style="--c:#F6AEC5"></span><h3>백업 한 번에</h3><p>플래너별 JSON 파일. 설정에서 내보내고 되살려요.</p></div>
+    </div>
+  </section>
+
+  <!-- 설치 -->
+  <section id="install">
+    <p class="label">Install</p>
+    <h2>설치는 1분이면 돼요.</h2>
+    <div class="steps">
+      <div class="step"><h3>내려받기</h3><p><a href="https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.zip">Spiralday.zip</a> 을 받아 압축을 풀어요.</p></div>
+      <div class="step"><h3>응용 프로그램으로</h3><p><code>Spiralday.app</code> 을 응용 프로그램 폴더로 옮겨요.</p></div>
+      <div class="step"><h3>처음 한 번은 오른쪽 클릭 → 열기</h3><p>개인이 만든 무료 앱이라 Apple 공증이 없어서, 처음 한 번만 이렇게 열어요. 그래도 막히면 터미널에서:</p>
+        <pre><code>xattr -dr com.apple.quarantine /Applications/Spiralday.app</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 개인정보 -->
+  <section>
+    <div class="privacy">
+      <div>
+        <p class="label" style="color:#fff">Privacy</p>
+        <h2>기록은 <span class="hand" style="font-weight:400">내 Mac</span> 에만.</h2>
+        <p style="margin:0">Spiralday 는 서버가 없어요. 계정도, 광고도, 추적도 없어요. 쓰는 즉시 내 Mac 의 파일로 저장돼요.</p>
+      </div>
+      <ul>
+        <li><b>네트워크 요청 없음</b> — 인터넷 없이 모든 기능이 돼요</li>
+        <li><b>파일로 저장</b> — <code style="background:rgba(255,255,255,.12);color:#fff">~/Library/Application Support/Spiralday</code></li>
+        <li><b>오픈소스</b> — 코드는 GitHub 에 공개돼 있어요 (MIT)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 다운로드 -->
+  <section class="final" id="download">
+    <img class="icon" src="assets/icon-512.png" alt="Spiralday 아이콘">
+    <h2>오늘 한 장, 넘겨 볼까요?</h2>
+    <p class="hand" style="font-size:26px;color:var(--soft);margin:0">무료 · macOS 14 이상 · Apple Silicon &amp; Intel</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.zip">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+        Mac용 무료 다운로드
+      </a>
+      <a class="btn ghost" href="https://github.com/Grwaywee/spiralday/releases">모든 버전</a>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap row">
+    <span>© 2026 Spiralday · <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">MIT License</a></span>
+    <span>손글씨 폰트 Poor Story © YoonDesign Inc. (SIL OFL 1.1) · <a href="https://github.com/Grwaywee/spiralday">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>
