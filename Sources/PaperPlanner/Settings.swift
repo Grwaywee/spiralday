@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Window
 
-/// 설정 창 (형광펜, 기본 컬러 컨셉, D-day, 단축키, 데이터). 팔레트의 톱니 버튼 / ⌘, 로 연다.
+/// 설정 창 (플래너, 형광펜, 기본 컬러 컨셉, D-day, 단축키, 데이터). 팔레트의 톱니 버튼 / ⌘, 로 연다.
 /// 패널이라 플래너의 트랙패드 넘김 처리에서 빠지고, 닫으면 초점이 곧바로 플래너 창으로 돌아간다.
 @MainActor
 final class SettingsWindowController {
@@ -28,6 +28,12 @@ final class SettingsWindowController {
         DispatchQueue.main.async { [weak w] in
             if w?.firstResponder is NSText { w?.makeFirstResponder(nil) }
         }
+    }
+
+    /// 플래너(책) 목록을 펼친 채로 연다 (팔레트의 ‘플래너 관리…’)
+    func showPlanners(store: PlannerStore, state: AppState) {
+        UserDefaults.standard.set(SettingsPane.books.rawValue, forKey: SettingsView.paneKey)
+        show(store: store, state: state)
     }
 
     private func makeWindow(store: PlannerStore, state: AppState) -> NSWindow {
@@ -62,12 +68,13 @@ private final class SettingsPanel: NSPanel {
 // MARK: - Sections
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case pens, concept, dday, shortcuts, data
+    case books, pens, concept, dday, shortcuts, data
 
     var id: Self { self }
 
     var title: String {
         switch self {
+        case .books: "플래너"
         case .pens: "형광펜"
         case .concept: "컬러 컨셉"
         case .dday: "D-day"
@@ -78,6 +85,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
+        case .books: "플래너 한 권이 책 한 권이에요. 권마다 기록과 설정이 따로 있고, 골라서 펼쳐 써요."
         case .pens: "타임테이블과 할 일에 칠하는 펜이에요. 이름과 색을 바꾸면 이미 칠한 칸에도 바로 반영돼요."
         case .concept: "TOTAL TIME, 요일, D-day 숫자, ○△× 표시에 쓰이는 강조색이에요."
         case .dday: "일간 페이지 위쪽 D-DAY 칸에 남은 날을 세어 적어 줘요."
@@ -88,6 +96,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .books: "books.vertical.fill"
         case .pens: "highlighter"
         case .concept: "paintpalette.fill"
         case .dday: "flag.fill"
@@ -98,6 +107,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var tint: Color {
         switch self {
+        case .books: Color(hex: "34A36B")
         case .pens: Color(hex: "F2A93B")
         case .concept: Color(hex: "E5577E")
         case .dday: Color(hex: "7B61D1")
@@ -105,13 +115,17 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .data: Color(hex: "3A84F0")
         }
     }
+
+    /// 펼친 책마다 따로 저장되는 설정인지
+    var perBook: Bool { self == .pens || self == .concept || self == .dday }
 }
 
 struct SettingsView: View {
+    static let paneKey = "settingsPane"
     /// 마지막으로 보던 항목 (실행 인자 `-settingsPane dday` 로도 고를 수 있다)
-    @AppStorage("settingsPane") private var paneRaw = SettingsPane.pens.rawValue
+    @AppStorage(SettingsView.paneKey) private var paneRaw = SettingsPane.books.rawValue
 
-    private var pane: SettingsPane { SettingsPane(rawValue: paneRaw) ?? .pens }
+    private var pane: SettingsPane { SettingsPane(rawValue: paneRaw) ?? .books }
 
     var body: some View {
         NavigationSplitView {
@@ -131,6 +145,7 @@ struct SettingsView: View {
         } detail: {
             Group {
                 switch pane {
+                case .books: SettingsBooksPane()
                 case .pens: SettingsPensPane()
                 case .concept: SettingsConceptPane()
                 case .dday: SettingsDDayPane()
@@ -142,6 +157,842 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 680, minHeight: 460)
+    }
+}
+
+// MARK: - 플래너 (책)
+
+private struct SettingsBooksPane: View {
+    @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
+    @State private var editor: SettingsBookEditorRequest?
+    @State private var pendingDelete: BookInfo?
+
+    var body: some View {
+        let books = store.books
+        let openID = store.activeBook?.id
+        ScrollViewReader { proxy in
+            Form {
+                Section {
+                    if books.isEmpty {
+                        SettingsBooksEmpty { editor = .create }
+                    }
+                    ForEach(books) { b in
+                        let isOpen = b.id == openID
+                        SettingsBookRow(book: b, isOpen: isOpen,
+                                        recordDays: isOpen ? store.data.days.count : nil,
+                                        canDelete: books.count > 1,
+                                        open: { open(b.id) },
+                                        edit: { editor = .edit(b) },
+                                        delete: { pendingDelete = b })
+                            .id(b.id)
+                    }
+                } header: {
+                    VStack(alignment: .leading, spacing: 18) {
+                        SettingsPaneHeader(pane: .books)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            SettingsSectionTitle(title: "책장", trailing: books.isEmpty ? nil : "\(books.count)권")
+                            Button { editor = .create } label: { Label("새 플래너 만들기", systemImage: "plus") }
+                                .controlSize(.small)
+                                .help("시작일을 정해 새 플래너를 만들고 바로 펼쳐요")
+                        }
+                    }
+                } footer: {
+                    SettingsFootnote(text: footnote(books.count))
+                }
+
+                Section {
+                    SettingsBookRuleRow(symbol: "arrow.left.to.line", title: "시작일이 첫 장이에요",
+                                        detail: "시작일보다 앞으로는 일간도 주간도 넘어가지 않아요. 시작일은 꼭 정해야 해요.")
+                    SettingsBookRuleRow(symbol: "arrow.right.to.line", title: "종료일을 정하면 그날에서 멈춰요",
+                                        detail: "종료일이 마지막 장이 돼요. 나중에 편집에서 늘리거나 없앨 수 있어요.")
+                    SettingsBookRuleRow(symbol: "infinity", title: "종료일이 없으면 계속 넘어가요",
+                                        detail: "끝을 정하지 않은 플래너는 오늘 이후로도 끝없이 이어져요.")
+                } header: {
+                    SettingsSectionTitle(title: "책처럼 넘겨요")
+                }
+            }
+            .onChange(of: openID) { _, id in
+                guard let id else { return }
+                withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            }
+        }
+        .sheet(item: $editor) { req in
+            SettingsBookEditor(book: req.book,
+                               suggestedName: SettingsBookDefaults.name(store.books.map(\.name)),
+                               suggestedCover: SettingsBookDefaults.cover(store.books.map(\.cover)))
+                .environmentObject(store)
+                .environmentObject(state)
+        }
+        .confirmationDialog(pendingDelete.map { "‘\($0.name)’\(SettingsJosa.pick($0.name, "을", "를")) 지울까요?" } ?? "",
+                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            presenting: pendingDelete) { b in
+            Button("영구히 지우기", role: .destructive) { delete(b.id) }
+            Button("취소", role: .cancel) {}
+        } message: { b in
+            Text(deleteMessage(b))
+        }
+    }
+
+    private func footnote(_ count: Int) -> String {
+        var s = "플래너마다 기록, 형광펜, 기본 컬러, D-day 가 따로 있어요. 새 플래너는 지금 펼친 플래너의 형광펜과 기본 컬러를 이어받아요."
+        if count == 1 { s += " 플래너가 한 권뿐일 때는 지울 수 없어요. 새 플래너를 만든 뒤에 지울 수 있어요." }
+        return s
+    }
+
+    private func open(_ id: UUID) {
+        withAnimation(.snappy(duration: 0.2)) { store.activate(id) }
+    }
+
+    private func deleteMessage(_ b: BookInfo) -> String {
+        var lines: [String] = []
+        if b.id == store.activeBook?.id {
+            let n = store.data.days.count
+            lines.append("이 플래너의 기록\(n > 0 ? "(기록한 날 \(n)일)" : "")과 형광펜·D-day 설정이 모두 영구히 지워져요. 되돌릴 수 없어요.")
+            if let next = store.books.first(where: { $0.id != b.id }) {
+                lines.append("지우고 나면 ‘\(next.name)’\(SettingsJosa.pick(next.name, "을", "를")) 펼쳐요.")
+            }
+        } else {
+            lines.append("이 플래너의 기록과 형광펜·D-day 설정이 모두 영구히 지워져요. 되돌릴 수 없어요.")
+        }
+        lines.append("남겨 두고 싶다면 먼저 펼친 뒤 ‘데이터 → 백업 내보내기’로 보관하세요.")
+        return lines.joined(separator: "\n\n")
+    }
+
+    private func delete(_ id: UUID) {
+        guard store.books.count > 1 else { return }
+        withAnimation(.snappy(duration: 0.25)) { store.deleteBook(id) }
+    }
+}
+
+/// 만들기 / 편집 시트를 여는 요청
+private enum SettingsBookEditorRequest: Identifiable {
+    case create
+    case edit(BookInfo)
+
+    var id: String {
+        switch self {
+        case .create: "new"
+        case .edit(let b): b.id.uuidString
+        }
+    }
+
+    var book: BookInfo? {
+        if case .edit(let b) = self { return b }
+        return nil
+    }
+}
+
+/// 책장의 한 권: 표지 · 이름(펼침 표시) · 기간 · 기록 · 펼치기 / 편집 / 삭제
+private struct SettingsBookRow: View {
+    let book: BookInfo
+    let isOpen: Bool
+    /// 기록한 날 수 (펼친 책만 알 수 있다)
+    let recordDays: Int?
+    let canDelete: Bool
+    let open: () -> Void
+    let edit: () -> Void
+    let delete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            SettingsBookCover(cover: book.cover, width: 34, ribbon: isOpen)
+                .padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(book.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if isOpen {
+                        SettingsOpenBadge(cover: book.cover)
+                    }
+                }
+                Text(period)
+                    .font(.callout)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(status)
+                    .font(.system(size: 11.5))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 8)
+            if !isOpen {
+                Button("펼치기", action: open)
+                    .help("이 플래너를 펼쳐서 써요")
+            }
+            Button(action: edit) {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("이름, 기간, 표지 색 편집")
+            Button(action: delete) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canDelete)
+            .help(canDelete ? "이 플래너 지우기" : "플래너는 적어도 한 권은 있어야 해요. 새 플래너를 만든 뒤에 지울 수 있어요.")
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("펼치기", action: open).disabled(isOpen)
+            Button("편집…", action: edit)
+            Divider()
+            Button("지우기…", role: .destructive, action: delete).disabled(!canDelete)
+        }
+    }
+
+    private var period: String {
+        guard let end = book.end else { return book.periodText }
+        return "\(book.periodText) · \(Dates.daysBetween(book.start, end) + 1)일"
+    }
+
+    /// 오늘이 몇 번째 날인지(시작 전 / 끝남) · 종료일 없음 · 기록한 날
+    private var status: String {
+        let today = Dates.day(Date())
+        var parts: [String] = []
+        if today < Dates.day(book.start) {
+            parts.append("\(Dates.daysBetween(today, book.start))일 뒤에 시작해요")
+        } else if let end = book.end, today > Dates.day(end) {
+            parts.append("끝난 플래너예요")
+        } else {
+            parts.append("오늘은 \(Dates.daysBetween(book.start, today) + 1)일째")
+        }
+        if book.end == nil { parts.append("종료일 없음 — 계속 넘어가요") }
+        if let recordDays { parts.append(recordDays == 0 ? "아직 기록이 없어요" : "기록한 날 \(recordDays)일") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// 펼쳐 둔 책 표시
+private struct SettingsOpenBadge: View {
+    let cover: Int
+
+    var body: some View {
+        Text("펼침")
+            .font(.system(size: 10.5, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(Capsule().fill(ColorConcept.of(cover).accent))
+            .help("지금 이 플래너가 펼쳐져 있어요")
+    }
+}
+
+/// 아직 책이 한 권도 없을 때
+private struct SettingsBooksEmpty: View {
+    let create: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SettingsBookCover(cover: 0, width: 34)
+                .saturation(0)
+                .opacity(0.45)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("아직 플래너가 없어요")
+                Text("시작일을 정해 첫 플래너를 만들어 보세요.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("새 플래너 만들기", action: create)
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// 넘기는 규칙 한 줄
+private struct SettingsBookRuleRow: View {
+    let symbol: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// 표지 색으로 칠한 작은 책: 왼쪽 책등 그림자, 오른쪽으로 비치는 종이 단면, 가운데 이름표.
+/// title 을 주면 이름표에 손글씨로 적고(큰 미리보기), ribbon 이면 펼친 책의 가름끈이 아래로 늘어진다.
+private struct SettingsBookCover: View {
+    let cover: Int
+    var width: CGFloat = 34
+    var title: String? = nil
+    var caption: String? = nil
+    var ribbon = false
+
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        let c = ColorConcept.of(cover)
+        let w = width, h = (width * 1.34).rounded()
+        let r = max(1.2, w * 0.07)
+        let peek = max(1, (w * 0.045).rounded())
+        let spine = max(1.5, w * 0.13)
+        let coverShape = UnevenRoundedRectangle(topLeadingRadius: r * 0.45, bottomLeadingRadius: r * 0.45,
+                                                bottomTrailingRadius: r, topTrailingRadius: r, style: .continuous)
+        ZStack(alignment: .topLeading) {
+            // 종이 단면 (오른쪽과 아래로 살짝 비친다)
+            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: r * 0.8,
+                                   topTrailingRadius: r * 0.8, style: .continuous)
+                .fill(Ink.paper)
+                .overlay(alignment: .trailing) {
+                    if w >= 20 {
+                        Rectangle().fill(Ink.rule.opacity(0.9)).frame(width: 0.5).padding(.vertical, r)
+                            .padding(.trailing, peek * 0.5)
+                    }
+                }
+                .frame(width: w - spine, height: h - peek * 1.5)
+                .offset(x: spine, y: peek * 0.75)
+
+            // 표지
+            coverShape
+                .fill(LinearGradient(colors: [c.accent.opacity(0.86), c.accent], startPoint: .topTrailing, endPoint: .bottomLeading))
+                .overlay(alignment: .leading) {
+                    HStack(spacing: 0) {
+                        LinearGradient(colors: [.black.opacity(0.26), .black.opacity(0.12)], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: spine)
+                        Rectangle().fill(.white.opacity(0.28)).frame(width: max(0.5, w * 0.012))
+                    }
+                }
+                .overlay { label(w: w - peek, h: h, spine: spine) }
+                .clipShape(coverShape)
+                .frame(width: w - peek, height: h)
+        }
+        .frame(width: w, height: h, alignment: .topLeading)
+        .overlay(alignment: .bottomTrailing) {
+            if ribbon {
+                SettingsRibbon()
+                    .fill(Color(hex: "E9B949"))
+                    .frame(width: max(3, w * 0.13), height: max(5, h * 0.16))
+                    .offset(x: -w * 0.24, y: max(5, h * 0.16) - 1)
+                    .shadow(color: .black.opacity(0.15), radius: 0.5, y: 0.5)
+            }
+        }
+        .compositingGroup()
+        .shadow(color: .black.opacity(w > 40 ? 0.22 : 0.2), radius: w > 40 ? 4 : 1.2, x: w > 40 ? 1 : 0.4, y: w > 40 ? 3 : 0.8)
+    }
+
+    @ViewBuilder
+    private func label(w: CGFloat, h: CGFloat, spine: CGFloat) -> some View {
+        let area = w - spine
+        if let title {
+            VStack(spacing: h * 0.06) {
+                Text(title)
+                    .font(Fonts.hand(w * 0.2))
+                    .foregroundStyle(Ink.text)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.45)
+                    .padding(.horizontal, area * 0.06)
+                    .padding(.vertical, h * 0.035)
+                    .frame(width: area * 0.78)
+                    .frame(minHeight: h * 0.2)
+                    .background(RoundedRectangle(cornerRadius: w * 0.03, style: .continuous).fill(Ink.paper))
+                    .id(state.fontsReady)
+                if let caption {
+                    Text(caption)
+                        .font(Fonts.print(max(7, w * 0.085), .demiBold))
+                        .tracking(0.4)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(width: area * 0.86)
+                }
+            }
+            .frame(width: area)
+            .padding(.leading, spine)
+            .offset(y: -h * 0.06)
+        } else if w >= 16 {
+            RoundedRectangle(cornerRadius: max(0.8, w * 0.03), style: .continuous)
+                .fill(Ink.paper.opacity(0.94))
+                .overlay {
+                    VStack(alignment: .leading, spacing: h * 0.045) {
+                        Capsule().fill(Ink.soft.opacity(0.7)).frame(height: max(0.8, h * 0.028))
+                        Capsule().fill(Ink.faint).frame(width: area * 0.34, height: max(0.8, h * 0.028))
+                    }
+                    .padding(.horizontal, area * 0.1)
+                }
+                .frame(width: area * 0.64, height: h * 0.2)
+                .padding(.leading, spine)
+                .offset(y: -h * 0.12)
+        }
+    }
+}
+
+/// 끝이 V 자로 파인 가름끈
+private struct SettingsRibbon: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.midX, y: r.maxY - r.width * 0.55))
+        p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// 새 책의 이름과 표지 색 (아직 쓰지 않은 색부터)
+private enum SettingsBookDefaults {
+    static func name(_ names: [String]) -> String {
+        let base = "새 플래너"
+        guard names.contains(base) else { return base }
+        var n = 2
+        while names.contains("\(base) \(n)") { n += 1 }
+        return "\(base) \(n)"
+    }
+
+    static func cover(_ used: [Int]) -> Int {
+        ColorConcept.all.first { !used.contains($0.id) }?.id ?? ColorConcept.all[used.count % ColorConcept.all.count].id
+    }
+}
+
+/// 받침에 따라 ‘을/를’, ‘으로/로’ 같은 조사를 고른다 (한글·숫자로 끝나지 않으면 둘 다 적는다)
+private enum SettingsJosa {
+    /// 0–9 를 읽었을 때의 받침 (영 ㅇ, 일 ㄹ, 이, 삼 ㅁ, 사, 오, 육 ㄱ, 칠 ㄹ, 팔 ㄹ, 구)
+    private static let digitBatchim: [Character: UInt32] = ["0": 21, "1": 8, "2": 0, "3": 16, "4": 0,
+                                                            "5": 0, "6": 1, "7": 8, "8": 8, "9": 0]
+
+    static func pick(_ word: String, _ withBatchim: String, _ without: String) -> String {
+        switch batchim(word) {
+        case .some(0): without
+        case .some: withBatchim
+        case .none: "\(withBatchim)(\(without))"
+        }
+    }
+
+    /// ‘으로/로’ (ㄹ 받침 뒤에도 ‘로’)
+    static func ro(_ word: String) -> String {
+        switch batchim(word) {
+        case .some(0), .some(8): "로"
+        case .some: "으로"
+        case .none: "(으)로"
+        }
+    }
+
+    /// 마지막 글자의 받침 번호 (0 = 없음, 8 = ㄹ). 한글·숫자가 아니면 nil
+    private static func batchim(_ word: String) -> UInt32? {
+        guard let last = word.trimmingCharacters(in: .whitespaces).last else { return 0 }
+        if let d = digitBatchim[last] { return d }
+        guard let s = last.unicodeScalars.first, (0xAC00...0xD7A3).contains(s.value) else { return nil }
+        return (s.value - 0xAC00) % 28
+    }
+}
+
+// MARK: 만들기 / 편집 시트
+
+private struct SettingsBookEditor: View {
+    /// nil 이면 새로 만든다
+    let book: BookInfo?
+
+    @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String
+    @State private var start: Date
+    @State private var hasEnd: Bool
+    @State private var end: Date
+    @State private var cover: Int
+    /// 저장은 한 번만 (Return 이 겹쳐 눌려도 책이 두 권 생기지 않게)
+    @State private var saved = false
+    @FocusState private var nameFocused: Bool
+
+    init(book: BookInfo?, suggestedName: String, suggestedCover: Int) {
+        self.book = book
+        let start = Dates.day(book?.start ?? Date())
+        _name = State(initialValue: book?.name ?? suggestedName)
+        _start = State(initialValue: start)
+        _hasEnd = State(initialValue: book?.end != nil)
+        _end = State(initialValue: book?.end.map(Dates.day) ?? SettingsBookPreset.defaultEnd(from: start))
+        _cover = State(initialValue: book?.cover ?? suggestedCover)
+    }
+
+    private var isNew: Bool { book == nil }
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var nameMissing: Bool { trimmedName.isEmpty }
+    private var endTooEarly: Bool { hasEnd && Dates.day(end) < Dates.day(start) }
+    private var valid: Bool { !nameMissing && !endTooEarly }
+    private var sameName: Bool {
+        store.books.contains { $0.id != book?.id && $0.name.trimmingCharacters(in: .whitespaces) == trimmedName }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 20) {
+                SettingsBookCover(cover: cover, width: 76, title: nameMissing ? "이름 없음" : trimmedName, caption: coverCaption)
+                    .animation(.snappy(duration: 0.2), value: cover)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(isNew ? "새 플래너 만들기" : "플래너 편집")
+                        .font(.system(size: 18, weight: .bold))
+                    Text(isNew ? "플래너 한 권은 시작일부터 한 장씩 넘겨 쓰는 책이에요. 만들면 바로 펼쳐져요."
+                               : "이름, 기간, 표지 색을 바꿔요. 적어 둔 기록은 그대로 남아요.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.bottom, 6)
+
+            Form {
+                Section {
+                    LabeledContent {
+                        TextField("이름", text: $name, prompt: Text("예: 2026 다이어리"))
+                            .labelsHidden()
+                            .multilineTextAlignment(.leading)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 230)
+                            .focused($nameFocused)
+                            .onSubmit(save)
+                    } label: {
+                        if nameMissing {
+                            SettingsFieldLabel(title: "이름", detail: "이름을 적어 주세요", tone: .error)
+                        } else if sameName {
+                            SettingsFieldLabel(title: "이름", detail: "같은 이름의 플래너가 이미 있어요", tone: .warning)
+                        } else {
+                            SettingsFieldLabel(title: "이름", detail: "표지와 팔레트에 적혀요")
+                        }
+                    }
+                    HStack(spacing: 12) {
+                        SettingsFieldLabel(title: "표지 색", detail: ColorConcept.of(cover).name)
+                        Spacer(minLength: 8)
+                        SettingsCoverPicker(selection: $cover)
+                    }
+                }
+
+                Section {
+                    LabeledContent {
+                        SettingsDateButton(date: $start)
+                    } label: {
+                        SettingsFieldLabel(title: "시작일", detail: "첫 장이 되는 날 · 꼭 정해요")
+                    }
+                    Toggle(isOn: $hasEnd.animation(.snappy(duration: 0.2))) {
+                        SettingsFieldLabel(title: "종료일 정하기", detail: "정하지 않으면 끝없이 이어져요")
+                    }
+                    if hasEnd {
+                        LabeledContent {
+                            SettingsDateButton(date: $end, from: start)
+                        } label: {
+                            if endTooEarly {
+                                SettingsFieldLabel(title: "종료일", detail: "시작일과 같거나 그 뒤여야 해요", tone: .error)
+                            } else {
+                                SettingsFieldLabel(title: "종료일", detail: "마지막 장이 되는 날")
+                            }
+                        }
+                        LabeledContent {
+                            HStack(spacing: 5) {
+                                ForEach(SettingsBookPreset.allCases) { p in
+                                    let target = p.end(from: start)
+                                    SettingsChip(title: p.title, on: !endTooEarly && Dates.day(end) == target) {
+                                        withAnimation(.snappy(duration: 0.2)) { end = target }
+                                    }
+                                    .help("종료일: \(SettingsDateButton.format.string(from: target))")
+                                }
+                            }
+                        } label: {
+                            Text("빠르게 정하기")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SettingsFootnote(text: rangeSummary)
+                        if let outside = outsideWarning {
+                            Label {
+                                Text(outside).fixedSize(horizontal: false, vertical: true)
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                            }
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+            HStack(spacing: 8) {
+                Spacer()
+                Button("취소", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(isNew ? "만들고 펼치기" : "저장", action: save)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!valid)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+        .frame(width: 520, height: sheetHeight)
+        .onAppear { if isNew { nameFocused = true } }
+    }
+
+    /// 내용에 맞춘 시트 높이 (종료일 줄, 기간 밖 기록 안내가 있을 때 늘어난다)
+    private var sheetHeight: CGFloat {
+        var h: CGFloat = 470
+        if hasEnd { h += 90 }
+        if outsideWarning != nil { h += 36 }
+        return h
+    }
+
+    /// 표지 아래 연도: "2026" · "2026 – 2027"
+    private var coverCaption: String {
+        let a = Dates.comp(start).year ?? 0
+        guard hasEnd, !endTooEarly, let b = Dates.comp(end).year, b != a else { return "\(a)" }
+        return "\(a) – \(b)"
+    }
+
+    private var rangeSummary: String {
+        let s = SettingsBookPreset.short.string(from: start)
+        guard hasEnd else {
+            return "\(s) 이전으로는 넘어가지 않아요. 종료일이 없으니 앞으로는 끝없이 계속 넘어가요."
+        }
+        guard !endTooEarly else { return "시작일 이전으로는 넘어가지 않고, 종료일에서 멈춰요." }
+        let e = SettingsBookPreset.short.string(from: end)
+        return "\(s)부터 \(e)까지, \(Dates.daysBetween(start, end) + 1)일 동안만 넘어가요."
+    }
+
+    /// 펼친 책의 기간을 줄여서 기록이 있는 날이 밖으로 나가면 알려 준다 (기록은 지우지 않는다)
+    private var outsideWarning: String? {
+        guard let book, book.id == store.activeBook?.id, !endTooEarly else { return nil }
+        var probe = book
+        probe.start = Dates.day(start)
+        probe.end = hasEnd ? Dates.day(end) : nil
+        let n = store.data.days.keys.compactMap(Dates.parse).filter { !probe.contains($0) }.count
+        guard n > 0 else { return nil }
+        return "기록이 있는 날 \(n)일이 새 기간 밖에 있어요. 기록은 지워지지 않지만, 기간을 다시 넓히기 전까지는 그 장을 펼칠 수 없어요."
+    }
+
+    private func save() {
+        guard valid, !saved else { return }
+        saved = true
+        let n = trimmedName
+        let s = Dates.day(start)
+        let e = hasEnd ? Dates.day(end) : nil
+        if let book {
+            store.updateBook(book.id) { b in
+                b.name = n
+                b.start = s
+                b.end = e
+                b.cover = cover
+            }
+            if book.id == store.activeBook?.id { SettingsBookRange.settle(state) }
+        } else {
+            store.createBook(name: n, start: s, end: e, cover: cover)
+        }
+        dismiss()
+    }
+}
+
+/// 필드 이름 + 작은 설명 (고쳐야 할 때는 빨강, 알아 두면 좋을 때는 주황)
+private struct SettingsFieldLabel: View {
+    enum Tone { case normal, warning, error }
+
+    let title: String
+    let detail: String
+    var tone: Tone = .normal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+            HStack(spacing: 3) {
+                if tone != .normal {
+                    Image(systemName: tone == .error ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                }
+                Text(detail)
+            }
+            .font(.system(size: 11, weight: tone == .normal ? .regular : .medium))
+            .foregroundStyle(tone == .error ? AnyShapeStyle(Color.red)
+                             : tone == .warning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+        }
+    }
+}
+
+/// 작은 알약 모양 선택 버튼
+private struct SettingsChip: View {
+    let title: String
+    let on: Bool
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundStyle(on ? Color.white : Color.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(on ? Color.accentColor : Color.primary.opacity(hover ? 0.11 : 0.07)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// 표지 색 고르기 (컬러 컨셉의 강조색)
+private struct SettingsCoverPicker: View {
+    @Binding var selection: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(ColorConcept.all) { c in
+                let on = c.id == selection
+                Button { selection = c.id } label: {
+                    SettingsBookCover(cover: c.id, width: 17)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(on ? c.accent : .clear, lineWidth: 2)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(c.name)
+                .accessibilityLabel("표지 색 \(c.name)")
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+    }
+}
+
+/// 날짜 한 칸: 눌러서 달력에서 고른다 (글자 칸이 아니라서 플래너의 숫자·화살표 단축키와 부딪히지 않는다)
+private struct SettingsDateButton: View {
+    @Binding var date: Date
+    /// 이 날보다 앞은 고를 수 없다
+    var from: Date? = nil
+    @State private var picking = false
+
+    static let format: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy년 M월 d일 (E)"
+        return f
+    }()
+
+    var body: some View {
+        Button { picking = true } label: {
+            Label(Self.format.string(from: date), systemImage: "calendar")
+                .monospacedDigit()
+                .frame(minWidth: 158, alignment: .leading)
+        }
+        .popover(isPresented: $picking, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 8) {
+                calendar
+                    .labelsHidden()
+                    .datePickerStyle(.graphical)
+                    .environment(\.locale, Locale(identifier: "ko_KR"))
+                    .environment(\.calendar, Dates.cal)
+                let today = Dates.day(Date())
+                Button("오늘") { date = today }
+                    .controlSize(.small)
+                    .disabled((from.map { today < Dates.day($0) } ?? false) || Dates.day(date) == today)
+            }
+            .padding(12)
+        }
+        .help("날짜 고르기")
+    }
+
+    @ViewBuilder private var calendar: some View {
+        let pick = Binding(get: { date }, set: { date = Dates.day($0) })
+        if let from {
+            DatePicker("날짜", selection: pick, in: Dates.day(from)..., displayedComponents: .date)
+        } else {
+            DatePicker("날짜", selection: pick, displayedComponents: .date)
+        }
+    }
+}
+
+/// 종료일 빠르게 정하기 (시작일부터)
+private enum SettingsBookPreset: String, CaseIterable, Identifiable {
+    case month1, month3, month6, year1, yearEnd
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .month1: "1개월"
+        case .month3: "3개월"
+        case .month6: "6개월"
+        case .year1: "1년"
+        case .yearEnd: "올해 말"
+        }
+    }
+
+    /// 시작일을 첫날로 세어 그 기간의 마지막 날
+    func end(from start: Date) -> Date {
+        let s = Dates.day(start)
+        let months: Int
+        switch self {
+        case .month1: months = 1
+        case .month3: months = 3
+        case .month6: months = 6
+        case .year1: months = 12
+        case .yearEnd:
+            let y = Dates.comp(s).year ?? 2026
+            return Dates.cal.date(from: DateComponents(year: y, month: 12, day: 31)).map(Dates.day) ?? s
+        }
+        let next = Dates.cal.date(byAdding: .month, value: months, to: s) ?? s
+        // 1월 31일 + 1개월처럼 달 끝에 맞춰 잘린 날은 그 달의 마지막 날까지 쓴다
+        let clipped = Dates.comp(next).day != Dates.comp(s).day
+        return max(s, clipped ? Dates.day(next) : Dates.add(days: -1, to: next))
+    }
+
+    /// 종료일을 처음 켰을 때: 올해 말까지 한 달 넘게 남았으면 올해 말, 아니면 1년
+    static func defaultEnd(from start: Date) -> Date {
+        let ye = SettingsBookPreset.yearEnd.end(from: start)
+        return Dates.daysBetween(start, ye) >= 30 ? ye : SettingsBookPreset.year1.end(from: start)
+    }
+
+    static let short: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy. M. d."
+        return f
+    }()
+}
+
+/// 펼친 책의 기간을 바꾼 뒤: 보던 장이 새 기간 밖이면 가장 가까운 장으로 옮기고, 창 제목(책 이름)도 새로 적는다
+@MainActor
+private enum SettingsBookRange {
+    static func settle(_ state: AppState) {
+        let d = state.dayRange, w = state.weekRange
+        let day = min(max(state.dayIndex, d.lowerBound), d.upperBound)
+        let week = min(max(state.weekIndex, w.lowerBound), w.upperBound)
+        if day != state.dayIndex || week != state.weekIndex {
+            state.endEditing()
+            state.dayIndex = day
+            state.weekIndex = week
+        }
+        state.onPageChange?()
     }
 }
 
@@ -820,61 +1671,65 @@ extension SettingsShortcutRow where Detail == EmptyView {
 
 private struct SettingsDataPane: View {
     @EnvironmentObject private var store: PlannerStore
-    @State private var exported: URL?
-    @State private var exportError: String?
+    @EnvironmentObject private var state: AppState
+    @State private var result: SettingsDataResult?
 
     private static let isDemo = CommandLine.arguments.contains("--demo")
 
     var body: some View {
-        let file = SettingsDataFile.url
+        let book = store.activeBook
+        let bookName = book?.name ?? "펼친 플래너"
         Form {
             Section {
-                LabeledContent("위치") {
-                    Text(SettingsDataFile.displayPath(file))
-                        .font(.callout.monospaced())
+                LabeledContent("저장 폴더") {
+                    if let folder = store.folder {
+                        Text(SettingsDataFile.displayPath(folder))
+                            .font(.callout.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.trailing)
+                    } else {
+                        Text("저장하지 않음").foregroundStyle(.secondary)
+                    }
+                }
+                LabeledContent("플래너 파일") {
+                    Text("books 폴더에 한 권당 하나씩 · \(store.books.count)권")
                         .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
                 }
                 TimelineView(.periodic(from: .now, by: 5)) { _ in
                     LabeledContent("마지막 저장") {
-                        Text(SettingsDataFile.summary(file))
+                        Text(SettingsDataFile.summary(store.activeBookURL))
                             .foregroundStyle(.secondary)
                     }
                 }
                 if Self.isDemo {
-                    Label("데모 데이터로 실행 중이라 이 파일에는 저장하지 않아요.", systemImage: "info.circle")
+                    Label("데모 데이터로 실행 중이라 파일에는 저장하지 않아요.", systemImage: "info.circle")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 8) {
-                    Button { SettingsDataFile.reveal(file) } label: { Label("Finder에서 보기", systemImage: "folder") }
+                    Button { store.folder.map(SettingsDataFile.reveal) } label: { Label("Finder에서 보기", systemImage: "folder") }
+                        .disabled(store.folder == nil)
+                        .help("플래너 파일이 든 폴더를 Finder 에서 열어요")
                     Button { export() } label: { Label("백업 내보내기…", systemImage: "square.and.arrow.up") }
-                    Spacer(minLength: 8)
-                    if let exported {
-                        Button { NSWorkspace.shared.activateFileViewerSelecting([exported]) } label: {
-                            Label("\(exported.lastPathComponent) 저장됨", systemImage: "checkmark.circle.fill")
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.green)
-                        .help("Finder 에서 백업 파일 보기")
-                    } else if let exportError {
-                        Label(exportError, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .lineLimit(1)
-                    }
+                        .disabled(book == nil)
+                        .help("지금 펼친 ‘\(bookName)’\(SettingsJosa.pick(bookName, "을", "를")) 파일 하나로 저장해요")
+                    Button { importBackup() } label: { Label("백업 가져오기…", systemImage: "square.and.arrow.down") }
+                        .help("백업 파일을 새 플래너 한 권으로 되살려요")
+                    Spacer(minLength: 0)
+                }
+                if let result {
+                    SettingsDataResultRow(result: result)
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 18) {
                     SettingsPaneHeader(pane: .data)
-                    SettingsSectionTitle(title: "데이터 파일")
+                    SettingsSectionTitle(title: "데이터 폴더")
                 }
             } footer: {
-                SettingsFootnote(text: "복원하려면 앱을 종료한 뒤 백업 파일을 이 위치의 planner.json 으로 바꿔 넣으세요.")
+                SettingsFootnote(text: "백업 내보내기는 지금 펼친 ‘\(bookName)’ 한 권을 파일 하나로 저장해요. "
+                                 + "백업 가져오기는 그 파일을 새 플래너로 되살리고, 지금 있는 플래너는 그대로 둬요.")
             }
 
             Section {
@@ -883,7 +1738,24 @@ private struct SettingsDataPane: View {
                 LabeledContent("적은 할 일", value: "\(s.tasks)개")
                 LabeledContent("칠한 시간", value: s.hours)
             } header: {
-                SettingsSectionTitle(title: "담긴 기록")
+                SettingsSectionTitle(title: "‘\(bookName)’에 담긴 기록")
+            }
+
+            Section {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("처음 사용 안내")
+                        Text("플래너 만들기부터 넘기기, 칠하기까지 처음에 본 안내를 다시 보여 줘요.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Button("튜토리얼 다시 보기") { replayTutorial() }
+                }
+                .padding(.vertical, 2)
+            } header: {
+                SettingsSectionTitle(title: "도움말")
             }
 
             Section {
@@ -895,24 +1767,53 @@ private struct SettingsDataPane: View {
         }
     }
 
+    /// 펼친 책의 저장 파일을 그대로 복사한다 (메모리 전용이면 지금 내용을 적는다)
     private func export() {
+        guard let book = store.activeBook else { return }
         store.saveNow()
         let panel = NSSavePanel()
         panel.title = "백업 내보내기"
+        panel.message = "지금 펼친 ‘\(book.name)’ 플래너를 파일 하나로 저장해요."
         panel.prompt = "내보내기"
-        panel.nameFieldStringValue = "PaperPlanner 백업 \(Dates.key(Date())).json"
+        panel.nameFieldStringValue = SettingsDataFile.backupName(book)
         panel.allowedContentTypes = [.json]
         panel.canCreateDirectories = true
-        let finish = { (response: NSApplication.ModalResponse) in
-            guard response == .OK, let dest = panel.url else { return }
+        present(panel) { dest in
             do {
-                try SettingsDataFile.encode(store.data).write(to: dest, options: .atomic)
-                exported = dest
-                exportError = nil
+                if let src = store.activeBookURL, FileManager.default.fileExists(atPath: src.path) {
+                    try Data(contentsOf: src).write(to: dest, options: .atomic)
+                } else {
+                    try SettingsDataFile.encode(store.data).write(to: dest, options: .atomic)
+                }
+                result = .exported(dest)
             } catch {
-                exported = nil
-                exportError = "저장하지 못했어요: \(error.localizedDescription)"
+                result = .failed("저장하지 못했어요: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// 백업 파일을 새 책으로 만들어 펼친다. 이미 있는 책은 건드리지 않는다.
+    private func importBackup() {
+        let panel = NSOpenPanel()
+        panel.title = "백업 가져오기"
+        panel.message = "백업 파일을 새 플래너로 되살려요. 지금 있는 플래너는 그대로예요."
+        panel.prompt = "가져오기"
+        panel.allowedContentTypes = [.json] + [UTType(filenameExtension: "backup")].compactMap { $0 }
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        present(panel) { src in
+            if let name = SettingsDataFile.restore(src, into: store) {
+                result = .imported(name)
+            } else {
+                result = .failed("Paper Planner 백업 파일이 아니라서 가져오지 못했어요.")
+            }
+        }
+    }
+
+    private func present(_ panel: NSSavePanel, _ done: @escaping (URL) -> Void) {
+        let finish = { (response: NSApplication.ModalResponse) in
+            guard response == .OK, let url = panel.url else { return }
+            done(url)
         }
         if let w = SettingsWindowController.shared.window, w.isVisible {
             panel.beginSheetModal(for: w) { r in MainActor.assumeIsolated { finish(r) } }
@@ -920,16 +1821,53 @@ private struct SettingsDataPane: View {
             finish(panel.runModal())
         }
     }
+
+    private func replayTutorial() {
+        UserDefaults.standard.set(false, forKey: "onboardingDone")
+        // 안내가 플래너 창과 팔레트를 가리키므로, 설정 창은 닫고 비켜 준다
+        SettingsWindowController.shared.window?.close()
+        OnboardingController.shared.show(store: store, state: state, completion: {})
+    }
 }
 
-/// 데이터 파일 위치 (PlannerStore 와 같은 경로) 와 정보 표시용 계산
+private enum SettingsDataResult: Equatable {
+    case exported(URL)
+    case imported(String)
+    case failed(String)
+}
+
+/// 내보내기 / 가져오기 결과 한 줄
+private struct SettingsDataResultRow: View {
+    let result: SettingsDataResult
+
+    var body: some View {
+        switch result {
+        case .exported(let url):
+            Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: {
+                Label("\(url.lastPathComponent) 저장됨", systemImage: "checkmark.circle.fill")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.green)
+            .help("Finder 에서 백업 파일 보기")
+        case .imported(let name):
+            Label("‘\(name)’\(SettingsJosa.ro(name)) 가져와서 펼쳤어요. 시작일은 첫 기록 날로 정했어요.", systemImage: "checkmark.circle.fill")
+                .font(.callout)
+                .foregroundStyle(.green)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.callout)
+                .foregroundStyle(.red)
+                .lineLimit(2)
+        }
+    }
+}
+
+/// 데이터 폴더 표시, 백업 파일 이름, 정보 표시용 계산
 @MainActor
 private enum SettingsDataFile {
-    static var url: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("PaperPlanner", isDirectory: true)
-            .appendingPathComponent("planner.json")
-    }
+    private static let backupPrefix = "PaperPlanner 백업 - "
 
     static func displayPath(_ url: URL) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -943,20 +1881,54 @@ private enum SettingsDataFile {
         return f
     }()
 
-    static func summary(_ url: URL) -> String {
-        guard let a = try? FileManager.default.attributesOfItem(atPath: url.path) else { return "아직 저장된 파일이 없어요" }
+    static func summary(_ url: URL?) -> String {
+        guard let url, let a = try? FileManager.default.attributesOfItem(atPath: url.path) else { return "아직 저장된 파일이 없어요" }
         let size = ByteCountFormatter.string(fromByteCount: (a[.size] as? NSNumber)?.int64Value ?? 0, countStyle: .file)
         guard let d = a[.modificationDate] as? Date else { return size }
         return "\(size) · \(savedFormat.string(from: d))"
     }
 
-    /// 파일이 있으면 파일을, 없으면 있는 곳까지 올라간 폴더를 Finder 에서 연다
-    static func reveal(_ url: URL) {
-        var target = url
-        while !FileManager.default.fileExists(atPath: target.path), target.pathComponents.count > 1 {
-            target.deleteLastPathComponent()
+    /// 폴더를 Finder 창으로 연다
+    static func reveal(_ folder: URL) {
+        NSWorkspace.shared.open(folder)
+    }
+
+    /// "PaperPlanner 백업 - 내 플래너 2026-09-29.json"
+    static func backupName(_ book: BookInfo) -> String {
+        let safe = book.name
+            .components(separatedBy: CharacterSet(charactersIn: "/:\\\n\r\t"))
+            .joined(separator: "-")
+            .trimmingCharacters(in: .whitespaces)
+        return "\(backupPrefix)\(safe.isEmpty ? "플래너" : safe) \(Dates.key(Date())).json"
+    }
+
+    /// 백업 파일 이름에서 책 이름을 되찾는다
+    static func bookName(from url: URL) -> String? {
+        var base = url.deletingPathExtension().lastPathComponent
+        guard base.hasPrefix(backupPrefix) else { return nil }
+        base.removeFirst(backupPrefix.count)
+        if let r = base.range(of: #"\s*\d{4}-\d{2}-\d{2}( \d+)?$"#, options: .regularExpression) { base.removeSubrange(r) }
+        base = base.trimmingCharacters(in: .whitespaces)
+        return base.isEmpty ? nil : base
+    }
+
+    /// 백업 파일을 새 책으로 만들어 펼친다 (이미 있는 책은 건드리지 않는다). 시작일은 가장 이른 기록 날.
+    /// 되살린 책의 이름을 돌려주고, 플래너 백업이 아니면 nil.
+    static func restore(_ src: URL, into store: PlannerStore) -> String? {
+        guard let raw = try? Data(contentsOf: src), var data = try? decode(raw) else { return nil }
+        for (k, r) in data.days where PlannerStore.grouped(r.tasks) != r.tasks {
+            data.days[k]?.tasks = PlannerStore.grouped(r.tasks)
         }
-        NSWorkspace.shared.activateFileViewerSelecting([target])
+        var name = bookName(from: src) ?? "가져온 플래너"
+        if store.books.contains(where: { $0.name == name }) { name += " (백업)" }
+        let today = Dates.day(Date())
+        let first = (Array(data.days.keys) + Array(data.weeks.keys)).compactMap(Dates.parse).min()
+        store.createBook(name: name, start: min(first ?? today, today), end: nil,
+                         cover: SettingsBookDefaults.cover(store.books.map(\.cover)))
+        store.data = data
+        store.scheduleSave()
+        store.saveNow()
+        return name
     }
 
     static func encode(_ data: PlannerData) throws -> Data {
@@ -964,6 +1936,12 @@ private enum SettingsDataFile {
         enc.dateEncodingStrategy = .iso8601
         enc.outputFormatting = [.sortedKeys, .prettyPrinted]
         return try enc.encode(data)
+    }
+
+    static func decode(_ raw: Data) throws -> PlannerData {
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        return try dec.decode(PlannerData.self, from: raw)
     }
 
     static func stats(_ store: PlannerStore) -> (days: Int, tasks: Int, hours: String) {
@@ -1020,9 +1998,36 @@ private struct SettingsPaneHeader: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if pane.perBook {
+                    SettingsBookScope()
+                        .padding(.top, 4)
+                }
             }
         }
         .padding(.top, 4)
+    }
+}
+
+/// 이 설정이 어느 책(펼친 플래너)의 것인지: "▮ 지금 펼친 ‘내 플래너’에만 적용돼요"
+private struct SettingsBookScope: View {
+    @EnvironmentObject private var store: PlannerStore
+
+    var body: some View {
+        if let b = store.activeBook {
+            HStack(spacing: 6) {
+                SettingsBookCover(cover: b.cover, width: 10)
+                Text("지금 펼친 ‘\(b.name)’에만 적용돼요")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 7)
+            .padding(.trailing, 9)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.primary.opacity(0.055)))
+            .help("플래너마다 형광펜, 기본 컬러, D-day 가 따로 있어요. 다른 플래너를 펼치면 그 플래너의 설정이 보여요.")
+        }
     }
 }
 
