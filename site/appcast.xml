@@ -5,16 +5,18 @@
     <link>https://spiralday.com</link>
     <language>ko</language>
     <item>
-      <title>Spiralday 1.0.2</title>
-      <pubDate>Tue, 29 Sep 2026 09:57:02 +0000</pubDate>
-      <sparkle:version>3</sparkle:version>
-      <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+      <title>Spiralday 1.0.3</title>
+      <pubDate>Tue, 29 Sep 2026 14:30:36 +0000</pubDate>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<ul><li>익명 사용 통계: 하루 한 번 앱 버전 · macOS 버전 · 칩 종류 · 언어와 무작위 설치 번호만 보내요. 플래너 기록은 보내지 않고, 설정 → 데이터에서 끌 수 있어요</li>
-<li>개인정보 처리방침 페이지를 만들었어요 (spiralday.com/privacy.html, 메뉴 도움말 → 개인정보 처리방침)</li>
-<li>도움말 메뉴에 GitHub ⭐ 바로가기를 더했어요 (메뉴 도움말 → GitHub에서 ⭐ 주기)</li>
-<li>일주일쯤 쓰면 한 번만 GitHub ⭐ 부탁 창이 떠요. 어느 쪽을 눌러도 다시 뜨지 않아요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.2/Spiralday-1.0.2-macOS.zip" sparkle:edSignature="0plK+MPZK5amFcbqMvfoJ1VAUOltXarYkZoPdlYO3hM+lOnQCox0xQE1tUkx7X0REc6PKkStdhfsjy6OXKjaCA==" length="5097957" type="application/octet-stream"/>
+      <description><![CDATA[<ul><li>D-day 가 모든 날에 똑같이 붙지 않고, 일간 페이지마다 골라 붙여요. 화요일에 붙인 D-day 가 수요일에 저절로 넘어가지 않아요</li>
+<li>일간 페이지의 D-DAY 칸을 누르면 그날의 D-day 를 골라요: 저장한 D-day 에서 고르기 · 새로 만들기 · 어제와 같게 (하루 두 개까지)</li>
+<li>붙인 D-day 는 그날에만 남아요. 다른 날에 다른 것을 붙이거나, 그날 것을 고치거나 떼도 다른 날은 그대로예요</li>
+<li>설정 → D-day 는 ‘저장한 D-day’ 목록이 됐어요. 개수 제한 없이 저장해 두고, 목록에서 고치거나 지워도 이미 붙인 날은 바뀌지 않아요</li>
+<li>팔레트의 D-day 버튼은 일간에서는 보고 있는 날, 주간 · 홈에서는 오늘에 붙여요. 홈의 D-DAY 칸은 오늘 붙인 D-day 를 보여 줘요</li>
+<li>처음 열 때 원래 파일을 백업으로 남긴 뒤, 이미 쓴 날과 오늘에는 지금까지의 D-day 를 그대로 붙여 두어서 전과 똑같이 보여요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.3/Spiralday-1.0.3-macOS.zip" sparkle:edSignature="M14p86IdcOZYALbYnbhUCuvL0WU/d0bNr0wPHcKBP/pcA9ECtOonHvv2pknmqxGYSf3gjYmJcFwgWC1qUjLKAw==" length="5203033" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
