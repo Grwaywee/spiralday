@@ -31,7 +31,8 @@ private enum WK {
     /// MY GOAL │ 목표 — 월요일 왼쪽부터 금요일 오른쪽까지
     static let goalFrame = CGRect(x: margin, y: headTop, width: colX(4) + colW - margin, height: headH)
     static let goalSplit: CGFloat = margin + 130
-    static let flagX: CGFloat = goalSplit + 20
+    /// 목표 글 시작 (앞에 ┌ 강조 표시 자리)
+    static let goalTextX: CGFloat = goalSplit + 34
     /// REVIEW OF THE WEEK │ 별 — 토요일 · 일요일 위, 가운데 세로선은 두 칸 사이
     static let reviewFrame = CGRect(x: colX(5), y: headTop, width: colX(6) + colW - colX(5), height: headH)
     static let reviewSplit: CGFloat = colX(6) - gap / 2
@@ -68,6 +69,11 @@ private enum WK {
     static let minuteSlot = CGRect(x: hX + 9, y: footRule - 40, width: mX - 9 - (hX + 9), height: 44)
 
     static func taskY(_ i: Int) -> CGFloat { dayHeadH + taskH * CGFloat(i) }
+    /// 할 일 줄의 점선 체크 박스 (칸 기준 좌표). 일간과 같은 비율 (줄 높이의 0.57)
+    static func box(_ i: Int) -> CGRect {
+        let s = (taskH * 0.57).rounded()
+        return CGRect(x: markMidX - s / 2, y: taskY(i) + (taskH - s) / 2, width: s, height: s)
+    }
 
     static let weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
     static func weekdayColor(_ i: Int) -> Color { i == 5 ? Ink.saturday : i == 6 ? Ink.red : Ink.soft }
@@ -96,9 +102,8 @@ struct WeeklyPage: View {
         ZStack(alignment: .topLeading) {
             WeeklyForm(u: u).equatable()
 
-            InlineField(text: store.weekField(ws, \.goal), placeholder: "이번 주 목표",
-                        font: Fonts.hand(34 * u), key: "wg|\(Dates.key(ws))")
-                .place(CGRect(x: WK.flagX + 26, y: g.minY - 3, width: g.maxX - 12 - (WK.flagX + 26), height: g.height + 6), u)
+            GoalField(weekStart: ws, u: u)
+                .place(CGRect(x: WK.goalTextX, y: g.minY - 3, width: g.maxX - 24 - WK.goalTextX, height: g.height + 6), u)
 
             Stars(value: store.week(ws).stars, size: 23 * u) { v in store.editWeek(ws) { $0.stars = v } }
                 .place(WK.starsBox.insetBy(dx: 8, dy: 2), u, alignment: .center)
@@ -109,6 +114,46 @@ struct WeeklyPage: View {
             }
         }
         .frame(width: WK.page.width * u, height: WK.page.height * u, alignment: .topLeading)
+    }
+}
+
+// MARK: - Goal (강조 꺾쇠 ┌ … ┘)
+
+/// 이번 주 목표. 글 앞 왼쪽 위에 ┌, 글 끝 오른쪽 아래에 ┘ 를 펜으로 그어 강조한다.
+private struct GoalField: View {
+    let weekStart: Date
+    let u: CGFloat
+    @EnvironmentObject private var store: PlannerStore
+
+    static let font: CGFloat = 34
+
+    var body: some View {
+        let text = store.week(weekStart).goal
+        let w = RuledText.width(text, fontSize: Self.font)
+        GeometryReader { g in
+            let h = g.size.height
+            ZStack(alignment: .topLeading) {
+                InlineField(text: store.weekField(weekStart, \.goal), placeholder: "이번 주 목표",
+                            font: Fonts.hand(Self.font * u), key: "wg|\(Dates.key(weekStart))")
+                if !text.isEmpty {
+                    let arm = 13 * u, lw = 3.2 * u
+                    let top = h * 0.12, bottom = h * 0.9
+                    let endX = min(w * u + 8 * u, g.size.width + 14 * u)
+                    Path { p in
+                        // ┌ 글 앞 왼쪽 위
+                        p.move(to: CGPoint(x: -12 * u, y: top + arm))
+                        p.addLine(to: CGPoint(x: -12 * u, y: top))
+                        p.addLine(to: CGPoint(x: -12 * u + arm, y: top))
+                        // ┘ 글 끝 오른쪽 아래
+                        p.move(to: CGPoint(x: endX, y: bottom - arm))
+                        p.addLine(to: CGPoint(x: endX, y: bottom))
+                        p.addLine(to: CGPoint(x: endX - arm, y: bottom))
+                    }
+                    .stroke(Ink.pen, style: StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round))
+                    .allowsHitTesting(false)
+                }
+            }
+        }
     }
 }
 
@@ -197,8 +242,11 @@ private struct WeekDayColumn: View {
                 .offset(x: WK.tickX * u, y: (y + 11) * u)
         }
 
+        // 한 줄에 다 들어가도록 필요한 만큼 글씨를 줄인다
+        let textW = WK.textEnd - WK.textX - (more > 0 ? 42 : 0)
+        let fit = RuledText.oneLineScale(task?.text ?? "", fontSize: 28, width: textW - 6)
         InlineField(text: store.taskText(d, i, defaultCat: { st.tool >= 0 ? st.tool : nil }),
-                    font: Fonts.hand(30 * u),
+                    font: Fonts.hand(28 * fit * u),
                     key: key,
                     tapKey: task == nil ? "t|\(dk)|\(min(tasks.count, WK.taskLines - 1))" : nil,
                     highlight: task?.mark == .done ? (store.category(task?.cat)?.color ?? store.concept(d).tint) : nil,
@@ -210,8 +258,7 @@ private struct WeekDayColumn: View {
                 // 편집 중에는 글상자 기본 메뉴(복사·붙여넣기)를 가리지 않는다
                 if let task, st.editingKey != key { TaskMenu(date: d, task: task) }
             }
-            .place(CGRect(x: WK.textX, y: y + 3,
-                          width: WK.textEnd - WK.textX - (more > 0 ? 42 : 0), height: WK.taskH - 4), u)
+            .place(CGRect(x: WK.textX, y: y + 3, width: textW, height: WK.taskH - 4), u)
 
         if more > 0 {
             Text("+\(more)")
@@ -228,11 +275,13 @@ private struct WeekDayColumn: View {
         }
 
         if let task {
-            MarkButton(mark: task.mark, size: WK.markSize * u, color: store.concept(d).accent,
-                       lineWidth: max(1.6, 3.6 * u), showsPlaceholder: true) {
+            // 일간과 같은 펜 표시: 점선 박스 한가운데, 그날 컬러, 같은 굵기 비율
+            let b = WK.box(i)
+            MarkButton(mark: task.mark, size: b.width * 0.98 * u, color: store.concept(d).accent,
+                       lineWidth: b.width * 0.133 * u, showsPlaceholder: false) {
                 store.cycleMark(d, task.id)
             }
-            .offset(x: (WK.markMidX - WK.markSize / 2) * u, y: (y + (WK.taskH - WK.markSize) / 2 + 1) * u)
+            .position(x: b.midX * u, y: b.midY * u)
         }
     }
 
@@ -326,20 +375,6 @@ private struct WeeklyForm: View, Equatable {
         line(ctx, CGPoint(x: WK.goalSplit, y: g.minY), CGPoint(x: WK.goalSplit, y: g.maxY), box, bw)
         t.goal.draw(ctx, at: CGPoint(x: (g.minX + WK.goalSplit) / 2, y: g.midY), anchor: .center)
 
-        // 분홍 깃발 (깃대 + 깃발)
-        let x = WK.flagX, top = g.minY + 8, bottom = g.maxY - 7
-        var pole = Path()
-        pole.addRoundedRect(in: CGRect(x: x, y: top, width: 3, height: bottom - top), cornerSize: CGSize(width: 1.5, height: 1.5))
-        ctx.fill(pole, with: .color(Ink.pen))
-        var flag = Path()
-        flag.move(to: CGPoint(x: x + 2, y: top))
-        flag.addLine(to: CGPoint(x: x + 15, y: top))
-        flag.addLine(to: CGPoint(x: x + 11.5, y: top + 5.5))
-        flag.addLine(to: CGPoint(x: x + 15, y: top + 11))
-        flag.addLine(to: CGPoint(x: x + 2, y: top + 11))
-        flag.closeSubpath()
-        ctx.fill(flag, with: .color(Ink.pen))
-
         // [REVIEW OF THE WEEK │ ★★★★★]
         let r = WK.reviewFrame
         ctx.stroke(Path(r), with: .color(box), lineWidth: bw)
@@ -365,6 +400,21 @@ private struct WeeklyForm: View, Equatable {
         for k in 1...WK.taskLines {
             let y = WK.taskY(k)
             line(c, CGPoint(x: left, y: y), CGPoint(x: right, y: y), Ink.rule, 1)
+        }
+        // 일간과 같은 점선 체크 박스 (한 변에 점 7개)
+        for k in 0..<WK.taskLines {
+            let b = WK.box(k)
+            let step = b.width / 6
+            let dot: CGFloat = 1.7
+            var p = Path()
+            for j in 0...6 {
+                let o = CGFloat(j) * step
+                for pt in [CGPoint(x: b.minX + o, y: b.minY), CGPoint(x: b.minX + o, y: b.maxY),
+                           CGPoint(x: b.minX, y: b.minY + o), CGPoint(x: b.maxX, y: b.minY + o)] {
+                    p.addEllipse(in: CGRect(x: pt.x - dot / 2, y: pt.y - dot / 2, width: dot, height: dot))
+                }
+            }
+            c.fill(p, with: .color(Ink.dot))
         }
 
         // 타임테이블: 가로 줄 · 10분 점선 · 시간 칸 구분선 · 시간 숫자

@@ -21,6 +21,20 @@ enum RuledText {
         }
     }
 
+    /// 한 줄로 썼을 때의 폭
+    static func width(_ text: String, fontSize: CGFloat) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        let font = CTFontCreateWithName(Fonts.handName as CFString, fontSize * Fonts.handScale, nil)
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+        return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+    }
+
+    /// 한 줄에 다 들어가도록 줄인 비율 (1 이하)
+    static func oneLineScale(_ text: String, fontSize: CGFloat, width: CGFloat, minScale: CGFloat = 0.45) -> CGFloat {
+        let w = self.width(text, fontSize: fontSize)
+        return w <= width ? 1 : max(minScale, width / w)
+    }
+
     /// 글자 한 줄의 자연스러운 높이 (디자인 단위)
     static func lineHeight(fontSize: CGFloat) -> CGFloat {
         guard let f = NSFont(name: Fonts.handName, size: fontSize * Fonts.handScale) else { return fontSize * 1.2 }
