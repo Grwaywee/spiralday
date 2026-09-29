@@ -1,20 +1,21 @@
 #!/bin/zsh
-# Spiralday.app 을 만든다
-#   ./build.sh            이 Mac 용 (빠름)
-#   ./build.sh --release  Apple Silicon + Intel 유니버설 + 공증, dist/ 에 설치용 DMG 와 업데이트용 zip
+# Spiralday.app 을 만든다 → build/Spiralday.app
+#   ./build.sh                 이 Mac 용 (애드혹 서명, 빠름)
+#   UNIVERSAL=1 ./build.sh     Apple Silicon + Intel 유니버설
+#   SIGN_ID="…" ./build.sh     그 인증서로 서명 (Hardened Runtime). SIGN_TIMESTAMP=1 이면 보안 타임스탬프도 붙인다
 set -e
 cd "$(dirname "$0")"
 # 새 버전을 낼 때: VERSION 을 올리고 BUILD 를 1 씩 늘린다 (Sparkle 은 BUILD 로 새 버전을 판단한다)
 VERSION="1.0.2"
 BUILD=3
-RELEASE=0
-[ "$1" = "--release" ] && RELEASE=1
 
-if [ $RELEASE = 1 ]; then
-  swift build -c release --arch arm64 --arch x86_64
+# 빌드한 컴퓨터의 경로가 실행 파일에 남지 않게 소스 경로를 저장소 기준(.)으로 적는다
+FLAGS=(-c release -Xswiftc -file-prefix-map -Xswiftc "$PWD=.")
+if [ "$UNIVERSAL" = 1 ]; then
+  swift build $FLAGS --arch arm64 --arch x86_64
   PRODUCTS=.build/apple/Products/Release
 else
-  swift build -c release
+  swift build $FLAGS
   PRODUCTS=.build/release
 fi
 BIN=$PRODUCTS/Spiralday
@@ -22,6 +23,12 @@ APP="build/Spiralday.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Spiralday"
+# 디버그 정보는 build/Spiralday.dSYM 으로 따로 빼고 실행 파일에서는 지운다
+# (경로를 바꿔 적어서 clang 모듈 .pcm 을 못 찾는다는 경고가 나오는데 크래시 기호 풀이와는 상관없어 로그로만 남긴다)
+rm -rf build/Spiralday.dSYM
+dsymutil "$APP/Contents/MacOS/Spiralday" -o build/Spiralday.dSYM 2> build/dsymutil-log.txt \
+  || { cat build/dsymutil-log.txt; exit 1; }
+strip -S -x "$APP/Contents/MacOS/Spiralday"
 # 원격 업데이트 프레임워크
 mkdir -p "$APP/Contents/Frameworks"
 SPARKLE=$PRODUCTS/Sparkle.framework
@@ -70,11 +77,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-# 서명: 이 Mac 에 Developer ID 인증서가 있으면 그것으로 (Hardened Runtime, 공증 가능), 없으면 애드혹
-SIGN_ID=${SIGN_ID:-$(security find-identity -v -p codesigning | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')}
+# 서명: SIGN_ID 가 있으면 그 인증서로 (Hardened Runtime), 없으면 애드혹
 if [ -n "$SIGN_ID" ]; then
   TS=--timestamp=none
-  [ $RELEASE = 1 ] && TS=--timestamp
+  [ "$SIGN_TIMESTAMP" = 1 ] && TS=--timestamp
   sign() { codesign --force --options runtime $TS -s "$SIGN_ID" "$@" }
   # 안쪽부터 바깥으로 (Sparkle 문서의 순서)
   FW="$APP/Contents/Frameworks/Sparkle.framework"
@@ -85,55 +91,7 @@ if [ -n "$SIGN_ID" ]; then
   sign "$FW"
   sign "$APP"
 else
-  [ $RELEASE = 1 ] && { echo "✗ 배포판은 Developer ID Application 인증서로 서명해야 해요"; exit 1; }
   codesign --force --deep -s - "$APP"
 fi
 codesign --verify --deep --strict "$APP"
 echo "✓ $APP  (${SIGN_ID:-애드혹 서명})"
-
-# 공증: Apple 에 제출 → 통과하면 티켓을 붙인다 (staple)
-# 자격 증명은 키체인 프로필 "spiralday" — 한 번만 만들어 두면 된다:
-#   
-NOTARY=${NOTARY_PROFILE:-spiralday}
-notarize() {
-  local target=$1 upload=$1
-  if [ -d "$target" ]; then
-    upload=build/notarize.zip
-    rm -f $upload && ditto -c -k --keepParent "$target" $upload
-  fi
-  echo "… 공증 중: $(basename $target)  (보통 1–5분)"
-  local out=$(xcrun notarytool submit "$upload" --keychain-profile "$NOTARY" --wait --output-format json)
-  local id=$(plutil -extract id raw -o - - <<< "$out")
-  local st=$(plutil -extract status raw -o - - <<< "$out")
-  if [ "$st" != "Accepted" ]; then
-    echo "✗ 공증 실패 ($st)"
-    xcrun notarytool log "$id" --keychain-profile "$NOTARY"
-    exit 1
-  fi
-  xcrun stapler staple -q "$target"
-  echo "✓ 공증 통과: $(basename $target)"
-}
-
-if [ $RELEASE = 1 ]; then
-  xcrun notarytool history --keychain-profile "$NOTARY" >/dev/null 2>&1 || {
-    echo "✗ 공증 자격 증명(키체인 프로필 \"$NOTARY\")이 없어요. 한 번만 실행해 두세요:"
-    echo "   
-    exit 1
-  }
-  notarize "$APP"
-  mkdir -p dist
-  rm -f dist/Spiralday*
-  # 1) 자동 업데이트(Sparkle)용 zip
-  ZIP="dist/Spiralday-$VERSION-macOS.zip"
-  ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
-  # 2) 사람이 받는 설치용 DMG (끌어다 놓기 화면 + 웹사이트 바로가기)
-  DMG="dist/Spiralday-$VERSION.dmg"
-  Scripts/make-dmg.sh "$APP" "$DMG" "$SIGN_ID"
-  notarize "$DMG"
-  # 소개 페이지의 "최신 버전 받기" 링크용 (releases/latest/download/Spiralday.dmg)
-  cp "$DMG" dist/Spiralday.dmg
-  shasum -a 256 "$DMG" "$ZIP" | tee dist/SHA256SUMS.txt
-  spctl -a -t open --context context:primary-signature -v "$DMG"
-  spctl -a -t exec -v "$APP"
-  echo "✓ $DMG  (+ dist/Spiralday.dmg, $ZIP)"
-fi

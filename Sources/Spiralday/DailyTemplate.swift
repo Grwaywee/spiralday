@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 일간 페이지. 모든 좌표는 디자인 단위(1277 × 2000).
+// 일간 양식 (10분 단위 종이 플래너 한 장). 모든 좌표는 디자인 단위 (페이지 1277 × 2000).
 // 선은 모두 수평·수직으로 곧게 그린다.
 //
 //   왼쪽 블록  : 한 줄 76.12 짜리 19줄 격자 (TASKS 15줄 · MEMO 머리 1줄 · MEMO 3줄)
@@ -65,13 +65,13 @@ enum DailyForm {
     static let hourRule: CGFloat = 1.35 // 시각 칸 세로 실선
     static let dot: CGFloat = 2.1       // 카테고리 점선의 점 지름
     static let slotDot: CGFloat = 2.3   // 10분 칸 점선
-    static let boxDot: CGFloat = 3.5    // 체크 박스 점 (조금 굵게)
+    static let boxDot: CGFloat = 3.5    // 체크 박스 점 (조금 굵게: 사용자 요청)
     static let dotGap: CGFloat = 6.63   // 점 간격
 
     // MARK: 인쇄 글자
-    /// 오른쪽 아래 워드마크
+    /// 오른쪽 아래에 인쇄되는 워드마크
     static let wordmark = "spiralday"
-    /// 워드마크 오른쪽 끝 / 기준선 (오른쪽 아래)
+    /// 워드마크 오른쪽 끝 / 기준선
     static let wordmarkRight: CGFloat = 1227.2
     static let wordmarkBaseline: CGFloat = 1932.2
 
@@ -119,7 +119,7 @@ enum DailyForm {
 /// 종이에 인쇄된 양식 전체 (라벨, 선, 점선, 체크 박스, 시각 숫자, 워드마크). 한 Canvas 로 그린다.
 struct DailyFormPrint: View {
     let u: CGFloat
-    /// 할 일 / 메모 칸 수 (양식 그대로면 15 / 3, 넘치면 늘어난다)
+    /// 할 일 / 메모 칸 수 (기본 15 / 3, 넘치면 늘어난다)
     var taskRows = DailyForm.taskCount
     var memoRows = DailyForm.memoCount
 
@@ -287,7 +287,7 @@ struct DailyFormPrint: View {
     }
 
     private func drawWordmark(_ ctx: inout GraphicsContext) {
-        // 워드마크의 x-height · 굵기 · 글자 간격, 오른쪽 끝과 기준선
+        // 굵은 소문자 워드마크를 오른쪽 끝 · 기준선에 맞춘다
         let size: CGFloat = 31.5
         text(&ctx, Text(F.wordmark).font(.system(size: size, weight: .bold)).tracking(0.78)
                 .foregroundStyle(Ink.print),

@@ -7,3 +7,5 @@ xcuserdata/
 DerivedData/
 /.claude
 /dist
+# 로컬 전용 배포 도구
+/release/

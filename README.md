@@ -2,8 +2,11 @@
 
 # Spiralday
 
+[![GitHub stars](https://img.shields.io/github/stars/Grwaywee/spiralday?style=social)](https://github.com/Grwaywee/spiralday)<br>
+<sub>도움이 됐다면 ⭐ 하나 눌러 주세요 — 계속 만드는 데 큰 힘이 돼요.</sub>
+
 **창 하나가 곧 종이 한 장인 macOS 플래너.** · [spiralday.com](https://spiralday.com)
-10분 단위 종이 플래너 형식으로 하루를 기록하고, 스프링 노트처럼 한 장씩 넘어갑니다.
+10분 단위 종이 플래너 형식에 하루를 적고, 스프링 노트처럼 한 장씩 넘깁니다.
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
 ![Apple Silicon & Intel](https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-universal-555555)
@@ -30,7 +33,7 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
 | | |
 |---|---|
 | 📓 **플래너 여러 권** | 권마다 이름 · **시작일(필수)** · 종료일(선택) · 표지 색. 시작일 이전 / 종료일 이후로는 넘어가지 않고, 종료일이 없으면 계속 넘어갑니다. 권마다 기록 · 형광펜 · D-day 가 따로 저장됩니다. |
-| 🗒 **일간** | 10분 단위 종이 플래너 구성 — DATE · D-DAY · COMMENT · TOTAL TIME · TASKS 15줄 · MEMO · TIMETABLE (06시–05시 × 10분). 글이 길면 아래 칸으로 이어 쓰고, 칸이 모자라면 줄 간격과 글씨가 함께 조금씩 줄어듭니다. |
+| 🗒 **일간** | 10분 단위 종이 플래너 형식 — DATE · D-DAY · COMMENT · TOTAL TIME · TASKS 15줄 · MEMO · TIMETABLE (06시–05시 × 10분). 글이 길면 아래 칸으로 이어 쓰고, 칸이 모자라면 줄 간격과 글씨가 함께 조금씩 줄어듭니다. |
 | 📅 **주간** | MY GOAL (┌ … ┘ 강조), REVIEW OF THE WEEK ★, 월–일 7칸 — 할 일 10줄 · 타임테이블 · 하루 합계. |
 | 📊 **홈** | 이번 주 · 이번 달 시간, 하루 평균, 연속 기록, 완료율, 최근 12주, 형광펜별 시간, 시간대 · 요일 패턴, 최근 35일 달력. |
 | 🖍 **형광펜 타임테이블** | 팔레트에서 형광펜을 골라 10분 칸을 드래그로 칠하면 TOTAL TIME 이 계산됩니다. 타임테이블 위에 **손글씨 메모**, 🍴 **밥시간 화살표**. |
@@ -69,8 +72,10 @@ Xcode 16 이상 (Swift 6 툴체인) 이 필요합니다.
 git clone https://github.com/Grwaywee/spiralday.git
 cd spiralday
 ./build.sh                  # → build/Spiralday.app (이 Mac 용)
-./build.sh --release        # → 유니버설 빌드 + 서명 · 공증 + dist/Spiralday-x.y.z.dmg (설치용) · -macOS.zip (자동 업데이트용)
+open build/Spiralday.app
 ```
+
+직접 빌드한 앱은 이 Mac 에서만 쓰는 애드혹 서명이고, 공증은 받지 않습니다. Apple Silicon · Intel 유니버설로 빌드하려면 `UNIVERSAL=1 ./build.sh`.
 
 ## 사용법
 
@@ -156,7 +161,7 @@ flowchart LR
     State[AppState<br/>페이지 · 범위] --> RV
 ```
 
-- **디자인 단위** — 페이지는 디자인 단위 좌표로 그립니다 (일간 1277×2000, 주간·홈 2000×1277). 창 크기에 맞춰 `u = 창 너비 / 디자인 너비` 를 곱해 그립니다.
+- **디자인 단위** — 페이지는 고정된 디자인 좌표로 그립니다 (일간 1277×2000, 주간·홈 2000×1277). 창 크기에 맞춰 `u = 창 너비 / 디자인 너비` 를 곱합니다.
 - **페이지 넘김** — 넘김이 시작되기 전에 앞뒤 페이지를 비트맵으로 미리 그려 두고, 원통형 말림 모델을 픽셀 셰이더로 계산합니다 (뒷면 비침, 그림자, 안티에일리어싱, 스프링 물리). 셰이더는 실행 중 한 번 컴파일되어 별도 Metal 툴체인이 필요 없습니다.
 - **흘려 쓰기** — CoreText 로 손글씨 줄바꿈을 계산해 인쇄된 줄에 맞추고, 넘치면 줄 수를 늘리면서 간격과 글씨를 같은 비율로 줄입니다.
 
@@ -169,6 +174,7 @@ flowchart LR
 | `Curl/` | Metal 페이지 넘김 엔진 |
 | `Settings.swift` · `Onboarding.swift` · `PDFExport.swift` | 설정, 튜토리얼, PDF |
 | `Models.swift` | 플래너(책) · 기록 · 저장 |
+| `Telemetry.swift` · `StarPrompt.swift` | 익명 사용 통계, GitHub ⭐ 부탁 (한 번만) |
 
 ## 개발
 
@@ -177,36 +183,11 @@ swift build
 .build/debug/Spiralday --demo                # 샘플 데이터 (실제 기록을 건드리지 않음)
 .build/debug/Spiralday --snapshot ./out      # 페이지 · 넘김 프레임 PNG
 .build/debug/Spiralday --pdf-test ./out      # PDF 레이아웃 4종 샘플
-SPIRALDAY_PING_URL=http://127.0.0.1:8000/api/spiralday/ping build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 통계 한 번 보내고 결과 출력
+.build/debug/Spiralday --demo --star-prompt  # GitHub ⭐ 부탁 창 미리 보기
+build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 한 번 보내 보고 결과 출력
 ```
 
-### 새 버전 배포
-
-1. `build.sh` 의 `VERSION` 을 올리고 `BUILD` 를 1 늘립니다.
-2. `Docs/release-notes/<VERSION>.md` 에 바뀐 점을 적습니다.
-3. `./release.sh` — 유니버설 빌드 → Developer ID 서명 → Apple 공증 → 설치용 DMG → Sparkle EdDSA 서명 → `site/appcast.xml` → GitHub Release → 사이트 배포까지 한 번에.
-
-배포하는 Mac 에는 두 가지가 필요합니다.
-
-- 키체인의 **Developer ID Application** 인증서 (LeanAgileHungry Inc.)
-- 공증 자격 증명 프로필 `spiralday` — 한 번만 만들어 둡니다 (암호는 [appleid.apple.com](https://appleid.apple.com) 의 앱 암호):
-
-  ```bash
-  
-  ```
-
-설치 DMG 의 배경과 바로가기 아이콘은 `Scripts/dmg-background.swift` · `Scripts/weblink-icon.swift` 가 그리고, `Scripts/make-dmg.sh` 가 창 배치를 잡습니다 (`brew install create-dmg`).
-
-업데이트 서명 비밀 키는 배포하는 Mac 의 키체인(`spiralday` 계정)에만 있습니다. 잃어버리면 기존 사용자에게 업데이트를 보낼 수 없으니 반드시 백업하세요:
-`.build/artifacts/sparkle/Sparkle/bin/
-
-### 소개 페이지 (spiralday.com)
-
-`site/` 가 [spiralday.com](https://spiralday.com) 입니다. `main` 에 푸시하면 GitHub Actions 가 GitHub Pages 로 배포합니다 (`.github/workflows/pages.yml`, 도메인은 `site/CNAME`).
-
-```bash
-python3 -m http.server 8123 --directory site   # 로컬 미리보기 → http://localhost:8123
-```
+`site/` 에는 소개 페이지 [spiralday.com](https://spiralday.com) 이 들어 있습니다.
 
 ## 로드맵
 
@@ -219,4 +200,4 @@ python3 -m http.server 8123 --directory site   # 로컬 미리보기 → http://
 [MIT](LICENSE) © 2026 LeanAgileHungry Inc.
 
 - 손글씨 폰트 **Poor Story** — © YoonDesign Inc., [SIL Open Font License 1.1](Resources/Fonts/OFL-PoorStory.txt)
-- 양식 구성은 10분 단위 스터디 플래너 형식에서 영감을 받았으며, 상표와 로고는 포함하지 않습니다.
+- 페이지 구성은 흔히 쓰는 10분 단위 종이 플래너 형식에서 영감을 받았으며, 특정 제품의 상표와 로고는 포함하지 않습니다.

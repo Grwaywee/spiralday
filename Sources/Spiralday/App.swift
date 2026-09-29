@@ -23,6 +23,7 @@ struct SpiraldayApp: App {
                     Button("버그 신고 · 기능 제안…") { Links.open(Links.feedback) }
                     Divider()
                     Button("GitHub (오픈소스)") { Links.open(Links.github) }
+                    Button("GitHub에서 ⭐ 주기") { Links.open(Links.github) }
                     Button("개인정보 처리방침") { Links.open(Links.privacy) }
                     Button("린에자일헝그리") { Links.open(Links.company) }
                 }
@@ -141,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Fonts.activate {
                 Task { @MainActor in
                     Snapshotter.run(to: dir)
+                    Snapshotter.onboarding(to: dir)
                     exit(0)
                 }
             }
@@ -153,6 +155,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // 익명 사용 통계 (하루 한 번, 설정에서 끌 수 있다). 데모에서는 보내지 않는다.
         if !demo { Telemetry.start() }
+        // GitHub ⭐ 부탁 (서로 다른 날로 7일째에 한 번만). 데모에서는 날짜를 세지 않고, --star-prompt 는 바로 띄워 본다.
+        let mainWindow: @MainActor () -> NSWindow? = { [weak self] in self?.windowController?.window }
+        if Self.args.contains("--star-prompt") {
+            StarPrompt.force(window: mainWindow)
+        } else if !demo {
+            StarPrompt.start(store: store, window: mainWindow)
+        }
         if !demo && (store.books.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
             OnboardingController.shared.show(store: store, state: state) { [weak self] in self?.openPlanner() }
         } else {
@@ -219,6 +228,14 @@ enum Snapshotter {
                 }
             }
         }
+    }
+
+    /// 튜토리얼 첫 장 (README 이미지). 처음 켠 사람처럼 빈 서재로 그린다
+    static func onboarding(to dir: URL) {
+        let fresh = PlannerStore(inMemory: true)
+        let r = ImageRenderer(content: OnboardingView(model: OnboardingModel(store: fresh)).environmentObject(fresh))
+        r.scale = 2
+        if let img = r.cgImage { write(img, dir.appendingPathComponent("onboarding.png")) }
     }
 
     static func write(_ img: CGImage, _ url: URL) {

@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Spiralday — 창 하나가 종이 한 장인 macOS 플래너</title>
-<meta name="description" content="10분 단위 종이 플래너 형식으로 만든 macOS 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄까지. 무료, 내 Mac 에만 저장.">
+<meta name="description" content="10분 단위 종이 플래너 형식의 macOS 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄까지. 무료, 내 Mac 에만 저장.">
 <meta name="theme-color" content="#FCFBF7">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://spiralday.com/">
 <meta property="og:title" content="Spiralday — 창 하나가 종이 한 장인 macOS 플래너">
-<meta property="og:description" content="10분 단위 플래너 양식 그대로, 진짜 종이처럼 넘어가는 Mac 플래너. 무료.">
+<meta property="og:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 Mac 플래너. 무료.">
 <meta property="og:image" content="https://spiralday.com/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -111,6 +111,18 @@
   .btn.primary:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -8px rgba(60,51,87,.6); }
   .btn.ghost { color: var(--ink); background: rgba(0,0,0,.05); }
   .btn.ghost:hover { background: rgba(0,0,0,.08); }
+  /* GitHub 별 버튼: 별 수는 모서리 스티커로 띄운다. 글자 span 안에 둬서 flex 항목이 아니라 불러와도 버튼 크기가 바뀌지 않는다 */
+  .btn.star { position: relative; }
+  .btn.star .count {
+    position: absolute; top: -10px; right: -10px;
+    min-width: 34px; padding: 0 9px; border-radius: 999px;
+    background: var(--paper); border: 1.5px dashed var(--dot);
+    font-family: var(--hand); font-size: 16px; line-height: 22px; color: var(--pink); text-align: center; white-space: nowrap;
+    transform: rotate(4deg); box-shadow: 0 6px 14px -8px rgba(0,0,0,.3);
+    opacity: 0; transition: opacity .3s ease; pointer-events: none;
+  }
+  .btn.star .count:empty { display: none; }
+  .btn.star .count.on { opacity: 1; }
   .meta { margin-top: 16px; font-size: 17px; color: var(--soft); }
   .hero-shot { position: relative; }
   .hero-shot img { width: auto; max-width: 100%; max-height: min(640px, 74vh); margin: 0 auto; filter: drop-shadow(0 30px 40px rgba(40,30,20,.18)); transform: rotate(1.2deg); }
@@ -222,13 +234,15 @@
     <div>
       <p class="label">macOS Planner</p>
       <h1>창 하나가<br><span class="hl" style="--c: #F7C3CD">종이 한 장.</span></h1>
-      <p class="lead">10분 단위 종이 플래너 형식으로 만든 Mac 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.</p>
+      <p class="lead">10분 단위 종이 플래너처럼 쓰는 Mac 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.</p>
       <div class="cta">
         <a class="btn primary" href="https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
           Mac용 무료 다운로드
         </a>
-        <a class="btn ghost" href="https://github.com/Grwaywee/spiralday">GitHub</a>
+        <a class="btn ghost star" href="https://github.com/Grwaywee/spiralday" aria-label="GitHub에서 Spiralday 에 별 주기">
+          <span aria-hidden="true">⭐</span><span>GitHub에서 별 주기<span class="count" data-stars aria-hidden="true"></span></span>
+        </a>
       </div>
       <p class="meta">무료 · 오픈소스 · macOS 14 이상 · Apple Silicon &amp; Intel · 자동 업데이트</p>
     </div>
@@ -243,8 +257,8 @@
     <p class="label">Daily</p>
     <div class="split">
       <div>
-        <h2>익숙한 그 양식, <span class="hl">그대로</span>.</h2>
-        <p class="desc">DATE · D-DAY · COMMENT · TOTAL TIME · TASKS 15줄 · MEMO · 06시부터 다음 날 05시까지의 10분 타임테이블. 종이 플래너에서 쓰던 칸이 같은 비율로 들어 있어요.</p>
+        <h2>익숙한 칸들이 <span class="hl">한 장에</span>.</h2>
+        <p class="desc">DATE · D-DAY · COMMENT · TOTAL TIME · TASKS 15줄 · MEMO · 06시부터 다음 날 05시까지의 10분 타임테이블. 종이 플래너에서 익숙한 칸들이 하루 한 장에 다 들어 있어요.</p>
         <ul class="marks">
           <li><span class="m">○</span><div>체크 박스를 누를 때마다 <b>완료 → 일부 → 못함 → 미룸</b></div></li>
           <li><span class="m">△</span><div>끝낸 일에만 <b>형광펜</b>이 그어지고, 같은 형광펜끼리 모여요</div></li>
@@ -323,7 +337,7 @@
     <div class="split rev">
       <div>
         <h2>A4 반쪽으로 뽑으면 <span class="hl" style="--c: #F7C3CD">실물 크기</span>.</h2>
-        <p class="desc">일간은 A4 가로 한 장에 이틀씩 — 가운데 선을 따라 자르면 종이 플래너 크기 그대로예요. A4 세로로 하루 한 장, 주간과 홈은 A4 가로. 기간을 정해 한 번에 뽑고, 벡터라 인쇄가 선명해요.</p>
+        <p class="desc">일간은 A4 가로 한 장에 이틀씩 — 가운데 선을 따라 자르면 손에 드는 종이 플래너 크기예요. A4 세로로 하루 한 장, 주간과 홈은 A4 가로. 기간을 정해 한 번에 뽑고, 벡터라 인쇄가 선명해요.</p>
         <p class="hand" style="font-size:24px;color:var(--soft);margin:0">기록이 없는 날은 빈 양식 — 종이로도 쓸 수 있어요.</p>
       </div>
       <div class="shot"><img src="assets/pdf-half.webp" alt="A4 가로에 일간 두 장이 나란히 있는 PDF" loading="lazy"></div>
@@ -380,8 +394,11 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
         Mac용 무료 다운로드
       </a>
-      <a class="btn ghost" href="https://github.com/Grwaywee/spiralday/releases">모든 버전</a>
+      <a class="btn ghost star" href="https://github.com/Grwaywee/spiralday" aria-label="GitHub에서 Spiralday 에 별 주기">
+        <span aria-hidden="true">⭐</span><span>GitHub에서 별 주기<span class="count" data-stars aria-hidden="true"></span></span>
+      </a>
     </div>
+    <p class="meta"><a href="https://github.com/Grwaywee/spiralday/releases">지난 버전 모두 보기</a></p>
   </section>
 </div>
 
@@ -413,5 +430,36 @@
     <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday 는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">MIT 라이선스</a> 오픈소스예요 · 손글씨 폰트: Poor Story © YoonDesign Inc. (SIL OFL 1.1)</p>
   </div>
 </footer>
+<script>
+  // GitHub 별 수. 불러오지 못하면 (오프라인 · 사용량 제한) 숫자 없이 버튼만 둔다
+  (function () {
+    var els = document.querySelectorAll('[data-stars]');
+    if (!els.length || !window.fetch) return;
+    var KEY = 'spiralday.stars';
+    function show(n) {
+      if (typeof n !== 'number' || !(n > 0)) return;
+      var t = n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+      els.forEach(function (el) {
+        el.textContent = '★ ' + t;
+        var a = el.closest('a');
+        if (a) a.setAttribute('aria-label', 'GitHub에서 Spiralday 에 별 주기 (지금 별 ' + n.toLocaleString('ko-KR') + '개)');
+        requestAnimationFrame(function () { el.classList.add('on'); });
+      });
+    }
+    // 한 시간은 저장해 둔 값을 쓴다 (GitHub API 사용량 제한)
+    try {
+      var c = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+      if (c && Date.now() - c.t < 36e5) { show(c.n); return; }
+    } catch (e) {}
+    fetch('https://api.github.com/repos/Grwaywee/spiralday')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || typeof j.stargazers_count !== 'number') return;
+        show(j.stargazers_count);
+        try { sessionStorage.setItem(KEY, JSON.stringify({ n: j.stargazers_count, t: Date.now() })); } catch (e) {}
+      })
+      .catch(function () {});
+  })();
+</script>
 </body>
 </html>

@@ -76,7 +76,7 @@ enum Fonts {
     }
 
     /// 앱에 들어 있는 폰트(Resources/Fonts)를 이 프로세스에 등록한다.
-    /// .app 에서는 Contents/Resources/Fonts, 개발 빌드에서는 저장소의 Resources/Fonts 를 쓴다.
+    /// .app 에서는 Contents/Resources/Fonts, 디버그 빌드에서는 저장소의 Resources/Fonts 도 찾아본다.
     static func activate(_ done: @escaping @Sendable () -> Void) {
         register()
         DispatchQueue.main.async { done() }
@@ -88,10 +88,13 @@ enum Fonts {
     static func register() {
         guard !registered else { return }
         registered = true
-        let repoFonts = URL(fileURLWithPath: #filePath)
+        var dirs = [Bundle.main.resourceURL?.appendingPathComponent("Fonts")].compactMap { $0 }
+        #if DEBUG
+        // swift run 같은 디버그 빌드용. 배포판에는 소스 경로를 넣지 않는다
+        dirs.append(URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Resources/Fonts")
-        let dirs = [Bundle.main.resourceURL?.appendingPathComponent("Fonts"), repoFonts].compactMap { $0 }
+            .appendingPathComponent("Resources/Fonts"))
+        #endif
         for dir in dirs {
             guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil),
                   files.contains(where: { ["ttf", "otf"].contains($0.pathExtension.lowercased()) }) else { continue }

@@ -236,15 +236,10 @@ final class OnboardingModel: ObservableObject {
         self.store = store
         draft = BookDraft.fresh(avoiding: store.books)
         plannerMode = store.books.isEmpty ? .create : .existing
-        // TEMPDEBUG
-        if let s = Step(rawValue: UserDefaults.standard.integer(forKey: "obStep")) { step = s }
-        if UserDefaults.standard.bool(forKey: "obCreate") { plannerMode = .create; forceEmpty = true }
-        if UserDefaults.standard.bool(forKey: "obEnd") { draft.hasEnd = true }
     }
-    var forceEmpty = false // TEMPDEBUG
 
     /// 플래너가 한 권도 없다 → 만들기 전에는 앞으로 못 간다
-    var needsBook: Bool { store.books.isEmpty || forceEmpty }
+    var needsBook: Bool { store.books.isEmpty }
     var isCreating: Bool { step == .planner && plannerMode == .create }
     /// 이미 책이 있는데 한 권 더 만드는 중
     var isComposingExtra: Bool { plannerMode == .create && !store.books.isEmpty }
@@ -760,7 +755,7 @@ private struct WelcomePage: View {
                             .padding(.horizontal, -6)
                             .offset(y: -6)
                     }
-                Text("종이 플래너를 그대로 옮긴 macOS 플래너")
+                Text("종이 플래너처럼 쓰는 macOS 플래너")
                     .font(Fonts.print(17, .medium))
                     .foregroundStyle(Ink.print)
                     .padding(.top, 16)
