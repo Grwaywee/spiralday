@@ -6,7 +6,7 @@
     <language>ko</language>
     <item>
       <title>Spiralday 1.0.0</title>
-      <pubDate>Tue, 29 Sep 2026 07:32:14 +0000</pubDate>
+      <pubDate>Tue, 29 Sep 2026 08:04:32 +0000</pubDate>
       <sparkle:version>1</sparkle:version>
       <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
@@ -20,7 +20,7 @@
 <li>플래너 여러 권 (시작일 · 종료일), 첫 실행 튜토리얼</li>
 <li>PDF 로 뽑기: 일간 A4 반쪽 두 장씩 (자르면 실물 크기) · A4 세로, 주간 · 홈 A4 가로</li>
 <li>자동 업데이트</li></ul>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.0/Spiralday-1.0.0-macOS.zip" sparkle:edSignature="cdpEVeIOhU6D0/4tlgJP4Zu76ZXZJZfc5hZi6uwzGjni6fJctDjfuokQRjcn8Blt/j+DYkgeXwtLHCpZlW3ECA==" length="5827185" type="application/octet-stream"/>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.0/Spiralday-1.0.0-macOS.zip" sparkle:edSignature="7CkXcRmz6oOER1J7FsYnrDzDPab/QY76NqCLpaWMXm+XR5URYnfTKeQ/cY68ZiBRIUiOzCOiAz7PsnzQNry1BA==" length="5881438" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
