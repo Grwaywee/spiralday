@@ -332,15 +332,14 @@ struct SlotPainter: View {
                 let xe = r == r1 ? CGFloat(e % 6 + 1) * cellW - lw * 1.5 : cellW * 6 - cellW * 0.12
                 guard xe > xs + 1 else { continue }
                 p.move(to: CGPoint(x: xs, y: y))
-                // 손으로 그은 듯 아주 살짝 휘게
-                p.addQuadCurve(to: CGPoint(x: xe, y: y + rowH * 0.02), control: CGPoint(x: (xs + xe) / 2, y: y - rowH * 0.05))
+                p.addLine(to: CGPoint(x: xe, y: y))
                 if r < r1 {
                     // 줄 끝에서 아래로 꺾이는 작은 갈고리
                     p.addLine(to: CGPoint(x: xe, y: y + rowH * 0.28))
                 } else {
                     let a = max(rowH * 0.24, 4)
                     p.move(to: CGPoint(x: xe - a, y: y - a * 0.62))
-                    p.addLine(to: CGPoint(x: xe, y: y + rowH * 0.02))
+                    p.addLine(to: CGPoint(x: xe, y: y))
                     p.addLine(to: CGPoint(x: xe - a, y: y + a * 0.62))
                 }
                 if r > r0 {
