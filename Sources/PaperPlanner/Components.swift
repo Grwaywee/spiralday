@@ -227,10 +227,14 @@ struct Stars: View {
     }
 }
 
-// MARK: - Time-table highlighter layer
+// MARK: - Time-table layer (형광펜 · 글씨 · 밥시간)
 
-/// 인쇄된 타임테이블 격자 "위에" 올리는 투명 레이어.
-/// 24 행(06시 → 다음날 05시) × 6 칸(10분). 드래그로 선택한 형광펜 색을 칠한다.
+/// 인쇄된 타임테이블 격자 "위에" 올리는 레이어.
+/// 24 행(06시 → 다음날 05시) × 6 칸(10분).
+/// - 형광펜: 드래그로 칠하기 (같은 색을 다시 칠하면 지워짐)
+/// - 글씨 도구: 칸을 누르거나 끌어서 그 자리에 손글씨 메모
+/// - 밥 도구: 시작 칸에 🍴 아이콘, 끝나는 칸까지 화살표 (클릭만 하면 1시간)
+/// - 지우개: 칠한 칸과 겹치는 메모/밥시간을 함께 지운다
 /// 격자 자체(선, 숫자)는 각 페이지가 그린다.
 struct SlotPainter: View {
     let date: Date
@@ -242,9 +246,12 @@ struct SlotPainter: View {
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
+    @Environment(\.isSnapshot) private var isSnapshot
     @State private var snapshot: [Int]? = nil
     @State private var anchor = 0
     @State private var paint = -1
+    /// 글씨/밥 도구로 끌고 있는 범위
+    @State private var pending: ClosedRange<Int>? = nil
 
     static func hourLabel(_ row: Int) -> String {
         let h = (6 + row) % 24
@@ -252,39 +259,169 @@ struct SlotPainter: View {
     }
 
     var body: some View {
-        let slots = store.day(date).slots
+        let rec = store.day(date)
         let colors = Dictionary(uniqueKeysWithValues: store.categories.map { ($0.id, $0.color) })
-        Canvas { ctx, _ in
-            ctx.blendMode = .multiply
-            for r in 0..<24 {
-                var c = 0
-                while c < 6 {
-                    let v = slots[r * 6 + c]
-                    guard let color = colors[v] else { c += 1; continue }
-                    var e = c
-                    while e + 1 < 6 && slots[r * 6 + e + 1] == v { e += 1 }
-                    let rect = CGRect(x: CGFloat(c) * cellW + 1, y: CGFloat(r) * rowH + rowH * inset,
-                                      width: CGFloat(e - c + 1) * cellW - 2, height: rowH * (1 - 2 * inset))
-                    ctx.fill(Path(roundedRect: rect, cornerRadius: min(3, rowH * 0.18)),
-                             with: .color(color.opacity(0.86)))
-                    c = e + 1
+        let accent = store.concept(date).accent
+        ZStack(alignment: .topLeading) {
+            Canvas { ctx, _ in
+                drawHighlights(&ctx, rec.slots, colors)
+                for n in rec.notes where n.kind == .meal { drawMeal(&ctx, n, accent) }
+                if let pending { drawPending(&ctx, pending, accent) }
+            }
+            .frame(width: cellW * 6, height: rowH * 24)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in drag(v.location, rec.slots) }
+                    .onEnded { v in dragEnded(v.location) }
+            )
+            .onContinuousHover { phase in
+                switch phase {
+                case .active: (state.tool == AppState.textTool ? NSCursor.iBeam : NSCursor.crosshair).set()
+                case .ended: NSCursor.arrow.set()
                 }
             }
+
+            ForEach(rec.notes) { n in
+                if n.kind == .text { textNote(n) } else { mealHandle(n) }
+            }
         }
-        .frame(width: cellW * 6, height: rowH * 24)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { v in drag(v.location, slots) }
-                .onEnded { _ in snapshot = nil }
-        )
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: NSCursor.crosshair.set()
-            case .ended: NSCursor.arrow.set()
+        .frame(width: cellW * 6, height: rowH * 24, alignment: .topLeading)
+    }
+
+    // MARK: drawing
+
+    private func drawHighlights(_ ctx: inout GraphicsContext, _ slots: [Int], _ colors: [Int: Color]) {
+        var c2 = ctx
+        c2.blendMode = .multiply
+        for r in 0..<24 {
+            var c = 0
+            while c < 6 {
+                let v = slots[r * 6 + c]
+                guard let color = colors[v] else { c += 1; continue }
+                var e = c
+                while e + 1 < 6 && slots[r * 6 + e + 1] == v { e += 1 }
+                let rect = CGRect(x: CGFloat(c) * cellW + 1, y: CGFloat(r) * rowH + rowH * inset,
+                                  width: CGFloat(e - c + 1) * cellW - 2, height: rowH * (1 - 2 * inset))
+                c2.fill(Path(roundedRect: rect, cornerRadius: min(3, rowH * 0.18)), with: .color(color.opacity(0.86)))
+                c = e + 1
             }
         }
     }
+
+    private func cellCenter(_ s: Int) -> CGPoint {
+        CGPoint(x: (CGFloat(s % 6) + 0.5) * cellW, y: (CGFloat(s / 6) + 0.5) * rowH)
+    }
+
+    private var iconSize: CGFloat { min(rowH * 0.8, cellW * 0.92) }
+
+    /// 🍴 아이콘 → 끝 칸까지 이어지는 화살표. 줄이 바뀌면 다음 줄 처음에서 이어진다.
+    private func drawMeal(_ ctx: inout GraphicsContext, _ n: TimeNote, _ accent: Color) {
+        let s = min(n.start, n.end), e = max(n.start, n.end)
+        let lw = max(1.3, rowH * 0.075)
+        let style = StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round)
+        let r0 = s / 6, r1 = e / 6
+        if e > s {
+            var p = Path()
+            for r in r0...r1 {
+                let y = (CGFloat(r) + 0.5) * rowH
+                let xs = r == r0 ? CGFloat(s % 6) * cellW + cellW / 2 + iconSize * 0.62 : cellW * 0.12
+                let xe = r == r1 ? CGFloat(e % 6 + 1) * cellW - lw * 1.5 : cellW * 6 - cellW * 0.12
+                guard xe > xs + 1 else { continue }
+                p.move(to: CGPoint(x: xs, y: y))
+                // 손으로 그은 듯 아주 살짝 휘게
+                p.addQuadCurve(to: CGPoint(x: xe, y: y + rowH * 0.02), control: CGPoint(x: (xs + xe) / 2, y: y - rowH * 0.05))
+                if r < r1 {
+                    // 줄 끝에서 아래로 꺾이는 작은 갈고리
+                    p.addLine(to: CGPoint(x: xe, y: y + rowH * 0.28))
+                } else {
+                    let a = max(rowH * 0.24, 4)
+                    p.move(to: CGPoint(x: xe - a, y: y - a * 0.62))
+                    p.addLine(to: CGPoint(x: xe, y: y + rowH * 0.02))
+                    p.addLine(to: CGPoint(x: xe - a, y: y + a * 0.62))
+                }
+                if r > r0 {
+                    // 다음 줄 처음: 위에서 내려와 이어지는 모양
+                    var hook = Path()
+                    hook.move(to: CGPoint(x: xs, y: y - rowH * 0.28))
+                    hook.addLine(to: CGPoint(x: xs, y: y))
+                    ctx.stroke(hook, with: .color(accent), style: style)
+                }
+            }
+            ctx.stroke(p, with: .color(accent), style: style)
+        }
+        // 아이콘 스티커
+        let c = cellCenter(s)
+        let d = iconSize
+        let circle = CGRect(x: c.x - d / 2, y: c.y - d / 2, width: d, height: d)
+        ctx.fill(Path(ellipseIn: circle), with: .color(Ink.paper))
+        ctx.stroke(Path(ellipseIn: circle.insetBy(dx: lw * 0.5, dy: lw * 0.5)), with: .color(accent), lineWidth: lw)
+        var icon = ctx.resolve(Image(systemName: "fork.knife"))
+        icon.shading = .color(accent)
+        ctx.draw(icon, in: circle.insetBy(dx: d * 0.22, dy: d * 0.22))
+    }
+
+    /// 글씨/밥 도구로 끌고 있는 범위 미리보기 (점선 밑줄)
+    private func drawPending(_ ctx: inout GraphicsContext, _ range: ClosedRange<Int>, _ accent: Color) {
+        let r0 = range.lowerBound / 6, r1 = range.upperBound / 6
+        var p = Path()
+        for r in r0...r1 {
+            let c0 = r == r0 ? range.lowerBound % 6 : 0
+            let c1 = r == r1 ? range.upperBound % 6 : 5
+            let y = (CGFloat(r) + 0.86) * rowH
+            p.move(to: CGPoint(x: CGFloat(c0) * cellW + 2, y: y))
+            p.addLine(to: CGPoint(x: CGFloat(c1 + 1) * cellW - 2, y: y))
+        }
+        ctx.stroke(p, with: .color(accent.opacity(0.8)),
+                   style: StrokeStyle(lineWidth: max(1.2, rowH * 0.06), lineCap: .round, dash: [3, 3]))
+    }
+
+    // MARK: notes (views)
+
+    private func noteKey(_ n: TimeNote) -> String { "tn|\(Dates.key(date))|\(n.id.uuidString)" }
+
+    /// 손글씨 메모: 시작 칸에서 그 줄 끝까지 쓸 수 있다
+    @ViewBuilder
+    private func textNote(_ n: TimeNote) -> some View {
+        let s = min(n.start, n.end)
+        let x = CGFloat(s % 6) * cellW + 3
+        let y = CGFloat(s / 6) * rowH
+        let w = CGFloat(6 - s % 6) * cellW - 5
+        let key = noteKey(n)
+        let font = Fonts.hand(rowH * 0.74)
+        let binding = Binding(get: { store.day(date).notes.first { $0.id == n.id }?.text ?? "" },
+                              set: { v in store.updateNote(date, n.id) { $0.text = v } })
+        Group {
+            if state.editingKey == key && !isSnapshot {
+                InlineField(text: binding, font: font, key: key, onEnd: { [store, date] in store.cleanupNotes(date) })
+                    .frame(width: w, height: rowH)
+            } else {
+                Text(n.text)
+                    .font(font)
+                    .foregroundStyle(Ink.text)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(height: rowH)
+                    .contentShape(Rectangle())
+                    .onTapGesture { state.editingKey = key }
+                    .contextMenu { Button("메모 지우기", role: .destructive) { store.removeNote(date, n.id) } }
+            }
+        }
+        .offset(x: x, y: y)
+    }
+
+    /// 밥시간 아이콘: 오른쪽 클릭으로 지우기
+    private func mealHandle(_ n: TimeNote) -> some View {
+        let c = cellCenter(min(n.start, n.end))
+        return Color.clear
+            .frame(width: iconSize, height: iconSize)
+            .contentShape(Circle())
+            .contextMenu { Button("밥시간 지우기", role: .destructive) { store.removeNote(date, n.id) } }
+            .help("밥시간 — 오른쪽 클릭으로 지우기")
+            .offset(x: c.x - iconSize / 2, y: c.y - iconSize / 2)
+    }
+
+    // MARK: input
 
     private func slot(at p: CGPoint) -> Int {
         let r = min(max(Int(p.y / rowH), 0), 23)
@@ -292,8 +429,15 @@ struct SlotPainter: View {
         return r * 6 + c
     }
 
+    private var annotating: Bool { state.tool == AppState.textTool || state.tool == AppState.mealTool }
+
     private func drag(_ p: CGPoint, _ current: [Int]) {
         let s = slot(at: p)
+        if annotating {
+            if pending == nil { state.endEditing(); anchor = s }
+            pending = min(anchor, s)...max(anchor, s)
+            return
+        }
         if snapshot == nil {
             state.endEditing()
             snapshot = current
@@ -303,6 +447,25 @@ struct SlotPainter: View {
         guard var next = snapshot else { return }
         for i in min(anchor, s)...max(anchor, s) { next[i] = paint }
         if next != current { store.editDay(date) { $0.slots = next } }
+    }
+
+    private func dragEnded(_ p: CGPoint) {
+        defer { snapshot = nil; pending = nil }
+        let s = slot(at: p)
+        let range = min(anchor, s)...max(anchor, s)
+        switch state.tool {
+        case AppState.textTool:
+            let id = store.addNote(date, TimeNote(kind: .text, start: range.lowerBound, end: range.upperBound))
+            state.editingKey = "tn|\(Dates.key(date))|\(id.uuidString)"
+        case AppState.mealTool:
+            // 누르기만 하면 한 시간
+            let end = range.count == 1 ? min(range.lowerBound + 5, 143) : range.upperBound
+            store.addNote(date, TimeNote(kind: .meal, start: range.lowerBound, end: end))
+        case AppState.eraser:
+            store.removeNotes(date, overlapping: range)
+        default:
+            break
+        }
     }
 }
 

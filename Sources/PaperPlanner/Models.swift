@@ -27,6 +27,17 @@ struct PlanTask: Identifiable, Codable, Equatable {
     var cat: Int? = nil
 }
 
+/// 타임테이블 위에 쓰는 것: 손글씨 메모, 밥시간(아이콘 → 화살표)
+struct TimeNote: Codable, Identifiable, Equatable {
+    enum Kind: String, Codable { case text, meal }
+    var id = UUID()
+    var kind: Kind
+    /// 시작 / 끝 칸 (0...143, 끝 칸 포함)
+    var start: Int
+    var end: Int
+    var text = ""
+}
+
 struct DayRecord: Codable, Equatable {
     static let slotCount = 144 // 24 rows (06시 시작) × 6 칸(10분)
     static let memoCount = 3
@@ -40,6 +51,8 @@ struct DayRecord: Codable, Equatable {
     var memos: [String] = Array(repeating: "", count: DayRecord.memoCount)
     /// 이 날의 컬러 컨셉 (nil = 기본값 따르기)
     var theme: Int? = nil
+    /// 타임테이블 메모 · 밥시간
+    var notes: [TimeNote] = []
 
     init() {}
 
@@ -52,6 +65,7 @@ struct DayRecord: Codable, Equatable {
         memoTags = Self.pad(try c.decodeIfPresent([String].self, forKey: .memoTags) ?? [], Self.memoCount, "")
         memos = Self.pad(try c.decodeIfPresent([String].self, forKey: .memos) ?? [], Self.memoCount, "")
         theme = try c.decodeIfPresent(Int.self, forKey: .theme)
+        notes = try c.decodeIfPresent([TimeNote].self, forKey: .notes) ?? []
     }
 
     private static func pad<T>(_ a: [T], _ n: Int, _ fill: T) -> [T] {
@@ -60,7 +74,7 @@ struct DayRecord: Codable, Equatable {
 
     var isEmpty: Bool {
         tasks.isEmpty && slots.allSatisfy { $0 < 0 } && comment.isEmpty
-            && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil
+            && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil && notes.isEmpty
     }
 }
 
@@ -255,6 +269,33 @@ final class PlannerStore: ObservableObject {
         scheduleSave()
     }
 
+    // Time-table notes
+    @discardableResult
+    func addNote(_ d: Date, _ note: TimeNote) -> UUID {
+        editDay(d) { $0.notes.append(note) }
+        return note.id
+    }
+
+    func updateNote(_ d: Date, _ id: UUID, _ f: (inout TimeNote) -> Void) {
+        editDay(d) { r in if let i = r.notes.firstIndex(where: { $0.id == id }) { f(&r.notes[i]) } }
+    }
+
+    func removeNote(_ d: Date, _ id: UUID) {
+        editDay(d) { $0.notes.removeAll { $0.id == id } }
+    }
+
+    /// 지우개: 범위와 겹치는 메모/밥시간을 지운다
+    func removeNotes(_ d: Date, overlapping range: ClosedRange<Int>) {
+        guard day(d).notes.contains(where: { range.overlaps($0.start...$0.end) }) else { return }
+        editDay(d) { $0.notes.removeAll { range.overlaps($0.start...$0.end) } }
+    }
+
+    /// 편집을 마쳤는데 비어 있는 글씨 메모는 지운다
+    func cleanupNotes(_ d: Date) {
+        guard day(d).notes.contains(where: { $0.kind == .text && $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) else { return }
+        editDay(d) { $0.notes.removeAll { $0.kind == .text && $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
+    }
+
     // Color concept
     func concept(_ d: Date) -> ColorConcept { ColorConcept.of(day(d).theme ?? data.prefs.defaultTheme) }
 
@@ -401,6 +442,9 @@ final class PlannerStore: ObservableObject {
                 for (a, b, c) in paint[i] { for s in a...b { r.slots[s] = c } }
                 r.theme = [nil, nil, 3, 6, 4, 7, 2][i]
                 if i == 1 {
+                    r.notes = [TimeNote(kind: .meal, start: 36, end: 41),
+                               TimeNote(kind: .text, start: 20, end: 23, text: "파트너 미팅"),
+                               TimeNote(kind: .meal, start: 75, end: 79)]
                     r.comment = "버려야 할 것을 못 버리면 스스로를 버리게 된다"
                     r.memoTags = ["내일", "메모", ""]
                     r.memos = ["오전에 QA 결과 공유", "회의실 예약 확인하기", ""]

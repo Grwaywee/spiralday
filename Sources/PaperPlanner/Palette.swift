@@ -113,7 +113,15 @@ struct PaletteView: View {
                 }
                 EraserRow(selected: state.tool == -1)
                     .onTapGesture { select(-1) }
-                    .help("지우개 (E)")
+                    .help("지우개 (E) — 칠한 칸, 글씨, 밥시간을 지운다")
+                HStack(spacing: 4) {
+                    ToolChip(icon: "pencil.line", title: "글씨", selected: state.tool == AppState.textTool)
+                        .onTapGesture { select(AppState.textTool) }
+                        .help("타임테이블에 글씨 쓰기 — 칸을 누르거나 끌어서 쓰기 시작")
+                    ToolChip(icon: "fork.knife", title: "밥", selected: state.tool == AppState.mealTool)
+                        .onTapGesture { select(AppState.mealTool) }
+                        .help("밥시간 — 시작 칸부터 끝 칸까지 끌기 (누르기만 하면 1시간)")
+                }
             }
 
             Button { SettingsWindowController.shared.show(store: store, state: state) } label: {
@@ -282,6 +290,25 @@ private struct PenRow: View {
         .frame(maxWidth: .infinity, minHeight: 38)
         .contentShape(Rectangle())
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+    }
+}
+
+/// 타임테이블 도구 (글씨 · 밥)
+private struct ToolChip: View {
+    let icon: String
+    let title: String
+    let selected: Bool
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            Text(title).font(.system(size: 9, weight: selected ? .bold : .medium, design: .rounded))
+        }
+        .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.7))
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(selected ? Color(hex: "3C3357") : Color.primary.opacity(0.07)))
+        .contentShape(Rectangle())
     }
 }
 

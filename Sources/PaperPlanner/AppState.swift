@@ -7,8 +7,11 @@ final class AppState: ObservableObject {
     @Published var weekIndex = 0
     @Published var dayIndex = 0
     @Published var editingKey: String? = nil
-    /// 형광펜 카테고리 id, -1 = 지우개
+    /// 형광펜 카테고리 id, 또는 아래 특수 도구
     @Published var tool = 0
+    static let eraser = -1
+    static let textTool = -2
+    static let mealTool = -3
     @Published var fontsReady = false
     /// 주간 ↔ 일간 전환으로 창 비율이 바뀌는 중
     @Published var morphing = false
