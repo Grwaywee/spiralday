@@ -5,8 +5,8 @@
 set -e
 cd "$(dirname "$0")"
 # 새 버전을 낼 때: VERSION 을 올리고 BUILD 를 1 씩 늘린다 (Sparkle 은 BUILD 로 새 버전을 판단한다)
-VERSION="1.0.0"
-BUILD=1
+VERSION="1.0.1"
+BUILD=2
 RELEASE=0
 [ "$1" = "--release" ] && RELEASE=1
 
