@@ -38,6 +38,8 @@ struct DayRecord: Codable, Equatable {
     /// MEMO 3줄 (왼쪽 작은 칸 + 본문)
     var memoTags: [String] = Array(repeating: "", count: DayRecord.memoCount)
     var memos: [String] = Array(repeating: "", count: DayRecord.memoCount)
+    /// 이 날의 컬러 컨셉 (nil = 기본값 따르기)
+    var theme: Int? = nil
 
     init() {}
 
@@ -49,6 +51,7 @@ struct DayRecord: Codable, Equatable {
         comment = try c.decodeIfPresent(String.self, forKey: .comment) ?? ""
         memoTags = Self.pad(try c.decodeIfPresent([String].self, forKey: .memoTags) ?? [], Self.memoCount, "")
         memos = Self.pad(try c.decodeIfPresent([String].self, forKey: .memos) ?? [], Self.memoCount, "")
+        theme = try c.decodeIfPresent(Int.self, forKey: .theme)
     }
 
     private static func pad<T>(_ a: [T], _ n: Int, _ fill: T) -> [T] {
@@ -57,7 +60,7 @@ struct DayRecord: Codable, Equatable {
 
     var isEmpty: Bool {
         tasks.isEmpty && slots.allSatisfy { $0 < 0 } && comment.isEmpty
-            && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty)
+            && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil
     }
 }
 
@@ -79,9 +82,14 @@ struct Category: Codable, Identifiable, Equatable {
 struct Prefs: Codable, Equatable {
     var categories: [Category] = Prefs.defaultCategories
     var lastKind: PageKind = .daily
-    /// D-day: "런칭" 까지 며칠
-    var ddayTitle = ""
-    var ddayDate: Date? = nil
+    /// D-day (최대 2개)
+    var ddays: [DDay] = []
+    /// 따로 고르지 않은 날의 컬러 컨셉
+    var defaultTheme = 0
+
+    static let maxDDays = 2
+
+    private enum LegacyKeys: String, CodingKey { case ddayTitle, ddayDate }
 
     static let defaultCategories: [Category] = [
         Category(id: 0, name: "집중 업무", hex: "8EDCD2", counts: true),
@@ -100,9 +108,20 @@ struct Prefs: Codable, Equatable {
         let cats = try c.decodeIfPresent([Category].self, forKey: .categories) ?? []
         categories = cats.count == Prefs.defaultCategories.count ? cats : Prefs.defaultCategories
         lastKind = try c.decodeIfPresent(PageKind.self, forKey: .lastKind) ?? .daily
-        ddayTitle = try c.decodeIfPresent(String.self, forKey: .ddayTitle) ?? ""
-        ddayDate = try c.decodeIfPresent(Date.self, forKey: .ddayDate)
+        ddays = Array((try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []).prefix(Self.maxDDays))
+        // 예전 버전의 D-day 하나짜리 저장 형식
+        if ddays.isEmpty, let legacy = try? decoder.container(keyedBy: LegacyKeys.self),
+           let date = try legacy.decodeIfPresent(Date.self, forKey: .ddayDate) {
+            ddays = [DDay(title: try legacy.decodeIfPresent(String.self, forKey: .ddayTitle) ?? "", date: date)]
+        }
+        defaultTheme = try c.decodeIfPresent(Int.self, forKey: .defaultTheme) ?? 0
     }
+}
+
+struct DDay: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var title = ""
+    var date: Date
 }
 
 struct PlannerData: Codable {
@@ -235,6 +254,11 @@ final class PlannerStore: ObservableObject {
         scheduleSave()
     }
 
+    // Color concept
+    func concept(_ d: Date) -> ColorConcept { ColorConcept.of(day(d).theme ?? data.prefs.defaultTheme) }
+
+    func setTheme(_ d: Date, _ theme: Int?) { editDay(d) { $0.theme = theme } }
+
     // Categories
     var categories: [Category] { data.prefs.categories }
 
@@ -321,7 +345,10 @@ final class PlannerStore: ObservableObject {
     func fillSample(around today: Date) {
         let ws = Dates.weekStart(today)
         editWeek(ws) { $0.goal = "런칭 전 QA 끝내고 금요일 전에 배포 준비 완료하기"; $0.review = "집중 시간이 늘었다!"; $0.stars = 4 }
-        editPrefs { $0.ddayTitle = "런칭"; $0.ddayDate = Dates.add(days: 9, to: ws) }
+        editPrefs {
+            $0.ddays = [DDay(title: "런칭", date: Dates.add(days: 9, to: ws)),
+                        DDay(title: "분기 리뷰", date: Dates.add(days: 23, to: ws))]
+        }
         let sample: [[(String, Int?, Mark)]] = [
             [("주간 회의 자료 정리", 1, .done), ("디자인 리뷰 피드백", 0, .done), ("API 스펙 문서", 3, .partial), ("메일 답장", 2, .done), ("운동 30분", 5, .missed)],
             [("QA 시나리오 작성", 0, .done), ("버그 리포트 정리", 0, .done), ("파트너사 미팅", 1, .done), ("회고 준비", 3, .partial),
@@ -345,6 +372,7 @@ final class PlannerStore: ObservableObject {
             editDay(d) { r in
                 r.tasks = sample[i].map { PlanTask(text: $0.0, mark: $0.2, cat: $0.1) }
                 for (a, b, c) in paint[i] { for s in a...b { r.slots[s] = c } }
+                r.theme = [nil, nil, 3, 6, 4, 7, 2][i]
                 if i == 1 {
                     r.comment = "버려야 할 것을 못 버리면 스스로를 버리게 된다"
                     r.memoTags = ["내일", "메모", ""]

@@ -12,18 +12,22 @@ struct DailyPage: View {
 
     private typealias F = DailyForm
 
+    private var concept: ColorConcept { store.concept(date) }
+
     var body: some View {
         let day = store.day(date)
         ZStack(alignment: .topLeading) {
             DailyFormPrint(u: u)
 
-            // 양식 위쪽 빈 여백: 날짜 · 요일 (왼쪽), D-day (오른쪽)
-            header
-                .place(CGRect(x: F.left + 4, y: 46, width: F.timeRight - F.left - 8, height: 112), u)
+            // DATE · D-DAY 칸 (양식 위 여백)
+            dateField
+                .place(F.dateBox, u)
+            ddayField
+                .place(F.ddayBox, u)
 
             comment
                 .place(F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
-            TotalTime(minutes: store.minutes(date), u: u)
+            TotalTime(minutes: store.minutes(date), color: concept.accent, u: u)
                 .place(F.totalBox, u)
 
             ForEach(0..<F.taskCount, id: \.self) { i in
@@ -39,62 +43,65 @@ struct DailyPage: View {
         .frame(width: PageKind.daily.design.width * u, height: PageKind.daily.design.height * u, alignment: .topLeading)
     }
 
-    // MARK: 날짜 · D-day
+    // MARK: DATE · D-DAY
 
-    private var header: some View {
+    /// "20260929 TUE" — 칸 한가운데에 크게 손으로 쓴 날짜, 아래에 컨셉 색 형광펜
+    private var dateField: some View {
         let c = Dates.comp(date)
-        let wd = c.weekday!
-        return HStack(alignment: .bottom, spacing: 0) {
-            VStack(alignment: .leading, spacing: -6 * u) {
-                Text(String(format: "%d. %02d. %02d", c.year!, c.month!, c.day!))
-                    .font(Fonts.print(23 * u, .demiBold))
-                    .tracking(2.5 * u)
-                    .foregroundStyle(Ink.soft)
-                Text(Dates.weekdayEN[wd])
-                    .font(Fonts.rounded(60 * u, .black))
-                    .tracking(0.5 * u)
-                    .foregroundStyle(wd == 1 ? Ink.red : wd == 7 ? Ink.saturday : Ink.plum)
+        let wd = String(Dates.weekdayEN[c.weekday!].prefix(3))
+        let digits = String(format: "%04d%02d%02d", c.year!, c.month!, c.day!)
+        return (Text(digits).foregroundStyle(Ink.text) + Text(" " + wd).foregroundStyle(concept.accent))
+            .font(Fonts.hand(86 * u))
+            .tracking(2 * u)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .background(alignment: .bottom) {
+                HighlighterBar(color: concept.tint)
+                    .frame(height: 24 * u)
+                    .padding(.horizontal, -10 * u)
+                    .offset(y: -4 * u)
             }
-            .fixedSize()
-            Spacer(minLength: 0)
-            ddayBadge
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
     }
 
-    private var ddayBadge: some View {
-        let prefs = store.data.prefs
-        return Group {
-            if let target = prefs.ddayDate {
-                let n = Dates.daysBetween(date, target)
-                VStack(alignment: .trailing, spacing: -8 * u) {
-                    Text(prefs.ddayTitle.isEmpty ? "D-DAY" : "\(prefs.ddayTitle)까지")
-                        .font(Fonts.hand(40 * u))
+    /// D-day 최대 2개. 1개면 칸 한가운데, 2개면 위아래로 나눠 가운데.
+    private var ddayField: some View {
+        let list = store.data.prefs.ddays
+        let two = list.count > 1
+        return VStack(spacing: (two ? 2 : 0) * u) {
+            if list.isEmpty {
+                Text("+ D-day")
+                    .font(Fonts.hand(46 * u))
+                    .foregroundStyle(Ink.faint)
+            }
+            ForEach(list) { d in
+                let n = Dates.daysBetween(date, d.date)
+                HStack(alignment: .firstTextBaseline, spacing: 14 * u) {
+                    Text(d.title.isEmpty ? "D-day" : d.title)
+                        .font(Fonts.hand((two ? 38 : 48) * u))
                         .foregroundStyle(Ink.text)
                     Text(n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)")
-                        .font(Fonts.rounded(60 * u, .black))
-                        .foregroundStyle(Ink.plum)
-                        .monospacedDigit()
+                        .font(Fonts.hand((two ? 46 : 64) * u))
+                        .foregroundStyle(concept.accent)
                 }
-            } else {
-                Text("+ D-day")
-                    .font(Fonts.hand(40 * u))
-                    .foregroundStyle(Ink.faint)
-                    .padding(.bottom, 10 * u)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
             }
         }
-        .fixedSize()
+        .padding(.horizontal, 10 * u)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { editingDDay = true }
         .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor().environmentObject(store) }
-        .help("D-day 설정")
+        .help("D-day 설정 (최대 2개)")
     }
 
     // MARK: COMMENT
 
     private var comment: some View {
         InlineField(text: store.dayField(date, \.comment), font: Fonts.hand(50 * u),
-                    key: "c|\(Dates.key(date))", lines: 3)
+                    key: "c|\(Dates.key(date))", lines: 3, alignment: .center)
     }
 
     // MARK: TASKS
@@ -109,7 +116,7 @@ struct DailyPage: View {
 
         // 같은 형광펜이 이어지는 묶음의 첫 줄에만 카테고리 이름 + 그 색으로 칠한 시간
         if let task, let cat, i == 0 || tasks[i - 1].cat != task.cat {
-            CategoryTag(name: cat.name, minutes: store.minutes(date, cat: cat.id), u: u)
+            CategoryTag(name: cat.name, minutes: store.minutes(date, cat: cat.id), color: concept.accent, u: u)
                 .place(CGRect(x: F.left + 6, y: row.minY + 3, width: F.categoryX - F.left - 12, height: row.height - 6), u)
         }
 
@@ -120,6 +127,7 @@ struct DailyPage: View {
             key: taskKey(i),
             tapKey: task == nil ? taskKey(tasks.count) : nil,
             highlight: cat?.color,
+            strike: task?.mark == .done ? concept.accent : nil,
             onSubmit: { [state] in
                 if i + 1 < F.taskCount { state.editingKey = taskKey(i + 1) } else { state.endEditing() }
             },
@@ -133,7 +141,7 @@ struct DailyPage: View {
 
         // 인쇄된 점선 체크 박스 한가운데에 펜 표시
         if let task {
-            MarkButton(mark: task.mark, size: 42 * u, color: Ink.red, lineWidth: 3.4 * u, showsPlaceholder: false) {
+            MarkButton(mark: task.mark, size: 42 * u, color: concept.accent, lineWidth: 5.6 * u, showsPlaceholder: false) {
                 store.cycleMark(date, task.id)
             }
             .position(x: F.boxMidX * u, y: F.box(i).midY * u)
@@ -163,6 +171,7 @@ struct DailyPage: View {
 /// 타임테이블에서 칠한 시간의 합 (휴식·개인처럼 집계하지 않는 색은 빼고). 빨간 스탬프 숫자 "8H36M".
 private struct TotalTime: View {
     let minutes: Int
+    let color: Color
     let u: CGFloat
 
     var body: some View {
@@ -173,7 +182,7 @@ private struct TotalTime: View {
         (Text(h).font(digits) + Text("H").font(unit) + Text(m).font(digits) + Text("M").font(unit))
             .kerning(-1.5 * u)
             .monospacedDigit()
-            .foregroundStyle(zero ? Ink.red.opacity(0.1) : Ink.red)
+            .foregroundStyle(zero ? color.opacity(0.12) : color)
             .lineLimit(1)
             .minimumScaleFactor(0.5)
             .contentTransition(.numericText(value: Double(minutes)))
@@ -190,6 +199,7 @@ private struct TotalTime: View {
 private struct CategoryTag: View {
     let name: String
     let minutes: Int
+    let color: Color
     let u: CGFloat
 
     var body: some View {
@@ -201,7 +211,7 @@ private struct CategoryTag: View {
                 let (h, m) = formatHM(minutes)
                 Text("\(h)H\(m)M")
                     .font(Fonts.rounded(18.5 * u, .heavy))
-                    .foregroundStyle(Ink.red)
+                    .foregroundStyle(color)
             }
         }
         .lineLimit(1)

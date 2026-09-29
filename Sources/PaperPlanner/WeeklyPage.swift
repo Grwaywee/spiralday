@@ -201,6 +201,7 @@ private struct WeekDayColumn: View {
                     font: Fonts.hand(30 * u),
                     key: key,
                     tapKey: task == nil ? "t|\(dk)|\(min(tasks.count, WK.taskLines - 1))" : nil,
+                    strike: task?.mark == .done ? store.concept(d).accent : nil,
                     onSubmit: {
                         if i + 1 < WK.taskLines { st.editingKey = "t|\(dk)|\(i + 1)" } else { st.endEditing() }
                     },
@@ -227,8 +228,8 @@ private struct WeekDayColumn: View {
         }
 
         if let task {
-            MarkButton(mark: task.mark, size: WK.markSize * u, color: Ink.pen,
-                       lineWidth: max(1.1, 2.3 * u), showsPlaceholder: true) {
+            MarkButton(mark: task.mark, size: WK.markSize * u, color: store.concept(d).accent,
+                       lineWidth: max(1.6, 3.6 * u), showsPlaceholder: true) {
                 store.cycleMark(d, task.id)
             }
             .offset(x: (WK.markMidX - WK.markSize / 2) * u, y: (y + (WK.taskH - WK.markSize) / 2 + 1) * u)

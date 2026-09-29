@@ -41,10 +41,10 @@ enum Ink {
 // MARK: - Fonts
 
 enum Fonts {
-    /// 손글씨 — 배민 연성체 (macOS 다운로드형 시스템 폰트). 손으로 쓴 느낌이면서 또렷하게 읽힌다.
-    static let handName = "BMYEONSUNG-OTF"
-    /// 페이지들의 크기 값은 가는 펜글씨 기준이라, 글자 몸이 큰 연성체에 맞게 줄여 쓴다.
-    static let handScale: CGFloat = 0.8
+    /// 손글씨 — Poor Story (윤디자인, SIL OFL 1.1). 볼펜으로 또박또박 쓴 느낌. 앱에 함께 들어 있다.
+    static let handName = "PoorStory-Regular"
+    /// 페이지들의 크기 값은 가는 펜글씨 기준이라 이 폰트의 글자 몸에 맞게 줄여 쓴다.
+    static let handScale: CGFloat = 0.9
     static func hand(_ size: CGFloat) -> Font { .custom(handName, size: size * handScale) }
 
     /// 양식에 인쇄된 글자 (기하학적 산세리프)
@@ -68,14 +68,48 @@ enum Fonts {
         .system(size: size, weight: weight, design: .rounded)
     }
 
-    /// 손글씨 폰트는 처음 한 번 macOS 에 활성화(다운로드) 요청이 필요하다.
+    /// 앱에 들어 있는 폰트(Resources/Fonts)를 이 프로세스에 등록한다.
+    /// .app 에서는 Contents/Resources/Fonts, 개발 빌드에서는 저장소의 Resources/Fonts 를 쓴다.
     static func activate(_ done: @escaping @Sendable () -> Void) {
-        let desc = CTFontDescriptorCreateWithAttributes([kCTFontNameAttribute: handName] as CFDictionary)
-        CTFontDescriptorMatchFontDescriptorsWithProgressHandler([desc] as CFArray, nil) { state, _ in
-            if state == .didFinish { DispatchQueue.main.async { done() } }
-            return true
+        let repoFonts = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Resources/Fonts")
+        let dirs = [Bundle.main.resourceURL?.appendingPathComponent("Fonts"), repoFonts].compactMap { $0 }
+        for dir in dirs {
+            guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil),
+                  files.contains(where: { ["ttf", "otf"].contains($0.pathExtension.lowercased()) }) else { continue }
+            for f in files where ["ttf", "otf"].contains(f.pathExtension.lowercased()) {
+                CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
+            }
+            break
         }
+        DispatchQueue.main.async { done() }
     }
+}
+
+// MARK: - Color concept (날마다 고르는 색 테마)
+
+/// 하루 페이지의 강조색 세트. TOTAL TIME, 날짜의 요일, D-day 숫자, ○△× 표시, 완료 줄긋기에 쓰이고
+/// tint 는 날짜 밑 형광펜처럼 옅게 깔린다.
+struct ColorConcept: Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let accent: Color
+    let tint: Color
+
+    static let all: [ColorConcept] = [
+        ColorConcept(id: 0, name: "체리", accent: Color(hex: "E0474C"), tint: Color(hex: "F7C3C5")),
+        ColorConcept(id: 1, name: "코랄", accent: Color(hex: "EE6F4F"), tint: Color(hex: "FAD0C2")),
+        ColorConcept(id: 2, name: "머스타드", accent: Color(hex: "D39A12"), tint: Color(hex: "F5E2A0")),
+        ColorConcept(id: 3, name: "민트", accent: Color(hex: "23A08A"), tint: Color(hex: "BDE8DD")),
+        ColorConcept(id: 4, name: "스카이", accent: Color(hex: "3A86D4"), tint: Color(hex: "C6DCF5")),
+        ColorConcept(id: 5, name: "네이비", accent: Color(hex: "2E3D7C"), tint: Color(hex: "C9CFE8")),
+        ColorConcept(id: 6, name: "라벤더", accent: Color(hex: "8466CC"), tint: Color(hex: "DCD1F4")),
+        ColorConcept(id: 7, name: "핑크", accent: Color(hex: "DE5C8A"), tint: Color(hex: "F8CADB")),
+        ColorConcept(id: 8, name: "차콜", accent: Color(hex: "3A3940"), tint: Color(hex: "DAD8D2")),
+    ]
+
+    static func of(_ id: Int) -> ColorConcept { all[min(max(id, 0), all.count - 1)] }
 }
 
 // MARK: - Page geometry

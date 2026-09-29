@@ -18,7 +18,9 @@ struct InlineField: View {
     var tapKey: String? = nil
     var color: Color = Ink.text
     var highlight: Color? = nil
-    /// 1 이면 한 줄, 그 이상이면 여러 줄 (위에서부터)
+    /// 완료된 할 일: 이 색 펜으로 글자 위에 줄을 긋는다
+    var strike: Color? = nil
+    /// 1 이면 한 줄, 그 이상이면 여러 줄 (alignment 가 .center 면 상하좌우 가운데, 아니면 위에서부터)
     var lines: Int = 1
     var alignment: Alignment = .leading
     var onSubmit: (() -> Void)? = nil
@@ -40,7 +42,7 @@ struct InlineField: View {
     }
 
     private var frameAlignment: Alignment {
-        lines > 1 ? Alignment(horizontal: alignment.horizontal, vertical: .top) : alignment
+        lines > 1 && alignment != .center ? Alignment(horizontal: alignment.horizontal, vertical: .top) : alignment
     }
 
     @ViewBuilder private var editor: some View {
@@ -81,9 +83,29 @@ struct InlineField: View {
                         .padding(.bottom, 1)
                 }
             }
+            .overlay {
+                if let strike, !empty { StrikeLine(color: strike) }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
             .contentShape(Rectangle())
             .onTapGesture { state.editingKey = tapKey ?? key }
+    }
+}
+
+/// 완료한 일 위에 펜으로 한 번 그은 줄 (살짝 기울고 끝이 둥근)
+struct StrikeLine: View {
+    let color: Color
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            Path { p in
+                p.move(to: CGPoint(x: -h * 0.12, y: h * 0.58))
+                p.addQuadCurve(to: CGPoint(x: w + h * 0.12, y: h * 0.50),
+                               control: CGPoint(x: w * 0.5, y: h * 0.51))
+            }
+            .stroke(color.opacity(0.92), style: StrokeStyle(lineWidth: max(1.4, h * 0.075), lineCap: .round))
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -284,30 +306,55 @@ struct SlotPainter: View {
     }
 }
 
-// MARK: - D-day editor (페이지의 D-day, 팔레트 버튼에서 같이 쓴다)
+// MARK: - D-day editor (페이지의 D-DAY 칸, 팔레트 버튼에서 같이 쓴다)
 
 struct DDayEditor: View {
     @EnvironmentObject private var store: PlannerStore
 
     var body: some View {
-        let p = store.data.prefs
+        let list = store.data.prefs.ddays
         VStack(alignment: .leading, spacing: 12) {
-            Text("D-day").font(.system(size: 15, weight: .bold, design: .rounded))
-            TextField("무엇까지? (예: 런칭)", text: Binding(get: { p.ddayTitle },
-                                                        set: { v in store.editPrefs { $0.ddayTitle = v } }))
-                .textFieldStyle(.roundedBorder)
-            Toggle("날짜 정하기", isOn: Binding(get: { p.ddayDate != nil }, set: { on in
-                store.editPrefs { $0.ddayDate = on ? ($0.ddayDate ?? Dates.add(days: 30, to: Dates.day(Date()))) : nil }
-            }))
-            if p.ddayDate != nil {
-                DatePicker("", selection: Binding(get: { p.ddayDate ?? Date() },
-                                                  set: { v in store.editPrefs { $0.ddayDate = Dates.day(v) } }),
-                           displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
+            HStack {
+                Text("D-day").font(.system(size: 15, weight: .bold, design: .rounded))
+                Spacer()
+                Text("최대 \(Prefs.maxDDays)개").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            ForEach(Array(list.enumerated()), id: \.element.id) { i, d in
+                HStack(spacing: 8) {
+                    TextField("무엇까지?", text: Binding(get: { d.title }, set: { v in edit(i) { $0.title = v } }))
+                        .textFieldStyle(.roundedBorder)
+                    DatePicker("", selection: Binding(get: { d.date }, set: { v in edit(i) { $0.date = Dates.day(v) } }),
+                               displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                    Button {
+                        store.editPrefs { $0.ddays.removeAll { $0.id == d.id } }
+                    } label: {
+                        Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("삭제")
+                }
+            }
+            if list.count < Prefs.maxDDays {
+                Button {
+                    store.editPrefs {
+                        $0.ddays.append(DDay(title: "", date: Dates.add(days: 30, to: Dates.day(Date()))))
+                    }
+                } label: {
+                    Label("D-day 추가", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.borderless)
             }
         }
         .padding(16)
-        .frame(width: 280)
+        .frame(width: 330)
+    }
+
+    private func edit(_ i: Int, _ f: (inout DDay) -> Void) {
+        store.editPrefs { p in
+            guard p.ddays.indices.contains(i) else { return }
+            f(&p.ddays[i])
+        }
     }
 }

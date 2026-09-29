@@ -95,6 +95,10 @@ struct PaletteView: View {
 
             Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.horizontal, 6)
 
+            ConceptPicker()
+
+            Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.horizontal, 6)
+
             VStack(spacing: 6) {
                 ForEach(store.categories) { c in
                     PenRow(color: c.color, name: c.name, selected: state.tool == c.id)
@@ -140,6 +144,49 @@ struct PaletteView: View {
         .buttonStyle(.plain)
         .help("\(title) 보기 (\(key))")
         .animation(.snappy(duration: 0.25), value: on)
+    }
+}
+
+/// 그날의 컬러 컨셉 (일간: 이 날만, 주간: 기본값). 오른쪽 클릭으로 기본값 지정.
+private struct ConceptPicker: View {
+    @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        let daily = state.kind == .daily
+        let date = state.dayDate(state.dayIndex)
+        let dayTheme = store.day(date).theme
+        let def = store.data.prefs.defaultTheme
+        let current = daily ? (dayTheme ?? def) : def
+        VStack(spacing: 6) {
+            Text(daily ? "오늘의 컬러" : "기본 컬러")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary.opacity(0.6))
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(16), spacing: 5), count: 3), spacing: 5) {
+                ForEach(ColorConcept.all) { c in
+                    Circle()
+                        .fill(c.accent)
+                        .frame(width: 16, height: 16)
+                        .overlay(Circle().stroke(Color.primary.opacity(current == c.id ? 0.85 : 0), lineWidth: 2).padding(-3))
+                        .overlay {
+                            if c.id == def {
+                                Circle().fill(.white).frame(width: 4, height: 4)
+                            }
+                        }
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                if daily { store.setTheme(date, c.id == def ? nil : c.id) } else { store.editPrefs { $0.defaultTheme = c.id } }
+                            }
+                        }
+                        .contextMenu {
+                            Button("기본 컬러로 정하기") { store.editPrefs { $0.defaultTheme = c.id } }
+                            if daily { Button("이 날은 기본 컬러 따르기") { store.setTheme(date, nil) } }
+                        }
+                        .help("\(c.name)\(c.id == def ? " · 기본" : "") — 오른쪽 클릭: 기본 컬러로")
+                }
+            }
+        }
     }
 }
 

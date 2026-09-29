@@ -11,6 +11,8 @@ import AppKit
 
 enum DailyForm {
     // MARK: 세로 위치
+    /// (양식 위 빈 여백에 추가) DATE / D-DAY 머리선. 칸은 이 선과 COMMENT 머리선 사이.
+    static let dateRuleY: CGFloat = 72
     /// COMMENT / TOTAL TIME 머리선
     static let headerY: CGFloat = 180.3
     /// 두 칸을 닫는 선
@@ -63,7 +65,7 @@ enum DailyForm {
     static let hourRule: CGFloat = 1.35 // 시각 칸 세로 실선
     static let dot: CGFloat = 2.1       // 카테고리 점선의 점 지름
     static let slotDot: CGFloat = 2.3   // 10분 칸 점선
-    static let boxDot: CGFloat = 2.75   // 체크 박스 점
+    static let boxDot: CGFloat = 3.5    // 체크 박스 점 (조금 굵게)
     static let dotGap: CGFloat = 6.63   // 점 간격
 
     // MARK: 인쇄 글자
@@ -76,6 +78,9 @@ enum DailyForm {
     // MARK: 칸 (편집 영역)
     static var commentBox: CGRect { CGRect(x: left, y: headerY, width: leftEnd - left, height: closeY - headerY) }
     static var totalBox: CGRect { CGRect(x: timeLeft, y: headerY, width: timeRight - timeLeft, height: closeY - headerY) }
+    /// DATE / D-DAY 칸 (머리선 아래 ~ COMMENT 라벨 위)
+    static var dateBox: CGRect { CGRect(x: left, y: dateRuleY + 6, width: leftEnd - left, height: headerY - dateRuleY - 20) }
+    static var ddayBox: CGRect { CGRect(x: timeLeft, y: dateRuleY + 6, width: timeRight - timeLeft, height: headerY - dateRuleY - 20) }
 
     /// 할 일 i 번째 줄 (0...14)
     static func taskRow(_ i: Int) -> CGRect {
@@ -215,12 +220,14 @@ struct DailyFormPrint: View {
         (NSFont(name: ps, size: size)?.capHeight ?? size * 0.708)
     }
 
-    /// 라벨: 블록 여백에서 시작하고, 대문자 가운데를 머리선 높이(+dy)에 맞춘다.
+    /// 라벨: 블록 여백에서 시작하고, 대문자 가운데를 머리선 높이(+dy)에 맞춘다. 그린 폭을 돌려준다.
+    @discardableResult
     private func label(_ ctx: inout GraphicsContext, _ s: String, _ weight: Fonts.PrintWeight, size: CGFloat,
-                       tracking: CGFloat, x: CGFloat, ruleY: CGFloat, dy: CGFloat) {
+                       tracking: CGFloat, x: CGFloat, ruleY: CGFloat, dy: CGFloat) -> CGFloat {
         let cap = Self.capHeight(weight.postScriptName, size)
-        text(&ctx, Text(s).font(Fonts.print(size, weight)).tracking(tracking).foregroundStyle(Ink.print),
-             x: x, baseline: ruleY + dy + cap / 2)
+        let t = Text(s).font(Fonts.print(size, weight)).tracking(tracking).foregroundStyle(Ink.print)
+        text(&ctx, t, x: x, baseline: ruleY + dy + cap / 2)
+        return ctx.resolve(t).measure(in: CGSize(width: 2000, height: 400)).width
     }
 
     private func drawLabels(_ ctx: inout GraphicsContext) {
@@ -230,6 +237,13 @@ struct DailyFormPrint: View {
         label(&ctx, "TASKS", .demiBold, size: bold, tracking: -0.9, x: F.left + 1.0, ruleY: F.gridTop, dy: -1.2)
         label(&ctx, "TOTAL TIME", .demiBold, size: bold, tracking: -1.2, x: F.timeLeft, ruleY: F.headerY, dy: -0.7)
         label(&ctx, "TIMETABLE", .demiBold, size: bold, tracking: -1.28, x: F.timeLeft, ruleY: F.gridTop, dy: -1.4)
+
+        // 양식 위 여백에 더한 DATE / D-DAY 칸: 다른 칸과 같은 "라벨 ── 머리선" 모양
+        let gap: CGFloat = 13
+        let dw = label(&ctx, "DATE", .medium, size: light, tracking: 0.6, x: F.left + 0.7, ruleY: F.dateRuleY, dy: 0.5)
+        hline(&ctx, F.left + 0.7 + dw + gap, F.leftEnd, F.dateRuleY, F.heavy, Ink.print)
+        let kw = label(&ctx, "D-DAY", .demiBold, size: bold, tracking: -0.6, x: F.timeLeft, ruleY: F.dateRuleY, dy: -0.7)
+        hline(&ctx, F.timeLeft + kw + gap, F.timeRight, F.dateRuleY, F.heavy, Ink.print)
     }
 
     private func drawHours(_ ctx: inout GraphicsContext) {
