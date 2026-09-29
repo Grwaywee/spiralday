@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Spiralday</title>
+    <link>https://spiralday.com</link>
+    <language>ko</language>
+    <item>
+      <title>Spiralday 1.0.0</title>
+      <pubDate>Tue, 29 Sep 2026 07:32:14 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<ul><li>일간: 10분 단위 종이 플래너 형식 — DATE · D-DAY · COMMENT · TOTAL TIME · TASKS · MEMO · TIMETABLE</li>
+<li>주간: MY GOAL, 주간 회고, 월–일 7칸 (할 일 · 타임테이블 · 하루 합계)</li>
+<li>홈: 이번 주·이번 달 시간, 연속 기록, 완료율, 최근 12주, 형광펜별 시간, 최근 35일 달력</li>
+<li>진짜 종이처럼 넘어가는 페이지 (모서리 드래그, 트랙패드 스와이프, ← →)</li>
+<li>형광펜 타임테이블, 손글씨 메모, 🍴 밥시간 화살표</li>
+<li>○ △ × → 체크, 끝낸 일에만 형광펜, 같은 형광펜끼리 모으기</li>
+<li>날마다 고르는 컬러 컨셉, D-day 두 개</li>
+<li>플래너 여러 권 (시작일 · 종료일), 첫 실행 튜토리얼</li>
+<li>PDF 로 뽑기: 일간 A4 반쪽 두 장씩 (자르면 실물 크기) · A4 세로, 주간 · 홈 A4 가로</li>
+<li>자동 업데이트</li></ul>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.0/Spiralday-1.0.0-macOS.zip" sparkle:edSignature="cdpEVeIOhU6D0/4tlgJP4Zu76ZXZJZfc5hZi6uwzGjni6fJctDjfuokQRjcn8Blt/j+DYkgeXwtLHCpZlW3ECA==" length="5827185" type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
