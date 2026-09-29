@@ -166,6 +166,7 @@ enum Dates {
     }()
 
     static func key(_ d: Date) -> String { keyFormatter.string(from: d) }
+    static func parse(_ key: String) -> Date? { keyFormatter.date(from: key) }
     static func day(_ d: Date) -> Date { cal.startOfDay(for: d) }
     static func weekStart(_ d: Date) -> Date {
         cal.dateInterval(of: .weekOfYear, for: d)?.start ?? day(d)
@@ -191,44 +192,177 @@ func formatHM(_ minutes: Int) -> (String, String) {
 
 // MARK: - Store
 
+/// 플래너 한 권 (책). 기록은 권마다 따로 저장된다.
+struct BookInfo: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var name: String
+    /// 첫 장 (반드시 있다). 이 날 이전으로는 넘어가지 않는다.
+    var start: Date
+    /// 마지막 장 (없으면 끝없이 넘어간다)
+    var end: Date? = nil
+    /// 표지 색 (ColorConcept id)
+    var cover = 0
+    var created = Date()
+
+    /// 날짜가 이 책 안에 있는지
+    func contains(_ d: Date) -> Bool {
+        let day = Dates.day(d)
+        if day < Dates.day(start) { return false }
+        if let end, day > Dates.day(end) { return false }
+        return true
+    }
+
+    var periodText: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy. M. d."
+        return "\(f.string(from: start)) – \(end.map { f.string(from: $0) } ?? "계속")"
+    }
+}
+
+struct Library: Codable {
+    var books: [BookInfo] = []
+    var activeID: UUID? = nil
+}
+
 @MainActor
 final class PlannerStore: ObservableObject {
+    /// 지금 펼친 책의 내용
     @Published var data: PlannerData
+    /// 모든 책 목록과 펼친 책
+    @Published private(set) var library = Library()
     /// 데이터가 바뀔 때마다 올라간다 (페이지 스냅샷 캐시 무효화용)
     private(set) var version = 0
 
-    private let url: URL?
+    /// 저장 폴더 (메모리 전용이면 nil)
+    let folder: URL?
     private var saveWork: DispatchWorkItem?
 
+    var books: [BookInfo] { library.books }
+    var activeBook: BookInfo? { library.books.first { $0.id == library.activeID } }
+
+    private static let enc: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        e.outputFormatting = [.sortedKeys]
+        return e
+    }()
+    private static let dec: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
     init(inMemory: Bool = false) {
+        data = PlannerData()
         if inMemory {
-            url = nil
-            data = PlannerData()
+            folder = nil
             return
         }
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PaperPlanner", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = dir.appendingPathComponent("planner.json")
-        url = file
-        if let raw = try? Data(contentsOf: file) {
-            let dec = JSONDecoder()
-            dec.dateDecodingStrategy = .iso8601
-            data = (try? dec.decode(PlannerData.self, from: raw)) ?? PlannerData()
-            // 예전 기록도 같은 형광펜끼리 모아 둔다
-            for (k, r) in data.days where Self.grouped(r.tasks) != r.tasks { data.days[k]?.tasks = Self.grouped(r.tasks) }
+        folder = dir
+        try? FileManager.default.createDirectory(at: dir.appendingPathComponent("books", isDirectory: true),
+                                                 withIntermediateDirectories: true)
+        if let raw = try? Data(contentsOf: libraryURL!), let lib = try? Self.dec.decode(Library.self, from: raw) {
+            library = lib
         } else {
-            data = PlannerData()
+            migrateLegacy()
         }
+        if activeBook == nil { library.activeID = library.books.first?.id }
+        if let id = library.activeID { data = loadBook(id) }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveNow() }
         }
     }
 
+    private var libraryURL: URL? { folder?.appendingPathComponent("library.json") }
+    private func bookURL(_ id: UUID) -> URL? { folder?.appendingPathComponent("books/\(id.uuidString).json") }
+    /// 펼친 책의 저장 파일
+    var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
+
+    private func loadBook(_ id: UUID) -> PlannerData {
+        guard let url = bookURL(id), let raw = try? Data(contentsOf: url),
+              var d = try? Self.dec.decode(PlannerData.self, from: raw) else { return PlannerData() }
+        // 예전 기록도 같은 형광펜끼리 모아 둔다
+        for (k, r) in d.days where Self.grouped(r.tasks) != r.tasks { d.days[k]?.tasks = Self.grouped(r.tasks) }
+        return d
+    }
+
+    /// 한 권짜리 예전 저장 파일(planner.json)을 첫 번째 책 "내 플래너" 로 옮긴다. 원본은 백업으로 남긴다.
+    private func migrateLegacy() {
+        guard let folder else { return }
+        let legacy = folder.appendingPathComponent("planner.json")
+        guard let raw = try? Data(contentsOf: legacy), let old = try? Self.dec.decode(PlannerData.self, from: raw) else { return }
+        let first = old.days.keys.sorted().first.flatMap(Dates.parse) ?? Dates.day(Date())
+        let book = BookInfo(name: "내 플래너", start: min(first, Dates.day(Date())))
+        library = Library(books: [book], activeID: book.id)
+        if let url = bookURL(book.id), let out = try? Self.enc.encode(old) { try? out.write(to: url, options: .atomic) }
+        writeLibrary()
+        try? FileManager.default.moveItem(at: legacy, to: folder.appendingPathComponent("planner.json.backup"))
+    }
+
+    // MARK: books
+
+    /// 새 책을 만들고 펼친다. 형광펜 구성과 기본 컬러는 지금 책에서 이어받는다.
+    @discardableResult
+    func createBook(name: String, start: Date, end: Date?, cover: Int = 0) -> UUID {
+        var book = BookInfo(name: name, start: Dates.day(start), end: end.map(Dates.day), cover: cover)
+        if let e = book.end, e < book.start { book.end = book.start }
+        var fresh = PlannerData()
+        if activeBook != nil {
+            fresh.prefs.categories = data.prefs.categories
+            fresh.prefs.defaultTheme = data.prefs.defaultTheme
+        }
+        fresh.prefs.lastKind = data.prefs.lastKind
+        saveNow()
+        library.books.append(book)
+        library.activeID = book.id
+        data = fresh
+        bump()
+        saveNow()
+        return book.id
+    }
+
+    func updateBook(_ id: UUID, _ f: (inout BookInfo) -> Void) {
+        guard let i = library.books.firstIndex(where: { $0.id == id }) else { return }
+        f(&library.books[i])
+        library.books[i].start = Dates.day(library.books[i].start)
+        if let e = library.books[i].end { library.books[i].end = max(Dates.day(e), library.books[i].start) }
+        bump()
+        writeLibrary()
+    }
+
+    /// 다른 책을 펼친다
+    func activate(_ id: UUID) {
+        guard id != library.activeID, library.books.contains(where: { $0.id == id }) else { return }
+        saveNow()
+        library.activeID = id
+        data = loadBook(id)
+        bump()
+        writeLibrary()
+    }
+
+    /// 책을 지운다 (파일도). 펼친 책이면 남은 첫 책을 펼친다.
+    func deleteBook(_ id: UUID) {
+        library.books.removeAll { $0.id == id }
+        if let url = bookURL(id) { try? FileManager.default.removeItem(at: url) }
+        if library.activeID == id {
+            library.activeID = library.books.first?.id
+            data = library.activeID.map(loadBook) ?? PlannerData()
+        }
+        bump()
+        writeLibrary()
+    }
+
+    private func bump() { version &+= 1 }
+
+    // MARK: saving
+
     func scheduleSave() {
         version &+= 1
-        guard url != nil else { return }
+        guard folder != nil else { return }
         saveWork?.cancel()
         let w = DispatchWorkItem { [weak self] in self?.saveNow() }
         saveWork = w
@@ -236,13 +370,23 @@ final class PlannerStore: ObservableObject {
     }
 
     func saveNow() {
-        guard let url else { return }
-        let enc = JSONEncoder()
-        enc.dateEncodingStrategy = .iso8601
-        enc.outputFormatting = [.sortedKeys]
-        if let raw = try? enc.encode(data) {
+        saveWork?.cancel()
+        guard folder != nil else { return }
+        if let url = activeBookURL, let raw = try? Self.enc.encode(data) {
             try? raw.write(to: url, options: .atomic)
         }
+        writeLibrary()
+    }
+
+    private func writeLibrary() {
+        guard let url = libraryURL, let raw = try? Self.enc.encode(library) else { return }
+        try? raw.write(to: url, options: .atomic)
+    }
+
+    /// 메모리 전용(데모/스냅샷)에서 쓸 책
+    func useDemoBook(start: Date, end: Date? = nil) {
+        let book = BookInfo(name: "데모 플래너", start: Dates.day(start), end: end)
+        library = Library(books: [book], activeID: book.id)
     }
 
     // Days

@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
+            store.useDemoBook(start: Dates.add(days: -42, to: Dates.weekStart(Date())))
         } else {
             store = PlannerStore()
         }
@@ -61,13 +62,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        let demo = Self.args.contains("--demo")
+        if !demo && (store.books.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
+            OnboardingController.shared.show(store: store, state: state) { [weak self] in self?.openPlanner() }
+        } else {
+            openPlanner()
+        }
+        let st = state
+        Fonts.activate { Task { @MainActor in st.fontsReady = true } }
+    }
+
+    /// 플래너(책)가 준비된 뒤 본 창을 연다
+    private func openPlanner() {
+        guard windowController == nil else { windowController?.show(); return }
         let wc = MainWindowController(store: store, state: state)
         windowController = wc
         wc.show()
         state.installMonitors()
         if Self.args.contains("--settings") { SettingsWindowController.shared.show(store: store, state: state) }
-        let st = state
-        Fonts.activate { Task { @MainActor in st.fontsReady = true } }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

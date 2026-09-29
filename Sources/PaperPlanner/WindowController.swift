@@ -73,7 +73,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             self?.snapshotter.schedulePrewarm()
         }
         state.curl.snapshot = { [weak self] delta in
-            guard let self else { return nil }
+            // 책의 첫 장 / 마지막 장 너머로는 넘길 수 없다 (마우스 드래그·스와이프·모서리 들기도 막힌다)
+            guard let self, self.state.canStep(delta) else { return nil }
             let size = self.state.curl.pageSize
             let scale = self.window.backingScaleFactor
             guard let cur = self.snapshotter.image(kind: self.state.kind, index: self.state.index, size: size, scale: scale),
@@ -87,6 +88,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     private func updateTitle() {
+        let book = store.activeBook.map { "\($0.name) — " } ?? ""
+        defer { window.title = book + window.title }
         let f = DateFormatter()
         f.locale = Locale(identifier: "ko_KR")
         switch state.kind {

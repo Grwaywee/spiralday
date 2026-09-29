@@ -180,6 +180,14 @@ private struct WeekDayColumn: View {
                 .blendMode(.multiply)
                 .offset(x: WK.cellsX * u, y: WK.ttTop * u)
             footer
+            // 이 플래너의 기간 밖인 날: 흐리게, 쓸 수 없게
+            if !(store.activeBook?.contains(date) ?? true) {
+                Ink.paper.opacity(0.78)
+                    .frame(width: WK.colW * u, height: (WK.footRule + 2) * u)
+                    .contentShape(Rectangle())
+                    .onTapGesture {}
+                    .help("이 플래너의 기간이 아닌 날이에요")
+            }
         }
         .frame(width: WK.colW * u, height: (WK.footRule + 2) * u, alignment: .topLeading)
     }

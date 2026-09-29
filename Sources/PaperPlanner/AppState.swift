@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 @MainActor
 final class AppState: ObservableObject {
@@ -17,8 +18,11 @@ final class AppState: ObservableObject {
     @Published var morphing = false
 
     let curl = CurlController()
-    /// 숫자 키로 형광펜을 고를 때 순서 → id 변환용
-    weak var store: PlannerStore?
+    /// 숫자 키로 형광펜을 고를 때 순서 → id 변환용, 펼친 책의 범위
+    weak var store: PlannerStore? {
+        didSet { bindStore() }
+    }
+    private var bookWatch: AnyCancellable?
     let baseDay: Date
     let baseWeek: Date
 
@@ -37,6 +41,62 @@ final class AppState: ObservableObject {
         curl.edge = kind.edge
         curl.willBegin = { [weak self] in self?.endEditing() }
         curl.commit = { [weak self] delta in self?.step(delta) }
+    }
+
+    // MARK: book range (시작일 이전 / 종료일 이후로는 넘어가지 않는다)
+
+    private var book: BookInfo? { store?.activeBook }
+
+    var dayRange: ClosedRange<Int> {
+        guard let b = book else { return -100_000...100_000 }
+        let lo = Dates.daysBetween(baseDay, b.start)
+        let hi = b.end.map { Dates.daysBetween(baseDay, $0) } ?? 100_000
+        return lo...max(lo, hi)
+    }
+
+    var weekRange: ClosedRange<Int> {
+        guard let b = book else { return -20_000...20_000 }
+        let lo = Dates.daysBetween(baseWeek, Dates.weekStart(b.start)) / 7
+        let hi = b.end.map { Dates.daysBetween(baseWeek, Dates.weekStart($0)) / 7 } ?? 20_000
+        return lo...max(lo, hi)
+    }
+
+    private var range: ClosedRange<Int> {
+        switch kind {
+        case .weekly: weekRange
+        case .daily: dayRange
+        case .home: 0...0
+        }
+    }
+
+    /// 지금 페이지에서 delta 장 넘길 수 있는지
+    func canStep(_ delta: Int) -> Bool { kind.flips && range.contains(index + delta) }
+
+    private func clampDay(_ i: Int) -> Int { min(max(i, dayRange.lowerBound), dayRange.upperBound) }
+    private func clampWeek(_ i: Int) -> Int { min(max(i, weekRange.lowerBound), weekRange.upperBound) }
+
+    /// 책이 바뀌면 오늘(범위 밖이면 가장 가까운 장)부터 편다
+    private func bindStore() {
+        bookWatch = store?.$library
+            .map(\.activeID)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.endEditing()
+                    self.dayIndex = self.clampDay(0)
+                    self.weekIndex = self.clampWeek(0)
+                    self.onPageChange?()
+                }
+            }
+        dayIndex = clampDay(dayIndex)
+        weekIndex = clampWeek(weekIndex)
+    }
+
+    /// 넘길 수 없을 때: 트랙패드 진동으로 알려 준다
+    private func bump() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
     }
 
     // MARK: pages
@@ -79,18 +139,19 @@ final class AppState: ObservableObject {
 
     func flip(_ dir: FlipDirection) {
         guard !morphing, kind.flips else { return }
+        guard canStep(dir.delta) else { bump(); return }
         curl.flip(dir)
     }
 
     func goToday() {
         guard curl.isIdle, !morphing else { return }
         if kind == .home {
-            dayIndex = 0
-            weekIndex = 0
+            dayIndex = clampDay(0)
+            weekIndex = clampWeek(0)
             setKind(lastPageKind)
             return
         }
-        let target = 0
+        let target = kind == .weekly ? clampWeek(0) : clampDay(0)
         let delta = target - index
         if delta == 0 { return }
         if abs(delta) == 1 {
@@ -103,7 +164,7 @@ final class AppState: ObservableObject {
 
     func openDay(_ d: Date) {
         endEditing()
-        dayIndex = Dates.daysBetween(baseDay, d)
+        dayIndex = clampDay(Dates.daysBetween(baseDay, d))
         setKind(.daily)
     }
 
@@ -115,11 +176,11 @@ final class AppState: ObservableObject {
         } else if kind == .home {
             // 홈에서 돌아갈 때는 보던 날/주 그대로
         } else if k == .weekly {
-            weekIndex = Dates.daysBetween(baseWeek, Dates.weekStart(dayDate(dayIndex))) / 7
+            weekIndex = clampWeek(Dates.daysBetween(baseWeek, Dates.weekStart(dayDate(dayIndex))) / 7)
         } else {
             let ws = weekStart(weekIndex)
             let inWeek = (0..<7).contains(Dates.daysBetween(ws, baseDay))
-            dayIndex = inWeek ? 0 : Dates.daysBetween(baseDay, ws)
+            dayIndex = clampDay(inWeek ? 0 : Dates.daysBetween(baseDay, ws))
         }
         setKind(k)
     }

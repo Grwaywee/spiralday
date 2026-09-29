@@ -61,6 +61,8 @@ struct PaletteView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            BookMenu()
+
             VStack(spacing: 4) {
                 kindButton(.home, "홈", "chart.bar.xaxis", "H")
                 kindButton(.weekly, "주간", "rectangle.split.3x1", "W")
@@ -163,6 +165,45 @@ struct PaletteView: View {
         .buttonStyle(.plain)
         .help("\(title) 보기 (\(key))")
         .animation(.snappy(duration: 0.25), value: on)
+    }
+}
+
+/// 지금 펼친 플래너(책). 눌러서 다른 권으로 바꾸거나 관리 화면을 연다.
+private struct BookMenu: View {
+    @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        let book = store.activeBook
+        Menu {
+            ForEach(store.books) { b in
+                Button { store.activate(b.id) } label: {
+                    Text((b.id == book?.id ? "✓ " : "   ") + b.name)
+                }
+            }
+            Divider()
+            Button("플래너 관리…") { SettingsWindowController.shared.show(store: store, state: state) }
+        } label: {
+            VStack(spacing: 3) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(ColorConcept.of(book?.cover ?? 0).accent)
+                    .frame(width: 22, height: 28)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(.black.opacity(0.18)).frame(width: 3)
+                    }
+                    .shadow(color: .black.opacity(0.2), radius: 1.5, y: 1)
+                Text(book?.name ?? "플래너 없음")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.primary.opacity(0.8))
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help(book.map { "\($0.name) · \($0.periodText)" } ?? "플래너를 만들어 주세요")
     }
 }
 
