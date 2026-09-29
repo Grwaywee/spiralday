@@ -5,18 +5,25 @@
     <link>https://spiralday.com</link>
     <language>ko</language>
     <item>
-      <title>Spiralday 1.0.3</title>
-      <pubDate>Tue, 29 Sep 2026 14:30:36 +0000</pubDate>
-      <sparkle:version>4</sparkle:version>
-      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+      <title>Spiralday 1.0.4</title>
+      <pubDate>Tue, 29 Sep 2026 16:08:40 +0000</pubDate>
+      <sparkle:version>5</sparkle:version>
+      <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<ul><li>D-day 가 모든 날에 똑같이 붙지 않고, 일간 페이지마다 골라 붙여요. 화요일에 붙인 D-day 가 수요일에 저절로 넘어가지 않아요</li>
-<li>일간 페이지의 D-DAY 칸을 누르면 그날의 D-day 를 골라요: 저장한 D-day 에서 고르기 · 새로 만들기 · 어제와 같게 (하루 두 개까지)</li>
-<li>붙인 D-day 는 그날에만 남아요. 다른 날에 다른 것을 붙이거나, 그날 것을 고치거나 떼도 다른 날은 그대로예요</li>
-<li>설정 → D-day 는 ‘저장한 D-day’ 목록이 됐어요. 개수 제한 없이 저장해 두고, 목록에서 고치거나 지워도 이미 붙인 날은 바뀌지 않아요</li>
-<li>팔레트의 D-day 버튼은 일간에서는 보고 있는 날, 주간 · 홈에서는 오늘에 붙여요. 홈의 D-DAY 칸은 오늘 붙인 D-day 를 보여 줘요</li>
-<li>처음 열 때 원래 파일을 백업으로 남긴 뒤, 이미 쓴 날과 오늘에는 지금까지의 D-day 를 그대로 붙여 두어서 전과 똑같이 보여요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.3/Spiralday-1.0.3-macOS.zip" sparkle:edSignature="M14p86IdcOZYALbYnbhUCuvL0WU/d0bNr0wPHcKBP/pcA9ECtOonHvv2pknmqxGYSf3gjYmJcFwgWC1qUjLKAw==" length="5203033" type="application/octet-stream"/>
+      <description><![CDATA[<ul><li>처음 켜면 책장에 ‘예시 플래너’가 한 권 들어 있어요. 오늘까지 14일을 미리 채워 둔 플래너라, 넘겨 보기만 해도 쓰는 법이 보여요</li>
+<li>형광펜으로 칠한 타임테이블, ○ △ × → 표시와 다음 날로 넘어간 할 일, 밥시간 화살표와 글씨 메모, COMMENT · MEMO, 날마다 다른 컬러와 D-day, DAY OFF 로 쉰 하루, 주간 목표와 별점까지 골고루 써 두었어요</li>
+<li>예시 플래너도 다른 플래너와 똑같이 펼치고, 고쳐 쓰고, PDF 로 뽑고, 지울 수 있어요. 팔레트 맨 위나 설정 → 플래너에서 펼쳐요</li>
+<li>지워도 내 플래너와 기록은 그대로예요. 다시 보고 싶으면 설정 → 플래너의 ‘예시 플래너 다시 넣기’로 언제든 다시 넣을 수 있어요</li>
+<li>이미 쓰고 있다면 업데이트 뒤 처음 켤 때 한 번만 꽂아 두고, 펼쳐 둔 플래너는 바꾸지 않아요. 한 번 지운 뒤에는 저절로 다시 생기지 않아요</li>
+<li>처음 쓰는 분은 전처럼 튜토리얼에서 내 플래너부터 만들어요. 만든 플래너가 펼쳐지고, 예시 플래너는 그 옆에 꽂혀 있어요</li>
+<li>→ 다음 날로 넘기기: 할 일에 → (미룸) 을 표시하면 다음 날에 같은 할 일이 같은 형광펜으로 한 번 넘어가요. 오른쪽 클릭의 ‘내일로 미루기’도 똑같아요</li>
+<li>넘어간 할 일도 보통 할 일처럼 고치고 표시하고, 또 → 로 다음 날에 넘길 수 있어요. 플래너의 마지막 날에서는 넘기지 않아요</li>
+<li>→ 를 다시 떼면 다음 날에 넘어간 할 일을 거둬요. 그 사이 다음 날에서 고쳐 쓰거나 표시했다면 그대로 남겨요</li>
+<li>DAY OFF: 일간 페이지 COMMENT 옆 ▾ 에서 작성하기 · DAY OFF 를 골라요. 쉬는 날에는 COMMENT 칸에 그날 컬러로 DAY OFF 가 크게 찍히고, PDF 에도 그대로 나와요</li>
+<li>적어 둔 COMMENT 는 지워지지 않고, 작성하기로 돌아오면 다시 보여요. 주간 페이지에는 그날 칸 위에 DAY OFF 가 작게 붙어요</li>
+<li>홈의 연속 기록은 DAY OFF 로 끊기지 않아요 (쉬는 날은 세지 않고 건너뛰어요). 최근 35일 달력에는 작은 점으로 표시돼요</li>
+<li>예시 플래너를 펼쳐 둔 채 새 플래너를 만들면, 예시 대신 내 첫 플래너의 형광펜과 기본 컬러를 이어받아요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.4/Spiralday-1.0.4-macOS.zip" sparkle:edSignature="/QaJVL3psxI3px+Ji0SfqF2PWknsgsViiwLRrCFPXRx6zhNRfwyZcVDIQ2xUapHcOaezSmFf0VEPAzrLwAvZDQ==" length="5407008" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
