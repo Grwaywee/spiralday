@@ -5,14 +5,16 @@
     <link>https://spiralday.com</link>
     <language>ko</language>
     <item>
-      <title>Spiralday 1.0.1</title>
-      <pubDate>Tue, 29 Sep 2026 08:21:01 +0000</pubDate>
-      <sparkle:version>2</sparkle:version>
-      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+      <title>Spiralday 1.0.2</title>
+      <pubDate>Tue, 29 Sep 2026 09:57:02 +0000</pubDate>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<ul><li>기능 변화는 없어요</li>
-<li>설치 파일은 Apple 공증을 받은 DMG 로 나가요 (끌어다 놓기 설치 + 웹사이트 바로가기)</li></ul>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.1/Spiralday-1.0.1-macOS.zip" sparkle:edSignature="1cACMv0jD2dRPdFXAWx5RjOXIN8JKyYkEVxqgJupaCcNj1EJ7Yr8OLdGL+pjaRusf0IOAyAl6p2BxdGp/5SADQ==" length="5881461" type="application/octet-stream"/>
+      <description><![CDATA[<ul><li>익명 사용 통계: 하루 한 번 앱 버전 · macOS 버전 · 칩 종류 · 언어와 무작위 설치 번호만 보내요. 플래너 기록은 보내지 않고, 설정 → 데이터에서 끌 수 있어요</li>
+<li>개인정보 처리방침 페이지를 만들었어요 (spiralday.com/privacy.html, 메뉴 도움말 → 개인정보 처리방침)</li>
+<li>도움말 메뉴에 GitHub ⭐ 바로가기를 더했어요 (메뉴 도움말 → GitHub에서 ⭐ 주기)</li>
+<li>일주일쯤 쓰면 한 번만 GitHub ⭐ 부탁 창이 떠요. 어느 쪽을 눌러도 다시 뜨지 않아요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.2/Spiralday-1.0.2-macOS.zip" sparkle:edSignature="0plK+MPZK5amFcbqMvfoJ1VAUOltXarYkZoPdlYO3hM+lOnQCox0xQE1tUkx7X0REc6PKkStdhfsjy6OXKjaCA==" length="5097957" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
