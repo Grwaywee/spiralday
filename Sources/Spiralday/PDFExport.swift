@@ -81,8 +81,8 @@ enum PDFExporter {
         let dates = pages(layout, from: from, to: to)
         var box = CGRect(origin: .zero, size: layout.sheet)
         guard let pdf = CGContext(url as CFURL, mediaBox: &box, [
-            kCGPDFContextCreator as String: "Paper Planner",
-            kCGPDFContextTitle as String: "\(store.activeBook?.name ?? "Paper Planner") — \(layout.title)",
+            kCGPDFContextCreator as String: "Spiralday",
+            kCGPDFContextTitle as String: "\(store.activeBook?.name ?? "Spiralday") — \(layout.title)",
         ] as CFDictionary) else {
             throw CocoaError(.fileWriteUnknown)
         }
@@ -343,7 +343,7 @@ struct PDFExportView: View {
     }
 
     private func fileName() -> String {
-        let book = store.activeBook?.name ?? "Paper Planner"
+        let book = store.activeBook?.name ?? "Spiralday"
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd"

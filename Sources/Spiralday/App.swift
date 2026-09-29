@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct PaperPlannerApp: App {
+struct SpiraldayApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
@@ -39,7 +39,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static let args = CommandLine.arguments
 
+    /// 예전 이름(Paper Planner, personal.paperplanner) 시절의 설정을 한 번 옮겨 온다
+    private static func migrateDefaults() {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: "migratedFromPaperPlanner"), let old = UserDefaults(suiteName: "personal.paperplanner") else { return }
+        for (k, v) in old.dictionaryRepresentation()
+        where k == "onboardingDone" || k.hasPrefix("contentSize.") || k == "settingsPane" {
+            d.set(v, forKey: k)
+        }
+        d.set(true, forKey: "migratedFromPaperPlanner")
+    }
+
     override init() {
+        Self.migrateDefaults()
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
@@ -126,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Snapshot CLI
 
-/// `PaperPlanner --snapshot <dir>` renders PNGs used for visual QA and the README:
+/// `Spiralday --snapshot <dir>` renders PNGs used for visual QA and the README:
 ///   daily_blank.png / daily.png     1277 × 2000 px (same pixel grid as the template)
 ///   weekly_blank.png / weekly.png   2000 × 1277 px
 ///   curl_daily_NN.png / curl_weekly_NN.png   page-turn frames (half size)

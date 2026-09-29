@@ -1,8 +1,8 @@
 <div align="center">
 
-# Paper Planner
+# Spiralday
 
-**창 하나가 곧 종이 한 장인 macOS 플래너.**
+**창 하나가 곧 종이 한 장인 macOS 플래너.** · [spiralday.com](https://spiralday.com)
 10분 단위 종이 플래너 형식으로 하루를 기록하고, 스프링 노트처럼 한 장씩 넘어갑니다.
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
@@ -23,7 +23,7 @@
 
 종이 플래너의 좋은 점은 **한 장 안에 하루가 다 보인다**는 것과 **넘기는 손맛**입니다. 캘린더 앱에는 둘 다 없습니다.
 
-Paper Planner 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종이 한 장**으로 만들었습니다. 창의 빨강·노랑·초록 버튼이 종이 왼쪽 위에 놓이고, 스프링 링은 창 밖으로 튀어나와 있으며, 페이지는 **Metal 로 계산한 진짜 종이 말림**으로 넘어갑니다.
+Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종이 한 장**으로 만들었습니다. 창의 빨강·노랑·초록 버튼이 종이 왼쪽 위에 놓이고, 스프링 링은 창 밖으로 튀어나와 있으며, 페이지는 **Metal 로 계산한 진짜 종이 말림**으로 넘어갑니다.
 
 ## 주요 기능
 
@@ -52,13 +52,13 @@ Paper Planner 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 �
 
 ### 받아서 쓰기
 
-1. [Releases](https://github.com/Grwaywee/paper-planner/releases) 에서 `PaperPlanner-x.y.z-macOS.zip` 을 받아 압축을 풉니다.
-2. `Paper Planner.app` 을 **응용 프로그램** 폴더로 옮깁니다.
+1. [Releases](https://github.com/Grwaywee/spiralday/releases) 에서 `Spiralday-x.y.z-macOS.zip` 을 받아 압축을 풉니다.
+2. `Spiralday.app` 을 **응용 프로그램** 폴더로 옮깁니다.
 3. 처음 한 번은 앱을 **오른쪽 클릭 → 열기** 로 엽니다.
    개인이 만든 앱이라 Apple 공증을 받지 않아서, 그냥 더블클릭하면 macOS 가 막습니다. 그래도 막히면:
 
    ```bash
-   xattr -dr com.apple.quarantine "/Applications/Paper Planner.app"
+   xattr -dr com.apple.quarantine "/Applications/Spiralday.app"
    ```
 
 - macOS 14 Sonoma 이상, Apple Silicon · Intel 모두 지원
@@ -68,10 +68,10 @@ Paper Planner 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 �
 Xcode 16 이상 (Swift 6 툴체인) 이 필요합니다.
 
 ```bash
-git clone https://github.com/Grwaywee/paper-planner.git
-cd paper-planner
-./build.sh                  # → build/Paper Planner.app (이 Mac 용)
-./build.sh --release        # → 유니버설 빌드 + dist/PaperPlanner-x.y.z-macOS.zip
+git clone https://github.com/Grwaywee/spiralday.git
+cd spiralday
+./build.sh                  # → build/Spiralday.app (이 Mac 용)
+./build.sh --release        # → 유니버설 빌드 + dist/Spiralday-x.y.z-macOS.zip
 ```
 
 ## 사용법
@@ -122,7 +122,7 @@ cd paper-planner
 ## 데이터
 
 ```
-~/Library/Application Support/PaperPlanner/
+~/Library/Application Support/Spiralday/
 ├── library.json          # 플래너 목록, 펼친 플래너
 └── books/<id>.json       # 플래너 한 권의 기록 · 형광펜 · D-day
 ```
@@ -172,9 +172,9 @@ flowchart LR
 
 ```bash
 swift build
-.build/debug/PaperPlanner --demo                # 샘플 데이터 (실제 기록을 건드리지 않음)
-.build/debug/PaperPlanner --snapshot ./out      # 페이지 · 넘김 프레임 PNG
-.build/debug/PaperPlanner --pdf-test ./out      # PDF 레이아웃 4종 샘플
+.build/debug/Spiralday --demo                # 샘플 데이터 (실제 기록을 건드리지 않음)
+.build/debug/Spiralday --snapshot ./out      # 페이지 · 넘김 프레임 PNG
+.build/debug/Spiralday --pdf-test ./out      # PDF 레이아웃 4종 샘플
 ```
 
 ## 로드맵

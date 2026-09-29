@@ -70,7 +70,7 @@ enum DailyForm {
 
     // MARK: 인쇄 글자
     /// 오른쪽 아래 워드마크
-    static let wordmark = "paperplanner"
+    static let wordmark = "spiralday"
     /// 워드마크 오른쪽 끝 / 기준선 (오른쪽 아래)
     static let wordmarkRight: CGFloat = 1227.2
     static let wordmarkBaseline: CGFloat = 1932.2

@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "PaperPlanner",
+    name: "Spiralday",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "PaperPlanner", path: "Sources/PaperPlanner")
+        .executableTarget(name: "Spiralday", path: "Sources/Spiralday")
     ]
 )

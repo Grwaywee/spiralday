@@ -97,7 +97,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             f.dateFormat = "yyyy년 M월 d일 EEEE"
             window.title = f.string(from: state.dayDate(state.dayIndex))
         case .home:
-            window.title = "Paper Planner — 홈"
+            window.title = "Spiralday — 홈"
         case .weekly:
             let s = state.weekStart(state.weekIndex)
             let e = Dates.add(days: 6, to: s)

@@ -259,8 +259,9 @@ final class PlannerStore: ObservableObject {
             folder = nil
             return
         }
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("PaperPlanner", isDirectory: true)
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = support.appendingPathComponent("Spiralday", isDirectory: true)
+        Self.migrateFolder(from: support.appendingPathComponent("PaperPlanner", isDirectory: true), to: dir)
         folder = dir
         try? FileManager.default.createDirectory(at: dir.appendingPathComponent("books", isDirectory: true),
                                                  withIntermediateDirectories: true)
@@ -275,6 +276,13 @@ final class PlannerStore: ObservableObject {
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveNow() }
         }
+    }
+
+    /// 예전 이름(Spiralday) 시절의 데이터 폴더를 새 이름 폴더로 복사한다. 원본은 그대로 둔다.
+    private static func migrateFolder(from old: URL, to new: URL) {
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: new.path), fm.fileExists(atPath: old.path) else { return }
+        try? fm.copyItem(at: old, to: new)
     }
 
     private var libraryURL: URL? { folder?.appendingPathComponent("library.json") }

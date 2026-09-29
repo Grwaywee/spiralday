@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Paper Planner.app 을 만든다
+# Spiralday.app 을 만든다
 #   ./build.sh            이 Mac 용 (빠름)
 #   ./build.sh --release  Apple Silicon + Intel 유니버설, dist/ 에 배포용 zip 까지
 set -e
@@ -10,17 +10,17 @@ RELEASE=0
 
 if [ $RELEASE = 1 ]; then
   swift build -c release --arch arm64 --arch x86_64
-  BIN=.build/apple/Products/Release/PaperPlanner
+  BIN=.build/apple/Products/Release/Spiralday
 else
   swift build -c release
-  BIN=.build/release/PaperPlanner
+  BIN=.build/release/Spiralday
 fi
-APP="build/Paper Planner.app"
+APP="build/Spiralday.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/PaperPlanner"
+cp "$BIN" "$APP/Contents/MacOS/Spiralday"
 
-# 아이콘: Resources/AppIcon-1024.png (PaperPlanner --icon 으로 그린 것) → .icns
+# 아이콘: Resources/AppIcon-1024.png (Spiralday --icon 으로 그린 것) → .icns
 ICON_SRC=Resources/AppIcon-1024.png
 if [ ! -f build/AppIcon.icns ] || [ "$ICON_SRC" -nt build/AppIcon.icns ]; then
   ICONSET=build/AppIcon.iconset
@@ -40,10 +40,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Paper Planner</string>
-  <key>CFBundleDisplayName</key><string>Paper Planner</string>
-  <key>CFBundleIdentifier</key><string>personal.paperplanner</string>
-  <key>CFBundleExecutable</key><string>PaperPlanner</string>
+  <key>CFBundleName</key><string>Spiralday</string>
+  <key>CFBundleDisplayName</key><string>Spiralday</string>
+  <key>CFBundleIdentifier</key><string>com.spiralday.app</string>
+  <key>CFBundleExecutable</key><string>Spiralday</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
@@ -62,7 +62,7 @@ echo "✓ $APP"
 
 if [ $RELEASE = 1 ]; then
   mkdir -p dist
-  ZIP="dist/PaperPlanner-$VERSION-macOS.zip"
+  ZIP="dist/Spiralday-$VERSION-macOS.zip"
   rm -f "$ZIP"
   ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
   shasum -a 256 "$ZIP" | tee "$ZIP.sha256"

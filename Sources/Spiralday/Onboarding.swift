@@ -17,7 +17,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
     static let shared = OnboardingController()
     static let doneKey = "onboardingDone"
     /// 플래너의 키보드 처리에서 이 창의 이벤트를 걸러낼 때 쓰는 식별자
-    static let windowIdentifier = NSUserInterfaceItemIdentifier("PaperPlanner.onboarding")
+    static let windowIdentifier = NSUserInterfaceItemIdentifier("Spiralday.onboarding")
     static let size = CGSize(width: 760, height: 560)
 
     static var needsOnboarding: Bool { !UserDefaults.standard.bool(forKey: doneKey) }
@@ -49,7 +49,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
                                 styleMask: [.titled, .closable, .fullSizeContentView],
                                 backing: .buffered, defer: false)
         w.identifier = Self.windowIdentifier
-        w.title = "Paper Planner 시작하기"
+        w.title = "Spiralday 시작하기"
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
         w.appearance = NSAppearance(named: .aqua)   // 종이는 늘 밝다
@@ -749,7 +749,7 @@ private struct WelcomePage: View {
                     .foregroundStyle(Ink.pen)
                     .rotationEffect(.degrees(-3), anchor: .leading)
                     .padding(.bottom, 4)
-                Text("Paper Planner")
+                Text("Spiralday")
                     .font(Fonts.print(46, .bold))
                     .kerning(-0.8)
                     .foregroundStyle(Ink.print)
@@ -2418,7 +2418,7 @@ private struct MiniDailyPage: View {
                      at: CGPoint(x: Self.ttLeft + hourW / 2, y: Self.gridTop + (CGFloat(r) + 0.5) * Self.ttPitch))
         }
 
-        ctx.draw(Text("paperplanner").font(Fonts.print(7.5, .bold)).foregroundColor(Ink.print),
+        ctx.draw(Text("spiralday").font(Fonts.print(7.5, .bold)).foregroundColor(Ink.print),
                  at: CGPoint(x: Self.ttRight, y: size.height - 11), anchor: .trailing)
     }
 
@@ -2583,7 +2583,7 @@ private struct HighlighterPen: View {
 
 /// 앱 아이콘: 튜토리얼 그림의 느낌(스프링 제본 종이 · 형광펜 줄 · 빨간 체크 · 민트 형광펜)을
 /// 아이콘 크기에서도 읽히도록 굵고 단순하게 다시 그린 것. macOS 아이콘 격자(1024 안에 824 몸통).
-/// `PaperPlanner --icon <out.png> [variant]` 로 1024 px PNG 를 만든다.
+/// `Spiralday --icon <out.png> [variant]` 로 1024 px PNG 를 만든다.
 struct AppIconArt: View {
     var variant = 0
 

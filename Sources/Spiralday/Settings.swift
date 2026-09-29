@@ -10,8 +10,8 @@ import UniformTypeIdentifiers
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
     /// 플래너의 키보드 처리에서 이 창의 이벤트를 걸러낼 때 쓰는 식별자
-    static let windowIdentifier = NSUserInterfaceItemIdentifier("PaperPlanner.settings")
-    private static let frameName = "PaperPlanner.settings"
+    static let windowIdentifier = NSUserInterfaceItemIdentifier("Spiralday.settings")
+    private static let frameName = "Spiralday.settings"
     private static let size = NSSize(width: 720, height: 560)
 
     private(set) var window: NSWindow?
@@ -1810,7 +1810,7 @@ private struct SettingsDataPane: View {
             if let name = SettingsDataFile.restore(src, into: store) {
                 result = .imported(name)
             } else {
-                result = .failed("Paper Planner 백업 파일이 아니라서 가져오지 못했어요.")
+                result = .failed("Spiralday 백업 파일이 아니라서 가져오지 못했어요.")
             }
         }
     }
@@ -1872,7 +1872,7 @@ private struct SettingsDataResultRow: View {
 /// 데이터 폴더 표시, 백업 파일 이름, 정보 표시용 계산
 @MainActor
 private enum SettingsDataFile {
-    private static let backupPrefix = "PaperPlanner 백업 - "
+    private static let backupPrefix = "Spiralday 백업 - "
 
     static func displayPath(_ url: URL) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -1898,7 +1898,7 @@ private enum SettingsDataFile {
         NSWorkspace.shared.open(folder)
     }
 
-    /// "PaperPlanner 백업 - 내 플래너 2026-09-29.json"
+    /// "Spiralday 백업 - 내 플래너 2026-09-29.json"
     static func backupName(_ book: BookInfo) -> String {
         let safe = book.name
             .components(separatedBy: CharacterSet(charactersIn: "/:\\\n\r\t"))
@@ -1910,8 +1910,10 @@ private enum SettingsDataFile {
     /// 백업 파일 이름에서 책 이름을 되찾는다
     static func bookName(from url: URL) -> String? {
         var base = url.deletingPathExtension().lastPathComponent
-        guard base.hasPrefix(backupPrefix) else { return nil }
-        base.removeFirst(backupPrefix.count)
+        // 예전 이름으로 만든 백업도 읽는다
+        let prefix = [backupPrefix, "PaperPlanner 백업 - "].first { base.hasPrefix($0) }
+        guard let prefix else { return nil }
+        base.removeFirst(prefix.count)
         if let r = base.range(of: #"\s*\d{4}-\d{2}-\d{2}( \d+)?$"#, options: .regularExpression) { base.removeSubrange(r) }
         base = base.trimmingCharacters(in: .whitespaces)
         return base.isEmpty ? nil : base

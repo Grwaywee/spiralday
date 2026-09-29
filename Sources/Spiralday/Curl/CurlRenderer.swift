@@ -22,7 +22,7 @@ final class CurlGPU: @unchecked Sendable {
     private init(device: MTLDevice, queue: MTLCommandQueue) {
         self.device = device
         self.queue = queue
-        queue.label = "PaperPlanner.curl"
+        queue.label = "Spiralday.curl"
         let s = MTLSamplerDescriptor()
         s.minFilter = .linear
         s.magFilter = .linear
@@ -53,13 +53,13 @@ final class CurlGPU: @unchecked Sendable {
         do {
             let library = try device.makeLibrary(source: CurlShader.source, options: MTLCompileOptions())
             let desc = MTLRenderPipelineDescriptor()
-            desc.label = "PaperPlanner.curl"
+            desc.label = "Spiralday.curl"
             desc.vertexFunction = library.makeFunction(name: "curl_vertex")
             desc.fragmentFunction = library.makeFunction(name: "curl_fragment")
             desc.colorAttachments[0].pixelFormat = pixelFormat
             return try device.makeRenderPipelineState(descriptor: desc)
         } catch {
-            NSLog("PaperPlanner: page curl shader unavailable: \(error)")
+            NSLog("Spiralday: page curl shader unavailable: \(error)")
             return nil
         }
     }
@@ -87,7 +87,7 @@ final class CurlGPU: @unchecked Sendable {
         desc.storageMode = .private
         guard let texture = device.makeTexture(descriptor: desc),
               let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
-        texture.label = "PaperPlanner.page"
+        texture.label = "Spiralday.page"
         blit.copy(from: staging, sourceOffset: 0, sourceBytesPerRow: bytesPerRow, sourceBytesPerImage: bytesPerRow * h,
                   sourceSize: MTLSize(width: w, height: h, depth: 1), to: texture,
                   destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
@@ -170,7 +170,7 @@ final class CurlTextureCache {
             return e.texture
         }
         guard let cb = gpu.queue.makeCommandBuffer(), let texture = gpu.makeTexture(image, commandBuffer: cb) else { return nil }
-        cb.label = "PaperPlanner.curl.upload"
+        cb.label = "Spiralday.curl.upload"
         cb.commit()
         entries.append((image, texture))
         if entries.count > capacity { entries.removeFirst() }
