@@ -1,0 +1,246 @@
+import SwiftUI
+import AppKit
+import CoreText
+
+// MARK: - Color
+
+extension Color {
+    init(hex: String, alpha: Double = 1) {
+        var v: UInt64 = 0
+        Scanner(string: hex.replacingOccurrences(of: "#", with: "")).scanHexInt64(&v)
+        self.init(.sRGB,
+                  red: Double((v >> 16) & 0xFF) / 255,
+                  green: Double((v >> 8) & 0xFF) / 255,
+                  blue: Double(v & 0xFF) / 255,
+                  opacity: alpha)
+    }
+}
+
+enum Ink {
+    /// 종이
+    static let paper = Color(hex: "FCFBF7")
+    static let paperBack = Color(hex: "F2EFE8")
+    /// 인쇄된 양식 (라벨, 굵은 구분선, 시간 숫자)
+    static let print = Color(hex: "2B2B2F")
+    /// 인쇄된 얇은 줄
+    static let rule = Color(hex: "C9C6BF")
+    /// 인쇄된 점선 (칸 구분, 체크 박스)
+    static let dot = Color(hex: "B5B1A9")
+    /// 손글씨
+    static let text = Color(hex: "34333A")
+    static let soft = Color(hex: "9A96A0")
+    static let faint = Color(hex: "C9C5CB")
+    /// 펜 표시 (주간: 핑크, 일간: 빨강)
+    static let pen = Color(hex: "E7728F")
+    static let red = Color(hex: "E0474C")
+    static let saturday = Color(hex: "5E86D6")
+}
+
+// MARK: - Fonts
+
+enum Fonts {
+    /// 손글씨 (Nanum Pen Script, macOS 다운로드형 시스템 폰트)
+    static func hand(_ size: CGFloat) -> Font { .custom("NanumPen", size: size) }
+
+    /// 양식에 인쇄된 글자 (기하학적 산세리프)
+    static func print(_ size: CGFloat, _ weight: PrintWeight = .medium) -> Font {
+        .custom(weight.postScriptName, size: size)
+    }
+
+    enum PrintWeight {
+        case regular, medium, demiBold, bold
+        var postScriptName: String {
+            switch self {
+            case .regular: "AvenirNext-Regular"
+            case .medium: "AvenirNext-Medium"
+            case .demiBold: "AvenirNext-DemiBold"
+            case .bold: "AvenirNext-Bold"
+            }
+        }
+    }
+
+    static func rounded(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
+    }
+
+    /// Nanum Pen Script 는 처음 한 번 macOS 에 활성화 요청이 필요하다.
+    static func activate(_ done: @escaping @Sendable () -> Void) {
+        let desc = CTFontDescriptorCreateWithAttributes([kCTFontNameAttribute: "NanumPen"] as CFDictionary)
+        CTFontDescriptorMatchFontDescriptorsWithProgressHandler([desc] as CFArray, nil) { state, _ in
+            if state == .didFinish { DispatchQueue.main.async { done() } }
+            return true
+        }
+    }
+}
+
+// MARK: - Page geometry
+
+enum BindingEdge { case top, leading }
+
+/// 창 = 종이 한 장. 모든 좌표는 "디자인 단위" (기준 레이아웃 좌표) 로 적고,
+/// 실제 크기는 u = 창 너비 / 디자인 너비 를 곱해서 그린다.
+enum PageKind: String, Codable {
+    case weekly, daily
+
+    /// 일간: 1277 × 2000 (세로)
+    /// 주간: 같은 용지를 가로로 눕힌 2000 × 1277
+    var design: CGSize {
+        switch self {
+        case .daily: CGSize(width: 1277, height: 2000)
+        case .weekly: CGSize(width: 2000, height: 1277)
+        }
+    }
+
+    var aspect: CGFloat { design.width / design.height }
+
+    /// 스프링이 달린 쪽
+    var edge: BindingEdge { self == .daily ? .leading : .top }
+}
+
+// MARK: - Paper texture
+
+enum Texture {
+    static let noise: NSImage = {
+        let w = 180, h = 180
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        var seed: UInt64 = 0x9E3779B97F4A7C15
+        for i in 0..<(w * h) {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            let r = Int((seed >> 33) % 1000)
+            let v = 200 + (r % 56)
+            let a = r < 160 ? 18 + r % 40 : 0
+            let pv = UInt8(v * a / 255)
+            px[i * 4 + 0] = pv
+            px[i * 4 + 1] = pv
+            px[i * 4 + 2] = pv
+            px[i * 4 + 3] = UInt8(a)
+        }
+        let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        return NSImage(cgImage: ctx.makeImage()!, size: NSSize(width: w, height: h))
+    }()
+}
+
+struct NoiseLayer: View {
+    var opacity: Double = 1
+    var body: some View {
+        Image(nsImage: Texture.noise)
+            .resizable(resizingMode: .tile)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Spiral binding (창 가장자리 = 스프링 쪽)
+
+enum SpiralBinding {
+    /// 종이에 뚫린 구멍 (디자인 단위)
+    static func holes(_ kind: PageKind) -> [CGRect] {
+        switch kind {
+        case .daily:
+            // 왼쪽 가장자리: 약 94px 간격, y≈120 부터 끝까지
+            return stride(from: 120.0, through: 1890.0, by: 94.5).map {
+                CGRect(x: 9, y: $0 - 8, width: 12, height: 16)
+            }
+        case .weekly:
+            // 왼쪽 위 모서리는 창 버튼(빨노초) 자리라 비워 둔다
+            return stride(from: 170.0, through: 1965.0, by: 41.5).map {
+                CGRect(x: $0 - 8, y: 9, width: 16, height: 12)
+            }
+        }
+    }
+}
+
+/// 종이 바탕 + 결 + 스프링 구멍. 페이지 스냅샷에 함께 구워진다.
+struct PaperSurface: View {
+    let kind: PageKind
+    let u: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Ink.paper
+            NoiseLayer(opacity: 0.5).blendMode(.multiply)
+            LinearGradient(colors: [.black.opacity(0.05), .clear],
+                           startPoint: kind.edge == .top ? .top : .leading,
+                           endPoint: kind.edge == .top ? UnitPoint(x: 0.5, y: 0.05) : UnitPoint(x: 0.05, y: 0.5))
+            Canvas { ctx, _ in
+                ctx.scaleBy(x: u, y: u)
+                for r in SpiralBinding.holes(kind) {
+                    ctx.fill(Path(roundedRect: r, cornerRadius: 3), with: .color(Color(hex: "4E5057").opacity(0.85)))
+                    ctx.stroke(Path(roundedRect: r.insetBy(dx: -0.8, dy: -0.8), cornerRadius: 3.5),
+                               with: .color(.black.opacity(0.07)), lineWidth: 1.2)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// 구멍을 통과하는 금속 링. 넘어가는 종이 위에 그려져서 제본은 제자리에 남는다.
+struct BindingRings: View {
+    let kind: PageKind
+    let size: CGSize
+
+    var body: some View {
+        let u = size.width / kind.design.width
+        let metal = Gradient(colors: [Color(hex: "6F7279"), Color(hex: "F7F8FA"), Color(hex: "B8BBC1"),
+                                      Color(hex: "7B7E85"), Color(hex: "DADCE0")])
+        Canvas { ctx, _ in
+            ctx.scaleBy(x: u, y: u)
+            for h in SpiralBinding.holes(kind) {
+                for d: CGFloat in [-3.4, 3.4] {
+                    let r: CGRect
+                    let shade: GraphicsContext.Shading
+                    if kind.edge == .leading {
+                        r = CGRect(x: -14, y: h.midY + d - 2.8, width: h.midX + 14, height: 5.6)
+                        shade = .linearGradient(metal, startPoint: CGPoint(x: 0, y: r.minY), endPoint: CGPoint(x: 0, y: r.maxY))
+                    } else {
+                        r = CGRect(x: h.midX + d - 2.8, y: -14, width: 5.6, height: h.midY + 14)
+                        shade = .linearGradient(metal, startPoint: CGPoint(x: r.minX, y: 0), endPoint: CGPoint(x: r.maxX, y: 0))
+                    }
+                    let p = Path(roundedRect: r, cornerRadius: 2.8)
+                    var s = ctx
+                    s.translateBy(x: 1.4, y: 2)
+                    s.stroke(p, with: .color(.black.opacity(0.25)), lineWidth: 2.2)
+                    ctx.stroke(p, with: shade, lineWidth: 2.3)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Highlighter bar (손글씨 뒤 형광펜)
+
+struct HighlighterBar: View {
+    let color: Color
+    var body: some View {
+        GeometryReader { g in
+            Path { p in
+                let w = g.size.width, h = g.size.height
+                p.move(to: CGPoint(x: 1, y: h * 0.18))
+                p.addLine(to: CGPoint(x: w - 2, y: h * 0.10))
+                p.addQuadCurve(to: CGPoint(x: w, y: h * 0.86), control: CGPoint(x: w + h * 0.12, y: h * 0.5))
+                p.addLine(to: CGPoint(x: 2, y: h * 0.94))
+                p.addQuadCurve(to: CGPoint(x: 1, y: h * 0.18), control: CGPoint(x: -h * 0.08, y: h * 0.55))
+            }
+            .fill(color.opacity(0.78))
+        }
+        .blendMode(.multiply)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Environment
+
+private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// 페이지 넘김용 스냅샷을 그리는 중이면 true (편집 필드 대신 글자만 그린다)
+    var isSnapshot: Bool {
+        get { self[SnapshotKey.self] }
+        set { self[SnapshotKey.self] = newValue }
+    }
+}
