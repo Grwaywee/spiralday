@@ -471,55 +471,264 @@ struct SlotPainter: View {
     }
 }
 
-// MARK: - D-day editor (페이지의 D-DAY 칸, 팔레트 버튼에서 같이 쓴다)
+// MARK: - D-day editor (이 날의 D-day: 일간 D-DAY 칸, 홈 D-DAY 칸, 팔레트 버튼에서 같이 쓴다)
 
+/// 한 날에 붙일 D-day 를 고른다. 저장한 D-day 에서 고르거나 새로 만들어 붙이고,
+/// 여기서 붙이고 떼고 고친 것은 이 날에만 남는다 (다른 날, 저장한 목록은 그대로).
 struct DDayEditor: View {
-    @EnvironmentObject private var store: PlannerStore
+    let date: Date
 
-    var body: some View {
-        let list = store.data.prefs.ddays
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("D-day").font(.system(size: 15, weight: .bold, design: .rounded))
-                Spacer()
-                Text("최대 \(Prefs.maxDDays)개").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            ForEach(Array(list.enumerated()), id: \.element.id) { i, d in
-                HStack(spacing: 8) {
-                    TextField("무엇까지?", text: Binding(get: { d.title }, set: { v in edit(i) { $0.title = v } }))
-                        .textFieldStyle(.roundedBorder)
-                    DatePicker("", selection: Binding(get: { d.date }, set: { v in edit(i) { $0.date = Dates.day(v) } }),
-                               displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                    Button {
-                        store.editPrefs { $0.ddays.removeAll { $0.id == d.id } }
-                    } label: {
-                        Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("삭제")
-                }
-            }
-            if list.count < Prefs.maxDDays {
-                Button {
-                    store.editPrefs {
-                        $0.ddays.append(DDay(title: "", date: Dates.add(days: 30, to: Dates.day(Date()))))
-                    }
-                } label: {
-                    Label("D-day 추가", systemImage: "plus.circle.fill")
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .padding(16)
-        .frame(width: 330)
+    @EnvironmentObject private var store: PlannerStore
+    @State private var newTitle = ""
+    @State private var newDate: Date
+    @State private var saveToLibrary = true
+    /// 달력을 펼친 줄: 붙인 D-day 의 id 또는 "new"
+    @State private var picking: String? = nil
+    @State private var showPast = false
+
+    init(date: Date) {
+        self.date = Dates.day(date)
+        _newDate = State(initialValue: Dates.add(days: 30, to: Dates.day(date)))
     }
 
-    private func edit(_ i: Int, _ f: (inout DDay) -> Void) {
-        store.editPrefs { p in
-            guard p.ddays.indices.contains(i) else { return }
-            f(&p.ddays[i])
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy년 M월 d일 (E)"
+        return f
+    }()
+
+    private static let shortFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yy. M. d. (E)"
+        return f
+    }()
+
+    private var accent: Color { store.concept(date).accent }
+
+    var body: some View {
+        let mine = store.ddays(date)
+        let full = mine.count >= Prefs.maxDDays
+        let used = Set(mine.compactMap(\.source))
+        let library = store.ddayLibrary
+        let choices = library.filter { !used.contains($0.id) }
+        let upcoming = choices.filter { Dates.day($0.date) >= date }
+        let past = choices.filter { Dates.day($0.date) < date }
+        let prev = store.ddays(Dates.add(days: -1, to: date))
+
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("이 날의 D-day").font(.system(size: 15, weight: .bold, design: .rounded))
+                    Spacer()
+                    Text("하루 최대 \(Prefs.maxDDays)개").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Text((Dates.isToday(date) ? "오늘 · " : "") + Self.dayFormat.string(from: date))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(accent)
+            }
+
+            // (a) 이 날에 붙인 것: 고치거나 떼도 이 날만 바뀐다
+            DDayEditorSection(title: "붙인 D-day", trailing: "\(mine.count) / \(Prefs.maxDDays)") {
+                if mine.isEmpty {
+                    Text("아직 붙인 D-day 가 없어요. 아래에서 골라 붙여 보세요.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !prev.isEmpty {
+                        Button { store.copyPreviousDDays(to: date) } label: {
+                            Label("어제와 같게 · " + prev.map { $0.title.isEmpty ? "D-day" : $0.title }.joined(separator: ", "),
+                                  systemImage: "arrow.turn.down.right")
+                                .lineLimit(1)
+                        }
+                        .controlSize(.small)
+                        .help("전날 붙인 D-day 를 이 날에도 똑같이 붙여요")
+                    }
+                }
+                ForEach(mine) { d in attachedRow(d) }
+            }
+
+            // (b) 저장한 D-day 에서 고르기
+            DDayEditorSection(title: "저장한 D-day 에서 고르기", trailing: nil) {
+                if library.isEmpty {
+                    note("저장한 D-day 가 없어요. 새로 만들 때 ‘목록에도 저장’을 켜 두면 여기에서 다른 날에도 고를 수 있어요.")
+                } else if choices.isEmpty {
+                    note("저장한 D-day 를 이 날에 모두 붙였어요.")
+                } else if upcoming.isEmpty {
+                    note("다가오는 D-day 가 없어요.")
+                }
+                if upcoming.count > 4 {
+                    ScrollView { libraryRows(upcoming, full: full) }.frame(height: 4 * 42)
+                } else if !upcoming.isEmpty {
+                    libraryRows(upcoming, full: full)
+                }
+                if !past.isEmpty {
+                    DisclosureGroup(isExpanded: $showPast) {
+                        if past.count > 4 {
+                            ScrollView { libraryRows(past, full: full) }.frame(height: 4 * 42)
+                        } else {
+                            libraryRows(past, full: full)
+                        }
+                    } label: {
+                        Text("지난 D-day \(past.count)개").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            // (c) 새로 만들어 붙이기
+            DDayEditorSection(title: "새로 만들기", trailing: nil) {
+                HStack(spacing: 8) {
+                    TextField("무엇까지? (예: 시험)", text: $newTitle)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { if !full { attachNew() } }
+                    dateButton(newDate, key: "new")
+                }
+                if picking == "new" { calendar($newDate) }
+                HStack {
+                    Toggle("목록에도 저장", isOn: $saveToLibrary)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12))
+                        .help("켜 두면 저장한 D-day 목록에도 들어가서 다른 날에도 골라 붙일 수 있어요")
+                    Spacer()
+                    Button("붙이기") { attachNew() }
+                        .controlSize(.small)
+                        .disabled(full)
+                        .help(full ? "하루에 \(Prefs.maxDDays)개까지예요. 하나를 떼면 더 붙일 수 있어요" : "이 날에 붙이기")
+                }
+            }
+
+            Text(full ? "하루에 \(Prefs.maxDDays)개까지 붙일 수 있어요. 하나를 떼면 더 붙일 수 있어요."
+                      : "여기서 붙이고 떼고 고친 것은 이 날에만 남아요. 다른 날과 저장한 목록은 그대로예요. 목록은 설정 → D-day 에서 고쳐요.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(width: 340)
+        .animation(.snappy(duration: 0.2), value: mine)
+        .animation(.snappy(duration: 0.2), value: picking)
+    }
+
+    // MARK: rows
+
+    /// 붙인 D-day 한 줄: 이 날에서 센 숫자 · 제목 · 날짜 · 떼기
+    @ViewBuilder
+    private func attachedRow(_ d: DDay) -> some View {
+        HStack(spacing: 8) {
+            Text(d.count(from: date))
+                .font(Fonts.rounded(12, .heavy))
+                .monospacedDigit()
+                .foregroundStyle(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: 52, height: 22)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(accent.opacity(0.12)))
+            TextField("무엇까지?", text: Binding(get: { d.title },
+                                              set: { v in store.editDDay(d.id, on: date) { $0.title = v } }))
+                .textFieldStyle(.roundedBorder)
+                .help("이 날에 붙인 것만 바뀌어요")
+            dateButton(d.date, key: d.id.uuidString)
+            Button { store.removeDDay(d.id, from: date) } label: {
+                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("이 날에서만 떼기 (다른 날과 저장한 목록은 그대로)")
+        }
+        if picking == d.id.uuidString {
+            calendar(Binding(get: { d.date }, set: { v in store.editDDay(d.id, on: date) { $0.date = v } }))
+        }
+    }
+
+    private func libraryRows(_ items: [DDay], full: Bool) -> some View {
+        VStack(spacing: 4) {
+            ForEach(items) { item in
+                Button { store.applyDDay(item.id, to: date) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(full ? Color.secondary : accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title.isEmpty ? "D-day" : item.title)
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                            Text(Self.shortFormat.string(from: item.date))
+                                .font(.system(size: 10))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 6)
+                        Text(item.count(from: date))
+                            .font(Fonts.rounded(12, .heavy))
+                            .monospacedDigit()
+                            .foregroundStyle(full ? Color.secondary : accent)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 38)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(full)
+                .help(full ? "하루에 \(Prefs.maxDDays)개까지예요. 하나를 떼면 더 붙일 수 있어요" : "이 날에 붙이기 (숫자는 이 날에서 센 것)")
+            }
+        }
+    }
+
+    // MARK: bits
+
+    /// 날짜는 달력에서 고른다 (글자 칸이 아니라서 플래너의 숫자·화살표 단축키와 부딪히지 않는다)
+    private func dateButton(_ d: Date, key: String) -> some View {
+        Button { picking = picking == key ? nil : key } label: {
+            Label(Self.shortFormat.string(from: d), systemImage: "calendar")
+                .monospacedDigit()
+                .lineLimit(1)
+                .frame(minWidth: 112, alignment: .leading)
+        }
+        .controlSize(.small)
+        .fixedSize()
+        .help("날짜 고르기")
+    }
+
+    private func calendar(_ selection: Binding<Date>) -> some View {
+        DatePicker("날짜", selection: Binding(get: { selection.wrappedValue }, set: { selection.wrappedValue = Dates.day($0) }),
+                   displayedComponents: .date)
+            .labelsHidden()
+            .datePickerStyle(.graphical)
+            .environment(\.locale, Locale(identifier: "ko_KR"))
+            .frame(maxWidth: .infinity)
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func attachNew() {
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard store.addDDay(title: title, date: newDate, to: date, save: saveToLibrary) != nil else { return }
+        newTitle = ""
+        if picking == "new" { picking = nil }
+    }
+}
+
+/// 편집기 안의 작은 제목 + 내용
+private struct DDayEditorSection<Content: View>: View {
+    let title: String
+    let trailing: String?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Spacer()
+                if let trailing {
+                    Text(trailing).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                }
+            }
+            content
         }
     }
 }

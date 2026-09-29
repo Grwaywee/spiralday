@@ -103,6 +103,7 @@ struct HomePage: View {
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
+    @Environment(\.isPrinting) private var isPrinting
 
     @State private var editingDDay = false
 
@@ -115,7 +116,8 @@ struct HomePage: View {
             HomeForm(u: u).equatable()
 
             HomeInk(stats: stats, categories: store.categories, defaultTheme: store.data.prefs.defaultTheme,
-                    ddays: store.data.prefs.ddays, goal: store.week(thisWeek).goal, today: today, u: u)
+                    ddays: store.ddays(today), goal: store.week(thisWeek).goal, today: today,
+                    printing: isPrinting, u: u)
                 .allowsHitTesting(false)
 
             // 이번 주 목표: 누르면 이번 주 주간 페이지
@@ -126,12 +128,12 @@ struct HomePage: View {
             }
             .place(HM.goalBox, u)
 
-            // D-day 칸: 누르면 편집
+            // D-day 칸: 오늘 붙인 D-day. 누르면 오늘 것을 편집
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { editingDDay = true }
-                .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor().environmentObject(store) }
-                .help("D-day 설정 (최대 2개)")
+                .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor(date: today).environmentObject(store) }
+                .help("오늘의 D-day — 저장한 D-day 를 고르거나 새로 만들어 붙여요 (최대 \(Prefs.maxDDays)개)")
                 .place(HM.ddayBox, u)
 
             // 주 막대: 누르면 그 주 주간 페이지
@@ -293,6 +295,8 @@ private struct HomeInk: View {
     let ddays: [DDay]
     let goal: String
     let today: Date
+    /// PDF 로 뽑는 중이면 true (빈 D-day 칸에 안내 글씨를 찍지 않는다)
+    var printing = false
     let u: CGFloat
 
     private var concept: ColorConcept { ColorConcept.of(defaultTheme) }
@@ -450,15 +454,16 @@ private struct HomeInk: View {
         // D-day
         let d = HM.ddayBox
         if ddays.isEmpty {
-            ctx.draw(Text("+ D-day").font(Fonts.hand(48)).foregroundStyle(Ink.faint),
-                     at: CGPoint(x: d.midX, y: d.midY + 2), anchor: .center)
+            if !printing {
+                ctx.draw(Text("+ D-day").font(Fonts.hand(48)).foregroundStyle(Ink.faint),
+                         at: CGPoint(x: d.midX, y: d.midY + 2), anchor: .center)
+            }
             return
         }
         let w = d.width / CGFloat(ddays.count)
         for (i, dd) in ddays.enumerated() {
-            let n = Dates.daysBetween(today, dd.date)
             let title = dd.title.isEmpty ? "D-day" : dd.title
-            let count = n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)"
+            let count = dd.count(from: today)
             let t = fit(ctx, w - 24, size: 1) { k in
                 Text(title).font(Fonts.hand(44 * k)).foregroundStyle(Ink.text)
                     + Text("  " + count).font(Fonts.hand(64 * k)).foregroundStyle(concept.accent)

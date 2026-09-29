@@ -84,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         Self.migrateDefaults()
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
-            || Self.args.contains("--ping-test") {
+            || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -103,6 +103,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Self.args.contains("--ping-test") {
             Telemetry.runPingTest()
             return
+        }
+        // D-day 옮기기 확인용: 주어진 책 파일을 복사해 옮겨 보고 요약을 찍은 뒤 끝낸다 (실제 데이터는 건드리지 않는다)
+        if let i = Self.args.firstIndex(of: "--dday-migrate-test") {
+            guard i + 2 < Self.args.count else {
+                print("사용법: Spiralday --dday-migrate-test <옛 책 json> <결과 json>")
+                exit(2)
+            }
+            exit(DDayMigrateTest.run(input: URL(fileURLWithPath: Self.args[i + 1]),
+                                     output: URL(fileURLWithPath: Self.args[i + 2])))
         }
         // 손글씨 폰트는 어떤 창보다 먼저 등록한다
         Fonts.register()
@@ -241,5 +250,80 @@ enum Snapshotter {
     static func write(_ img: CGImage, _ url: URL) {
         let rep = NSBitmapImageRep(cgImage: img)
         if let png = rep.representation(using: .png, properties: [:]) { try? png.write(to: url) }
+    }
+}
+
+// MARK: - D-day migrate CLI
+
+/// `Spiralday --dday-migrate-test <in.json> <out.json>`
+/// 책 파일을 <out> 으로 복사한 뒤, 앱이 책을 열 때와 똑같은 코드(PlannerStore.openBookFile)로
+/// 백업(<out>.before-per-day-dday.json) → D-day 옮기기 → 저장을 해 보고 요약을 찍는다. <in> 은 읽기만 한다.
+/// <in> 과 <out> 이 같은 파일이거나, <out> 이 앱의 실제 데이터 폴더 안이면 아무것도 하지 않고 끝낸다.
+@MainActor
+enum DDayMigrateTest {
+    static func run(input: URL, output: URL) -> Int32 {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: input.path) else { print("입력 파일이 없어요: \(input.path)"); return 1 }
+        let inPath = real(input), outPath = real(output)
+        guard inPath != outPath else {
+            print("입력과 결과는 다른 파일이어야 해요 (입력 파일은 읽기만 해요)")
+            return 2
+        }
+        let support = real(fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
+        for name in ["Spiralday", "PaperPlanner"] where outPath.hasPrefix(support + "/" + name.lowercased() + "/") {
+            print("결과 파일을 앱의 실제 데이터 폴더(~/Library/Application Support/\(name)) 안에 둘 수 없어요")
+            return 2
+        }
+        // 결과 쪽 파일과 지난번 실행이 남긴 결과 쪽 백업은 이 명령이 만든 것이라 지우고 새로 만든다
+        try? fm.removeItem(at: output)
+        try? fm.removeItem(at: PlannerStore.ddayBackupURL(output))
+        do { try fm.copyItem(at: input, to: output) } catch { print("복사 실패: \(error.localizedDescription)"); return 1 }
+        let today = Date()
+        guard let (data, migration) = PlannerStore.openBookFile(output, book: nil, today: today) else {
+            print("책 파일로 읽지 못했어요: \(input.path)")
+            return 1
+        }
+        print("입력: \(input.path)")
+        print("결과: \(output.path)")
+        if let m = migration {
+            print("옮김: 예 (ddaysPerDay false → true)")
+            print("백업: \(m.backup?.path ?? "-") (\(m.backupCreated ? "새로 만듦" : "이미 있어서 그대로 둠"))")
+            print("저장한 D-day (목록): \(m.library)개")
+            for d in data.prefs.ddays { print("  · \(line(d, today))") }
+            print("D-day 를 붙인 날: \(m.stampedDays.count)일 \(m.stampedDays)")
+        } else {
+            print("옮김: 아니오 (이미 날마다 D-day 인 파일 — 바꾼 것 없음)")
+            print("저장한 D-day (목록): \(data.prefs.ddays.count)개")
+        }
+        let tk = Dates.key(today)
+        let todays = data.days[tk]?.ddays ?? []
+        print("오늘(\(tk)) D-day: \(todays.isEmpty ? "없음" : "\(todays.count)개")")
+        for d in todays { print("  · \(line(d, today))") }
+        let withDDay = data.days.filter { !$0.value.ddays.isEmpty }.count
+        let recorded = data.days.values.filter(\.hasRecord).count
+        let tasks = data.days.values.reduce(0) { $0 + $1.tasks.count }
+        print("날 기록: \(data.days.count)개 (기록한 날 \(recorded) · D-day 붙은 날 \(withDDay)) · 할 일 \(tasks)개 · 주간 \(data.weeks.count)개")
+        // 저장한 결과를 다시 읽어 본다
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        guard let raw = try? Data(contentsOf: output), let again = try? dec.decode(PlannerData.self, from: raw) else {
+            print("다시 읽기: 실패")
+            return 1
+        }
+        print("다시 읽기: 성공 (날 \(again.days.count)개 · ddaysPerDay \(again.prefs.ddaysPerDay))")
+        return 0
+    }
+
+    /// 심볼릭 링크를 풀고 정리한 경로 (아직 없는 파일이면 있는 부모 폴더까지만 풀린다).
+    /// macOS 기본 디스크는 대소문자를 가리지 않으므로 소문자로 비교한다.
+    private static func real(_ url: URL) -> String {
+        let u = url.standardizedFileURL
+        let dir = u.deletingLastPathComponent().resolvingSymlinksInPath()
+        return dir.appendingPathComponent(u.lastPathComponent).resolvingSymlinksInPath().path.lowercased()
+    }
+
+    private static func line(_ d: DDay, _ today: Date) -> String {
+        let src = d.source.map { " ← \($0.uuidString.prefix(8))" } ?? ""
+        return "\(d.title.isEmpty ? "(제목 없음)" : d.title) \(Dates.key(d.date)) \(d.count(from: today)) [id \(d.id.uuidString.prefix(8))\(src)]"
     }
 }

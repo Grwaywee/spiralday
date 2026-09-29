@@ -89,7 +89,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .books: "플래너 한 권이 책 한 권이에요. 권마다 기록과 설정이 따로 있고, 골라서 펼쳐 써요."
         case .pens: "타임테이블과 할 일에 칠하는 펜이에요. 이름과 색을 바꾸면 이미 칠한 칸에도 바로 반영돼요."
         case .concept: "TOTAL TIME, 요일, D-day 숫자, ○△× 표시에 쓰이는 강조색이에요."
-        case .dday: "일간 페이지 위쪽 D-DAY 칸에 남은 날을 세어 적어 줘요."
+        case .dday: "여기 저장한 D-day 를 날마다 골라 붙여요 · 목록에서 지우거나 고쳐도 이미 붙인 날은 그대로예요."
         case .pdf: "일간·주간·홈을 A4 로 뽑아요. 일간은 반쪽씩 두 장을 한 장에 놓으면 자른 뒤 실물 크기예요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
         case .data: "기록은 이 Mac 에만 저장되고, 적는 즉시 자동으로 저장돼요."
@@ -185,7 +185,7 @@ private struct SettingsBooksPane: View {
                     ForEach(books) { b in
                         let isOpen = b.id == openID
                         SettingsBookRow(book: b, isOpen: isOpen,
-                                        recordDays: isOpen ? store.data.days.count : nil,
+                                        recordDays: isOpen ? store.recordedDayCount : nil,
                                         canDelete: books.count > 1,
                                         open: { open(b.id) },
                                         edit: { editor = .edit(b) },
@@ -252,7 +252,7 @@ private struct SettingsBooksPane: View {
     private func deleteMessage(_ b: BookInfo) -> String {
         var lines: [String] = []
         if b.id == store.activeBook?.id {
-            let n = store.data.days.count
+            let n = store.recordedDayCount
             lines.append("이 플래너의 기록\(n > 0 ? "(기록한 날 \(n)일)" : "")과 형광펜·D-day 설정이 모두 영구히 지워져요. 되돌릴 수 없어요.")
             if let next = store.books.first(where: { $0.id != b.id }) {
                 lines.append("지우고 나면 ‘\(next.name)’\(SettingsJosa.pick(next.name, "을", "를")) 펼쳐요.")
@@ -789,7 +789,7 @@ private struct SettingsBookEditor: View {
         var probe = book
         probe.start = Dates.day(start)
         probe.end = hasEnd ? Dates.day(end) : nil
-        let n = store.data.days.keys.compactMap(Dates.parse).filter { !probe.contains($0) }.count
+        let n = store.data.days.filter(\.value.hasRecord).keys.compactMap(Dates.parse).filter { !probe.contains($0) }.count
         guard n > 0 else { return nil }
         return "기록이 있는 날 \(n)일이 새 기간 밖에 있어요. 기록은 지워지지 않지만, 기간을 다시 넓히기 전까지는 그 장을 펼칠 수 없어요."
     }
@@ -1381,8 +1381,10 @@ private struct SettingsDDayPane: View {
     @FocusState private var focused: UUID?
 
     var body: some View {
-        let list = store.data.prefs.ddays
+        let list = store.ddayLibrary
         let accent = ColorConcept.of(store.data.prefs.defaultTheme).accent
+        let today = Dates.day(Date())
+        let usage = usage()
         Form {
             Section {
                 if list.isEmpty {
@@ -1391,8 +1393,8 @@ private struct SettingsDDayPane: View {
                             .font(.system(size: 18))
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("아직 D-day 가 없어요")
-                            Text("시험, 런칭, 여행처럼 기다리는 날을 더해 보세요.")
+                            Text("아직 저장한 D-day 가 없어요")
+                            Text("시험, 런칭, 여행처럼 기다리는 날을 저장해 두면 날마다 골라 붙일 수 있어요.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
@@ -1400,53 +1402,60 @@ private struct SettingsDDayPane: View {
                     .padding(.vertical, 4)
                 }
                 ForEach(list) { d in
-                    SettingsDDayRow(dday: d, accent: accent, focused: $focused,
-                                    edit: { f in edit(d.id, f) },
+                    SettingsDDayRow(dday: d, accent: accent, usedDays: usage[d.id] ?? 0, focused: $focused,
+                                    edit: { f in store.editLibraryDDay(d.id, f) },
                                     remove: { remove(d.id) })
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 18) {
                     SettingsPaneHeader(pane: .dday)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        SettingsSectionTitle(title: "기다리는 날", trailing: "\(list.count) / \(Prefs.maxDDays)")
-                        Button { add() } label: { Label("D-day 추가", systemImage: "plus") }
+                        SettingsSectionTitle(title: "저장한 D-day", trailing: list.isEmpty ? nil : "\(list.count)개")
+                        Button { add() } label: { Label("D-day 저장", systemImage: "plus") }
                             .controlSize(.small)
-                            .disabled(list.count >= Prefs.maxDDays)
-                            .help(list.count >= Prefs.maxDDays ? "D-day 는 \(Prefs.maxDDays)개까지 적을 수 있어요" : "기다리는 날 더하기")
+                            .help("목록에 기다리는 날을 더해요 (어느 날에도 저절로 붙지 않아요)")
                     }
                 }
             } footer: {
-                SettingsFootnote(text: "두 개까지 적을 수 있어요. 날짜가 지나면 D+ 로 세고, 숫자는 그날의 컬러로 적혀요.")
+                SettingsFootnote(text: "일간 페이지의 D-DAY 칸이나 팔레트의 D-day 버튼을 눌러 그날에 골라 붙여요. "
+                                 + "하루에 \(Prefs.maxDDays)개까지 붙일 수 있고, 붙인 D-day 는 그날에만 남아요. "
+                                 + "목록에서 고치거나 지워도 이미 붙인 날은 바뀌지 않아요.")
             }
 
             Section {
-                SettingsDDayPreview(list: list, accent: accent)
+                SettingsDDayPreview(list: store.ddays(today), accent: store.concept(today).accent)
             } header: {
-                SettingsSectionTitle(title: "일간 페이지에서는")
+                SettingsSectionTitle(title: "오늘 일간 페이지에서는")
+            } footer: {
+                SettingsFootnote(text: "오늘 붙인 D-day 예요. 붙이거나 떼려면 오늘 일간 페이지의 D-DAY 칸을 누르세요.")
             }
         }
     }
 
-    private func add() {
-        let d = DDay(title: "", date: Dates.add(days: 30, to: Dates.day(Date())))
-        withAnimation(.snappy(duration: 0.25)) { store.editPrefs { $0.ddays.append(d) } }
-        DispatchQueue.main.async { focused = d.id }
+    /// 저장한 D-day 마다 붙인 날 수
+    private func usage() -> [UUID: Int] {
+        var n: [UUID: Int] = [:]
+        for r in store.data.days.values {
+            for d in r.ddays { if let s = d.source { n[s, default: 0] += 1 } }
+        }
+        return n
     }
 
-    private func edit(_ id: UUID, _ f: (inout DDay) -> Void) {
-        store.editPrefs { p in
-            if let i = p.ddays.firstIndex(where: { $0.id == id }) { f(&p.ddays[i]) }
-        }
+    private func add() {
+        let id = withAnimation(.snappy(duration: 0.25)) { store.addLibraryDDay(date: Dates.add(days: 30, to: Dates.day(Date()))) }
+        DispatchQueue.main.async { focused = id }
     }
 
     private func remove(_ id: UUID) {
-        withAnimation(.snappy(duration: 0.25)) { store.editPrefs { $0.ddays.removeAll { $0.id == id } } }
+        withAnimation(.snappy(duration: 0.25)) { store.removeLibraryDDay(id) }
     }
 }
 
 private struct SettingsDDayRow: View {
     let dday: DDay
     let accent: Color
+    /// 이 D-day 를 붙인 날 수
+    let usedDays: Int
     var focused: FocusState<UUID?>.Binding
     let edit: ((inout DDay) -> Void) -> Void
     let remove: () -> Void
@@ -1478,7 +1487,8 @@ private struct SettingsDDayRow: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .medium))
                     .focused(focused, equals: dday.id)
-                Text(n > 0 ? "\(n)일 남았어요" : n == 0 ? "바로 오늘이에요" : "\(-n)일 지났어요")
+                Text((n > 0 ? "\(n)일 남았어요" : n == 0 ? "바로 오늘이에요" : "\(-n)일 지났어요")
+                     + (usedDays > 0 ? " · \(usedDays)일에 붙어 있어요" : ""))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -1502,13 +1512,13 @@ private struct SettingsDDayRow: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .help("이 D-day 지우기")
+            .help(usedDays > 0 ? "목록에서만 지워요. 이미 붙인 \(usedDays)일에는 그대로 남아요" : "목록에서 지우기")
         }
         .padding(.vertical, 3)
     }
 }
 
-/// 일간 페이지의 D-DAY 칸 그대로: 인쇄된 "D-DAY ──" 머리선 아래 손글씨 제목 + 강조색 숫자
+/// 오늘 일간 페이지의 D-DAY 칸 그대로: 인쇄된 "D-DAY ──" 머리선 아래 손글씨 제목 + 강조색 숫자
 private struct SettingsDDayPreview: View {
     let list: [DDay]
     let accent: Color
@@ -1531,12 +1541,11 @@ private struct SettingsDDayPreview: View {
                         .foregroundStyle(Ink.faint)
                 }
                 ForEach(list) { d in
-                    let n = Dates.daysBetween(Date(), d.date)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(d.title.isEmpty ? "D-day" : d.title)
                             .font(Fonts.hand(two ? 24 : 30))
                             .foregroundStyle(Ink.text)
-                        Text(n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)")
+                        Text(d.count(from: Date()))
                             .font(Fonts.hand(two ? 29 : 40))
                             .foregroundStyle(accent)
                     }
@@ -1955,6 +1964,8 @@ private enum SettingsDataFile {
     /// 되살린 책의 이름을 돌려주고, 플래너 백업이 아니면 nil.
     static func restore(_ src: URL, into store: PlannerStore) -> String? {
         guard let raw = try? Data(contentsOf: src), var data = try? decode(raw) else { return nil }
+        // 1.0.2 까지의 백업이면 D-day 를 날마다 따로 붙이는 방식으로 옮긴다 (가져온 파일은 그대로 둔다)
+        if !data.prefs.ddaysPerDay { _ = PlannerStore.migrateDDaysPerDay(&data, today: Date(), book: nil) }
         for (k, r) in data.days where PlannerStore.grouped(r.tasks) != r.tasks {
             data.days[k]?.tasks = PlannerStore.grouped(r.tasks)
         }
@@ -1991,7 +2002,7 @@ private enum SettingsDataFile {
             cells += r.slots.lazy.filter { known.contains($0) }.count
         }
         let (h, m) = formatHM(cells * 10)
-        return (store.data.days.count, tasks, "\(h)시간 \(m)분")
+        return (store.recordedDayCount, tasks, "\(h)시간 \(m)분")
     }
 
     static var version: String {

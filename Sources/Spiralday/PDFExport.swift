@@ -322,7 +322,8 @@ struct PDFExportView: View {
     }
 
     private func recorded() {
-        let keys = store.data.days.keys.sorted()
+        // D-day 만 붙인 날은 기록한 날이 아니다
+        let keys = store.data.days.filter(\.value.hasRecord).keys.sorted()
         guard let a = keys.first.flatMap(Dates.parse), let b = keys.last.flatMap(Dates.parse) else { return }
         from = clamp(a)
         to = clamp(b)

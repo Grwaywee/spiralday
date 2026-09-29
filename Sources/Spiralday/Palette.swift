@@ -92,8 +92,12 @@ struct PaletteView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .popover(isPresented: $editingDDay, arrowEdge: .leading) { DDayEditor().environmentObject(store) }
-                .help("D-day 설정")
+                // 일간: 보고 있는 날 · 주간/홈: 오늘
+                .popover(isPresented: $editingDDay, arrowEdge: .leading) {
+                    DDayEditor(date: state.kind == .daily ? state.dayDate(state.dayIndex) : Dates.day(Date()))
+                        .environmentObject(store)
+                }
+                .help(state.kind == .daily ? "D-day — 보고 있는 날에 붙이기" : "D-day — 오늘에 붙이기")
             }
 
             Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.horizontal, 6)

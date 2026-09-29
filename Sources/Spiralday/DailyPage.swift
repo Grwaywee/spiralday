@@ -8,6 +8,7 @@ struct DailyPage: View {
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
+    @Environment(\.isPrinting) private var isPrinting
 
     @State private var editingDDay = false
 
@@ -70,23 +71,23 @@ struct DailyPage: View {
             .allowsHitTesting(false)
     }
 
-    /// D-day 최대 2개. 1개면 칸 한가운데, 2개면 위아래로 나눠 가운데.
+    /// 이 날에 붙인 D-day (최대 2개). 1개면 칸 한가운데, 2개면 위아래로 나눠 가운데. 숫자는 이 날에서 센다.
     private var ddayField: some View {
-        let list = store.data.prefs.ddays
+        let list = store.ddays(date)
         let two = list.count > 1
         return VStack(spacing: (two ? 2 : 0) * u) {
-            if list.isEmpty {
+            // 빈 칸 안내 글씨는 화면에서만 (PDF 에는 찍지 않는다)
+            if list.isEmpty && !isPrinting {
                 Text("+ D-day")
                     .font(Fonts.hand(46 * u))
                     .foregroundStyle(Ink.faint)
             }
             ForEach(list) { d in
-                let n = Dates.daysBetween(date, d.date)
                 HStack(alignment: .firstTextBaseline, spacing: 14 * u) {
                     Text(d.title.isEmpty ? "D-day" : d.title)
                         .font(Fonts.hand((two ? 38 : 48) * u))
                         .foregroundStyle(Ink.text)
-                    Text(n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)")
+                    Text(d.count(from: date))
                         .font(Fonts.hand((two ? 46 : 64) * u))
                         .foregroundStyle(concept.accent)
                 }
@@ -98,8 +99,8 @@ struct DailyPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { editingDDay = true }
-        .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor().environmentObject(store) }
-        .help("D-day 설정 (최대 2개)")
+        .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor(date: date).environmentObject(store) }
+        .help("이 날의 D-day — 저장한 D-day 를 고르거나 새로 만들어 붙여요 (최대 \(Prefs.maxDDays)개)")
     }
 
     // MARK: COMMENT

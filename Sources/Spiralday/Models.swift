@@ -53,6 +53,13 @@ struct DayRecord: Codable, Equatable {
     var theme: Int? = nil
     /// 타임테이블 메모 · 밥시간
     var notes: [TimeNote] = []
+    /// 이 날에 붙인 D-day (최대 Prefs.maxDDays 개). 저장한 D-day 를 복사해 둔 것이라
+    /// 목록에서 고치거나 지워도, 다른 날에 붙인 것을 바꿔도 이 날은 그대로다.
+    var ddays: [DDay] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case tasks, slots, comment, memoTags, memos, theme, notes, ddays
+    }
 
     init() {}
 
@@ -66,16 +73,34 @@ struct DayRecord: Codable, Equatable {
         memos = Self.pad(try c.decodeIfPresent([String].self, forKey: .memos) ?? [], Self.memoCount, "")
         theme = try c.decodeIfPresent(Int.self, forKey: .theme)
         notes = try c.decodeIfPresent([TimeNote].self, forKey: .notes) ?? []
+        ddays = try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(tasks, forKey: .tasks)
+        try c.encode(slots, forKey: .slots)
+        try c.encode(comment, forKey: .comment)
+        try c.encode(memoTags, forKey: .memoTags)
+        try c.encode(memos, forKey: .memos)
+        try c.encodeIfPresent(theme, forKey: .theme)
+        try c.encode(notes, forKey: .notes)
+        // D-day 를 붙인 날만 적는다 (붙이지 않은 날은 예전 파일 모양 그대로)
+        if !ddays.isEmpty { try c.encode(ddays, forKey: .ddays) }
     }
 
     private static func pad<T>(_ a: [T], _ n: Int, _ fill: T) -> [T] {
         a.count >= n ? a : a + Array(repeating: fill, count: n - a.count)
     }
 
-    var isEmpty: Bool {
-        tasks.isEmpty && slots.allSatisfy { $0 < 0 } && comment.isEmpty
-            && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil && notes.isEmpty
+    /// D-day 말고 적거나 칠하거나 고른 것이 있는지. "기록한 날" 은 이것으로 센다 (D-day 만 붙인 날은 기록이 아니다).
+    var hasRecord: Bool {
+        !(tasks.isEmpty && slots.allSatisfy { $0 < 0 } && comment.isEmpty
+            && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil && notes.isEmpty)
     }
+
+    /// 저장할 것이 하나도 없는지. D-day 만 붙인 날도 비어 있지 않다 (지우지 않고 저장한다).
+    var isEmpty: Bool { !hasRecord && ddays.isEmpty }
 }
 
 struct WeekRecord: Codable, Equatable {
@@ -96,11 +121,15 @@ struct Category: Codable, Identifiable, Equatable {
 struct Prefs: Codable, Equatable {
     var categories: [Category] = Prefs.defaultCategories
     var lastKind: PageKind = .daily
-    /// D-day (최대 2개)
+    /// 저장한 D-day 목록 (개수 제한 없음). 날마다 여기서 골라 그날에 복사해 붙인다 (DayRecord.ddays).
+    /// 목록을 고치거나 지워도 이미 붙인 날은 바뀌지 않는다.
     var ddays: [DDay] = []
     /// 따로 고르지 않은 날의 컬러 컨셉
     var defaultTheme = 0
+    /// D-day 를 날마다 따로 붙이는 파일인지. 1.0.2 까지의 파일은 false 로 읽혀서 처음 열 때 한 번 옮긴다.
+    var ddaysPerDay = true
 
+    /// 하루에 붙일 수 있는 D-day 수
     static let maxDDays = 2
     static let maxCategories = 12
 
@@ -123,13 +152,14 @@ struct Prefs: Codable, Equatable {
         let cats = try c.decodeIfPresent([Category].self, forKey: .categories) ?? []
         categories = (1...Prefs.maxCategories).contains(cats.count) ? cats : Prefs.defaultCategories
         lastKind = try c.decodeIfPresent(PageKind.self, forKey: .lastKind) ?? .daily
-        ddays = Array((try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []).prefix(Self.maxDDays))
+        ddays = try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []
         // 예전 버전의 D-day 하나짜리 저장 형식
         if ddays.isEmpty, let legacy = try? decoder.container(keyedBy: LegacyKeys.self),
            let date = try legacy.decodeIfPresent(Date.self, forKey: .ddayDate) {
             ddays = [DDay(title: try legacy.decodeIfPresent(String.self, forKey: .ddayTitle) ?? "", date: date)]
         }
         defaultTheme = try c.decodeIfPresent(Int.self, forKey: .defaultTheme) ?? 0
+        ddaysPerDay = try c.decodeIfPresent(Bool.self, forKey: .ddaysPerDay) ?? false
     }
 }
 
@@ -137,6 +167,14 @@ struct DDay: Codable, Identifiable, Equatable {
     var id = UUID()
     var title = ""
     var date: Date
+    /// 날에 붙인 복사본이면: 복사해 온 저장한 D-day 의 id (새로 만들어 목록에 저장하지 않았으면 nil)
+    var source: UUID? = nil
+
+    /// 기준 날에서 센 "D-3" / "D-DAY" / "D+2"
+    func count(from day: Date) -> String {
+        let n = Dates.daysBetween(day, date)
+        return n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)"
+    }
 }
 
 struct PlannerData: Codable {
@@ -291,11 +329,80 @@ final class PlannerStore: ObservableObject {
     var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
 
     private func loadBook(_ id: UUID) -> PlannerData {
-        guard let url = bookURL(id), let raw = try? Data(contentsOf: url),
-              var d = try? Self.dec.decode(PlannerData.self, from: raw) else { return PlannerData() }
+        guard let url = bookURL(id),
+              var d = Self.openBookFile(url, book: library.books.first { $0.id == id })?.data else { return PlannerData() }
         // 예전 기록도 같은 형광펜끼리 모아 둔다
         for (k, r) in d.days where Self.grouped(r.tasks) != r.tasks { d.days[k]?.tasks = Self.grouped(r.tasks) }
         return d
+    }
+
+    // MARK: D-day 옮기기 (1.0.3: 모든 날에 같은 D-day → 날마다 따로)
+
+    /// 옮긴 결과 요약
+    struct DDayMigration {
+        /// 저장한 D-day 목록에 남은 개수
+        var library = 0
+        /// D-day 를 복사해 붙인 날 (yyyy-MM-dd)
+        var stampedDays: [String] = []
+        var todayKey = ""
+        /// 옮긴 뒤 오늘 붙어 있는 D-day
+        var today: [DDay] = []
+        /// 옮기기 전 원본을 남긴 파일 (이번에 새로 만들었으면 true)
+        var backup: URL? = nil
+        var backupCreated = false
+    }
+
+    /// 옮기기 전 원본을 남기는 파일: "<책 파일>.before-per-day-dday.json"
+    /// 옮기기 코드는 지우지 않는다. 사용자가 그 책을 지울 때만 같이 지운다 (deleteBook).
+    static func ddayBackupURL(_ url: URL) -> URL { URL(fileURLWithPath: url.path + ".before-per-day-dday.json") }
+
+    /// 책 파일을 읽는다. D-day 를 날마다 따로 붙이기 전(1.0.2 까지)의 파일이면
+    /// 원본을 옆에 백업으로 남기고 → 옮기고 → 그 파일에 저장한다. 이미 옮긴 파일이면 읽기만 한다.
+    /// loadBook 과 `--dday-migrate-test` 가 같이 쓴다.
+    static func openBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) -> (data: PlannerData, migration: DDayMigration?)? {
+        guard let raw = try? Data(contentsOf: url), var d = try? dec.decode(PlannerData.self, from: raw) else { return nil }
+        guard !d.prefs.ddaysPerDay else { return (d, nil) }
+        // 무엇이든 바꾸기 전에 원본을 남긴다. 남기지 못하면 이번에는 옮기지 않는다.
+        let backup = ddayBackupURL(url)
+        var created = false
+        if !FileManager.default.fileExists(atPath: backup.path) {
+            guard (try? raw.write(to: backup, options: .withoutOverwriting)) != nil else { return (d, nil) }
+            created = true
+        }
+        var m = migrateDDaysPerDay(&d, today: today, book: book)
+        m.backup = backup
+        m.backupCreated = created
+        if let out = try? enc.encode(d) { try? out.write(to: url, options: .atomic) }
+        return (d, m)
+    }
+
+    /// 예전 파일은 D-day 한 목록(prefs.ddays)을 모든 일간 페이지에 보여 줬다.
+    /// 이미 쓴 날(기록이 있는 날)과 오늘에는 그 D-day 를 복사해 붙여서 전과 똑같이 보이게 하고,
+    /// 나머지 날은 비워 둔다. 목록은 "저장한 D-day" 로 그대로 남긴다.
+    /// 이미 D-day 가 붙은 날은 건드리지 않고, 옮긴 뒤에는 ddaysPerDay = true 라서 두 번 붙이지 않는다.
+    static func migrateDDaysPerDay(_ d: inout PlannerData, today: Date, book: BookInfo?) -> DDayMigration {
+        let lib = d.prefs.ddays
+        let tk = Dates.key(today)
+        var m = DDayMigration(library: lib.count, todayKey: tk)
+        if !d.prefs.ddaysPerDay, !lib.isEmpty {
+            // 날마다 새 id 로 복사 (예전 페이지에 보이던 것은 앞의 두 개)
+            func copies() -> [DDay] { lib.prefix(Prefs.maxDDays).map { DDay(title: $0.title, date: $0.date, source: $0.id) } }
+            for k in d.days.keys.sorted() {
+                guard let r = d.days[k], r.hasRecord, r.ddays.isEmpty else { continue }
+                d.days[k]?.ddays = copies()
+                m.stampedDays.append(k)
+            }
+            // 오늘은 아직 아무것도 안 썼어도 전처럼 보이게 (책 기간 밖이면 두지 않는다)
+            if book?.contains(today) ?? true, d.days[tk]?.ddays.isEmpty ?? true {
+                var r = d.days[tk] ?? DayRecord()
+                r.ddays = copies()
+                d.days[tk] = r
+                m.stampedDays.append(tk)
+            }
+        }
+        d.prefs.ddaysPerDay = true
+        m.today = d.days[tk]?.ddays ?? []
+        return m
     }
 
     /// 한 권짜리 예전 저장 파일(planner.json)을 첫 번째 책 "내 플래너" 로 옮긴다. 원본은 백업으로 남긴다.
@@ -352,10 +459,14 @@ final class PlannerStore: ObservableObject {
         writeLibrary()
     }
 
-    /// 책을 지운다 (파일도). 펼친 책이면 남은 첫 책을 펼친다.
+    /// 책을 지운다 (파일도, D-day 옮기기 백업 사본도). 펼친 책이면 남은 첫 책을 펼친다.
     func deleteBook(_ id: UUID) {
         library.books.removeAll { $0.id == id }
-        if let url = bookURL(id) { try? FileManager.default.removeItem(at: url) }
+        if let url = bookURL(id) {
+            try? FileManager.default.removeItem(at: url)
+            // "영구히 지워져요" 약속대로 1.0.3 옮기기 때 남긴 원본 사본도 지운다
+            try? FileManager.default.removeItem(at: Self.ddayBackupURL(url))
+        }
         if library.activeID == id {
             library.activeID = library.books.first?.id
             data = library.activeID.map(loadBook) ?? PlannerData()
@@ -422,6 +533,89 @@ final class PlannerStore: ObservableObject {
         f(&data.prefs)
         scheduleSave()
     }
+
+    // MARK: D-day
+    // 저장한 D-day(prefs.ddays)는 목록일 뿐이고, 페이지에 보이는 것은 그날 붙인 복사본(DayRecord.ddays)이다.
+    // 날에 붙이거나 떼거나 고치면 그 날만 바뀌고, 목록을 고치거나 지워도 이미 붙인 날은 그대로다.
+
+    /// 저장한 D-day
+    var ddayLibrary: [DDay] { data.prefs.ddays }
+
+    /// 이 날에 붙인 D-day
+    func ddays(_ d: Date) -> [DDay] { day(d).ddays }
+
+    /// 저장한 D-day 를 이 날에 복사해 붙인다. 이미 붙였거나 두 개가 다 찼으면 false.
+    @discardableResult
+    func applyDDay(_ libraryID: UUID, to d: Date) -> Bool {
+        guard let item = ddayLibrary.first(where: { $0.id == libraryID }) else { return false }
+        let now = ddays(d)
+        guard now.count < Prefs.maxDDays, !now.contains(where: { $0.source == libraryID }) else { return false }
+        editDay(d) { $0.ddays.append(DDay(title: item.title, date: Dates.day(item.date), source: libraryID)) }
+        return true
+    }
+
+    /// 새 D-day 를 이 날에 붙인다. save 면 저장한 D-day 목록에도 더한다. 두 개가 다 찼으면 nil.
+    @discardableResult
+    func addDDay(title: String, date: Date, to d: Date, save: Bool = true) -> UUID? {
+        guard ddays(d).count < Prefs.maxDDays else { return nil }
+        let day = Dates.day(date)
+        var source: UUID? = nil
+        if save { source = addLibraryDDay(title: title, date: day) }
+        let copy = DDay(title: title, date: day, source: source)
+        editDay(d) { $0.ddays.append(copy) }
+        return copy.id
+    }
+
+    /// 이 날에서만 뗀다 (다른 날, 저장한 목록은 그대로)
+    func removeDDay(_ id: UUID, from d: Date) {
+        editDay(d) { $0.ddays.removeAll { $0.id == id } }
+    }
+
+    /// 이 날에 붙인 것만 고친다
+    func editDDay(_ id: UUID, on d: Date, _ f: (inout DDay) -> Void) {
+        editDay(d) { r in
+            guard let i = r.ddays.firstIndex(where: { $0.id == id }) else { return }
+            f(&r.ddays[i])
+            r.ddays[i].date = Dates.day(r.ddays[i].date)
+        }
+    }
+
+    /// 어제와 같게: 전날 붙인 D-day 를 이 날에도 복사해 붙인다 (이미 있는 것은 건너뛴다)
+    func copyPreviousDDays(to d: Date) {
+        let prev = ddays(Dates.add(days: -1, to: d))
+        guard !prev.isEmpty else { return }
+        editDay(d) { r in
+            for p in prev where r.ddays.count < Prefs.maxDDays {
+                let dup = r.ddays.contains { p.source != nil ? $0.source == p.source : ($0.title == p.title && $0.date == p.date) }
+                if !dup { r.ddays.append(DDay(title: p.title, date: p.date, source: p.source)) }
+            }
+        }
+    }
+
+    /// 저장한 D-day 목록에 더한다 (어느 날에도 붙이지 않는다)
+    @discardableResult
+    func addLibraryDDay(title: String = "", date: Date) -> UUID {
+        let item = DDay(title: title, date: Dates.day(date))
+        editPrefs { $0.ddays.append(item) }
+        return item.id
+    }
+
+    /// 목록에서만 고친다 (이미 붙인 날은 그대로)
+    func editLibraryDDay(_ id: UUID, _ f: (inout DDay) -> Void) {
+        editPrefs { p in
+            guard let i = p.ddays.firstIndex(where: { $0.id == id }) else { return }
+            f(&p.ddays[i])
+            p.ddays[i].date = Dates.day(p.ddays[i].date)
+        }
+    }
+
+    /// 목록에서만 지운다 (이미 붙인 날은 그대로)
+    func removeLibraryDDay(_ id: UUID) {
+        editPrefs { $0.ddays.removeAll { $0.id == id } }
+    }
+
+    /// "기록한 날" 수: D-day 만 붙인 날은 빼고 센다
+    var recordedDayCount: Int { data.days.values.lazy.filter(\.hasRecord).count }
 
     // Time-table notes
     @discardableResult
@@ -633,10 +827,9 @@ final class PlannerStore: ObservableObject {
         let ws = Dates.weekStart(today)
         fillSampleHistory(before: ws, weeks: 6)
         editWeek(ws) { $0.goal = "런칭 전 QA 끝내고 금요일 전에 배포 준비 완료하기"; $0.review = "집중 시간이 늘었다!"; $0.stars = 4 }
-        editPrefs {
-            $0.ddays = [DDay(title: "런칭", date: Dates.add(days: 9, to: ws)),
-                        DDay(title: "분기 리뷰", date: Dates.add(days: 23, to: ws))]
-        }
+        // 저장한 D-day 두 개. 이번 주 날마다 붙여 두고, 주말에는 런칭만.
+        let launch = addLibraryDDay(title: "런칭", date: Dates.add(days: 9, to: ws))
+        let review = addLibraryDDay(title: "분기 리뷰", date: Dates.add(days: 23, to: ws))
         let sample: [[(String, Int?, Mark)]] = [
             [("주간 회의 자료 정리", 1, .done), ("디자인 리뷰 피드백", 0, .done), ("API 스펙 문서", 3, .partial), ("메일 답장", 2, .done), ("운동 30분", 5, .missed)],
             [("QA 시나리오 작성", 0, .done), ("버그 리포트 정리", 0, .done), ("파트너사 미팅", 1, .done), ("회고 준비", 3, .partial),
@@ -670,6 +863,8 @@ final class PlannerStore: ObservableObject {
                     r.memos = ["오전에 QA 결과 공유", "회의실 예약 확인하기", ""]
                 }
             }
+            applyDDay(launch, to: d)
+            if i < 5 { applyDDay(review, to: d) }
         }
     }
 
