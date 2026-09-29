@@ -1,12 +1,24 @@
 #!/bin/zsh
-# Paper Planner.app 을 만든다:  ./build.sh
+# Paper Planner.app 을 만든다
+#   ./build.sh            이 Mac 용 (빠름)
+#   ./build.sh --release  Apple Silicon + Intel 유니버설, dist/ 에 배포용 zip 까지
 set -e
 cd "$(dirname "$0")"
-swift build -c release
+VERSION="1.0.0"
+RELEASE=0
+[ "$1" = "--release" ] && RELEASE=1
+
+if [ $RELEASE = 1 ]; then
+  swift build -c release --arch arm64 --arch x86_64
+  BIN=.build/apple/Products/Release/PaperPlanner
+else
+  swift build -c release
+  BIN=.build/release/PaperPlanner
+fi
 APP="build/Paper Planner.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/PaperPlanner "$APP/Contents/MacOS/PaperPlanner"
+cp "$BIN" "$APP/Contents/MacOS/PaperPlanner"
 
 if [ ! -f build/AppIcon.icns ]; then
   ICONSET=build/AppIcon.iconset
@@ -33,9 +45,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>PaperPlanner</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 LeanAgileHungry Inc. · MIT License</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>ATSApplicationFontsPath</key><string>Fonts</string>
@@ -45,3 +58,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 codesign --force --deep -s - "$APP" >/dev/null 2>&1 || true
 echo "✓ $APP"
+
+if [ $RELEASE = 1 ]; then
+  mkdir -p dist
+  ZIP="dist/PaperPlanner-$VERSION-macOS.zip"
+  rm -f "$ZIP"
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+  shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
+  echo "✓ $ZIP"
+fi

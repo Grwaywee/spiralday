@@ -23,6 +23,9 @@ struct PaperPlannerApp: App {
                     Button("이전 장") { delegate.state.flip(.backward) }.keyboardShortcut("[", modifiers: .command)
                     Button("다음 장") { delegate.state.flip(.forward) }.keyboardShortcut("]", modifiers: .command)
                     Button("오늘") { delegate.state.goToday() }.keyboardShortcut("t", modifiers: .command)
+                    Divider()
+                    Button("PDF로 내보내기…") { PDFExportWindowController.shared.show(store: delegate.store, state: delegate.state) }
+                        .keyboardShortcut("p", modifiers: .command)
                 }
             }
     }
@@ -37,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let args = CommandLine.arguments
 
     override init() {
-        if Self.args.contains("--demo") || Self.args.contains("--snapshot") {
+        if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -52,6 +55,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let i = Self.args.firstIndex(of: "--pdf-test"), i + 1 < Self.args.count {
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let st = store, sa = state
+            Fonts.activate {
+                Task { @MainActor in
+                    let store = st, state = sa
+                    let ws = Dates.weekStart(Date())
+                    for layout in PDFLayout.allCases {
+                        try? await PDFExporter.export(layout, from: ws, to: Dates.add(days: 6, to: ws), cutGuides: true,
+                                                      store: store, state: state,
+                                                      to: dir.appendingPathComponent("\(layout.rawValue).pdf")) { _ in }
+                    }
+                    exit(0)
+                }
+            }
+            return
+        }
         if let i = Self.args.firstIndex(of: "--snapshot"), i + 1 < Self.args.count {
             let dir = URL(fileURLWithPath: Self.args[i + 1])
             Fonts.activate {

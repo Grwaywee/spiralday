@@ -205,8 +205,17 @@ enum SpiralBinding {
 struct PaperSurface: View {
     let kind: PageKind
     let u: CGFloat
+    @Environment(\.isPrinting) private var isPrinting
 
     var body: some View {
+        if isPrinting {
+            Color.white.allowsHitTesting(false)
+        } else {
+            surface
+        }
+    }
+
+    private var surface: some View {
         ZStack(alignment: .topLeading) {
             Ink.paper
             NoiseLayer(opacity: 0.5).blendMode(.multiply)
@@ -250,11 +259,18 @@ struct HighlighterBar: View {
 // MARK: - Environment
 
 private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
+private struct PrintKey: EnvironmentKey { static let defaultValue = false }
 
 extension EnvironmentValues {
     /// 페이지 넘김용 스냅샷을 그리는 중이면 true (편집 필드 대신 글자만 그린다)
     var isSnapshot: Bool {
         get { self[SnapshotKey.self] }
         set { self[SnapshotKey.self] = newValue }
+    }
+
+    /// PDF 로 뽑는 중이면 true (흰 종이, 종이 결·스프링 구멍 없이)
+    var isPrinting: Bool {
+        get { self[PrintKey.self] }
+        set { self[PrintKey.self] = newValue }
     }
 }
