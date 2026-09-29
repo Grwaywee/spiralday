@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController = wc
         wc.show()
         state.installMonitors()
+        if Self.args.contains("--settings") { SettingsWindowController.shared.show(store: store, state: state) }
         let st = state
         Fonts.activate { Task { @MainActor in st.fontsReady = true } }
     }
