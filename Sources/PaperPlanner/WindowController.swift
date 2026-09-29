@@ -83,6 +83,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     private func updateTitle() {
+        // 주간은 위쪽이 스프링이라 제목을 숨긴다 (창 목록/미션 컨트롤에는 계속 쓰인다)
+        window.titleVisibility = state.kind == .daily ? .visible : .hidden
         let f = DateFormatter()
         f.locale = Locale(identifier: "ko_KR")
         switch state.kind {
@@ -141,7 +143,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         target.origin.x = old.midX - target.width / 2
         target.origin.y = old.maxY - target.height        // 윗변 고정
         // 화면 안에 (오른쪽 팔레트 자리까지) 들어오게
-        let rightLimit = vis.maxX - Self.paletteGap - Self.paletteWidth - 8
+        let rightLimit = vis.maxX - Self.paletteGap - Self.paletteWidth - 20
         if target.maxX > rightLimit { target.origin.x = rightLimit - target.width }
         if target.minX < vis.minX + 8 { target.origin.x = vis.minX + 8 }
         if target.minY < vis.minY { target.origin.y = vis.minY }
@@ -170,6 +172,17 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: NSWindowDelegate
+
+    /// 초록 버튼(확대): 페이지 비율을 지키면서 화면에 들어가는 가장 큰 크기 (팔레트 자리 제외)
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect) -> NSRect {
+        var avail = defaultFrame
+        avail.size.width -= Self.paletteGap + Self.paletteWidth + 20
+        let aspect = state.kind.aspect
+        var size = NSSize(width: avail.width, height: avail.width / aspect)
+        if size.height > avail.height { size = NSSize(width: avail.height * aspect, height: avail.height) }
+        return NSRect(x: avail.minX + (avail.width - size.width) / 2, y: avail.maxY - size.height,
+                      width: size.width.rounded(), height: size.height.rounded())
+    }
 
     func windowDidResize(_ notification: Notification) { palette?.reposition() }
     func windowDidEndLiveResize(_ notification: Notification) {
