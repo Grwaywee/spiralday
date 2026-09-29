@@ -22,6 +22,8 @@ struct InlineField: View {
     var strike: Color? = nil
     /// 1 이면 한 줄, 그 이상이면 여러 줄 (alignment 가 .center 면 상하좌우 가운데, 아니면 위에서부터)
     var lines: Int = 1
+    /// 여러 줄일 때 줄과 줄 사이 (인쇄된 줄 간격에 맞출 때)
+    var lineSpacing: CGFloat = 0
     var alignment: Alignment = .leading
     var onSubmit: (() -> Void)? = nil
     var onEnd: (() -> Void)? = nil
@@ -55,6 +57,7 @@ struct InlineField: View {
         }
         .textFieldStyle(.plain)
         .font(font)
+        .lineSpacing(lineSpacing)
         .foregroundStyle(color)
         .multilineTextAlignment(alignment.horizontal == .center ? .center : .leading)
         .focused($focused)

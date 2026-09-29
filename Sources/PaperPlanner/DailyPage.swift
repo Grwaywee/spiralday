@@ -7,6 +7,7 @@ struct DailyPage: View {
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
+    @Environment(\.isSnapshot) private var isSnapshot
 
     @State private var editingDDay = false
 
@@ -16,26 +17,24 @@ struct DailyPage: View {
 
     var body: some View {
         let day = store.day(date)
+        let tasksL = taskLayout(day.tasks)
+        let memoL = memoLayout(day)
         ZStack(alignment: .topLeading) {
-            DailyFormPrint(u: u)
+            DailyFormPrint(u: u, taskRows: tasksL.rows, memoRows: memoL.rows)
 
             // DATE · D-DAY 칸 (양식 위 여백)
             dateField
-                .place(F.dateBox, u)
+                .place(F.dateBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
             ddayField
-                .place(F.ddayBox, u)
+                .place(F.ddayBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
 
             comment
                 .place(F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
             TotalTime(minutes: store.minutes(date), color: concept.accent, u: u)
-                .place(F.totalBox, u)
+                .place(F.totalBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
 
-            ForEach(0..<F.taskCount, id: \.self) { i in
-                taskRow(i, day.tasks)
-            }
-            ForEach(0..<F.memoCount, id: \.self) { i in
-                memoRow(i)
-            }
+            tasksView(day.tasks, tasksL)
+            memosView(day, memoL)
 
             SlotPainter(date: date, cellW: F.cell * u, rowH: F.hourPitch * u)
                 .offset(x: F.slotsLeft * u, y: F.gridTop * u)
@@ -99,70 +98,200 @@ struct DailyPage: View {
 
     // MARK: COMMENT
 
+    private static let commentFont: CGFloat = 50
+    private var commentRect: CGRect { F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16) }
+
+    /// 가운데 정렬. 글이 길어지면 상자 안에 다 들어가도록 글자가 조금씩 작아진다.
     private var comment: some View {
-        InlineField(text: store.dayField(date, \.comment), font: Fonts.hand(50 * u),
-                    key: "c|\(Dates.key(date))", lines: 3, alignment: .center)
+        let text = store.day(date).comment
+        let r = commentRect
+        let sc = RuledText.fitScale(text, fontSize: Self.commentFont, width: r.width - 16,
+                                    height: r.height - 6, maxLines: 99)
+        return InlineField(text: store.dayField(date, \.comment), font: Fonts.hand(Self.commentFont * sc * u),
+                           key: "c|\(Dates.key(date))", lines: 8, alignment: .center)
     }
 
     // MARK: TASKS
 
+    private static let taskFont: CGFloat = 46
+    /// 줄바꿈 계산 폭: 편집 칸보다 살짝 좁게 잡아서 입력 중에도 줄 수가 어긋나지 않게 한다
+    private var taskTextRect: (x: CGFloat, width: CGFloat) { (F.categoryX + 16, F.boxMinX - 14 - (F.categoryX + 16)) }
+
     private func taskKey(_ i: Int) -> String { "t|\(Dates.key(date))|\(i)" }
 
+    /// 긴 할 일은 아래 칸으로 이어 쓰고, 칸이 모자라면 줄 수를 늘려(간격·글자를 조금씩 줄여) 모두 담는다.
+    private func taskLayout(_ tasks: [PlanTask]) -> RuledText.Layout {
+        var items = tasks.map(\.text)
+        if state.editingKey == taskKey(tasks.count) { items.append("") }   // 새 할 일을 쓰기 시작한 줄
+        return RuledText.layout(items, minRows: F.taskCount, fontSize: Self.taskFont, width: taskTextRect.width - 12)
+    }
+
     @ViewBuilder
-    private func taskRow(_ i: Int, _ tasks: [PlanTask]) -> some View {
-        let row = F.taskRow(i)
+    private func tasksView(_ tasks: [PlanTask], _ L: RuledText.Layout) -> some View {
+        let p = F.taskPitch(L.rows)
+        ForEach(0..<L.lines.count, id: \.self) { i in
+            taskEntry(i, tasks, L)
+        }
+        // 빈 칸: 누르면 새 할 일
+        ForEach(L.used..<L.rows, id: \.self) { r in
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { state.editingKey = taskKey(tasks.count) }
+                .place(CGRect(x: taskTextRect.x, y: F.gridTop + CGFloat(r) * p, width: taskTextRect.width, height: p), u)
+        }
+    }
+
+    @ViewBuilder
+    private func taskEntry(_ i: Int, _ tasks: [PlanTask], _ L: RuledText.Layout) -> some View {
+        let p = F.taskPitch(L.rows)
+        let sc = L.scale
         let task = i < tasks.count ? tasks[i] : nil
         let cat = store.category(task?.cat)
+        let r0 = L.start[i]
+        let lines = L.lines[i]
+        let key = taskKey(i)
 
         // 같은 형광펜이 이어지는 묶음의 첫 줄에만 카테고리 이름 + 그 색으로 칠한 시간
         if let task, let cat, i == 0 || tasks[i - 1].cat != task.cat {
-            CategoryTag(name: cat.name, minutes: store.minutes(date, cat: cat.id), color: concept.accent, u: u)
-                .place(CGRect(x: F.left + 6, y: row.minY + 3, width: F.categoryX - F.left - 12, height: row.height - 6), u)
+            CategoryTag(name: cat.name, u: u * sc)
+                .place(CGRect(x: F.left + 6, y: F.gridTop + CGFloat(r0) * p + 3 * sc, width: F.categoryX - F.left - 12,
+                              height: p - 6 * sc), u)
         }
 
-        // 입력 중 첫 글자로 할 일이 생겨도 같은 필드가 유지되도록 구조를 바꾸지 않는다
-        InlineField(
+        RuledEntry(
             text: store.taskText(date, i, defaultCat: { [state] in state.tool >= 0 ? state.tool : nil }),
-            font: Fonts.hand(46 * u),
-            key: taskKey(i),
-            tapKey: task == nil ? taskKey(tasks.count) : nil,
-            highlight: cat?.color,
-            strike: task?.mark == .done ? concept.accent : nil,
-            onSubmit: { [state] in
-                if i + 1 < F.taskCount { state.editingKey = taskKey(i + 1) } else { state.endEditing() }
-            },
+            lines: lines, key: key, fontSize: Self.taskFont * sc, pitch: p, u: u,
+            // 형광펜은 끝낸 일에만 긋는다
+            highlight: task?.mark == .done ? (cat?.color ?? concept.tint) : nil,
+            onSubmit: { [state] in state.editingKey = taskKey(i + 1) },
             onEnd: { [store, date] in store.cleanup(date) }
         )
-        .padding(.top, 5 * u)
-        .place(CGRect(x: F.categoryX + 16, y: row.minY, width: F.boxMinX - 14 - (F.categoryX + 16), height: row.height), u)
+        .place(CGRect(x: taskTextRect.x, y: F.gridTop + CGFloat(r0) * p, width: taskTextRect.width,
+                      height: CGFloat(lines.count) * p), u)
         .contextMenu {
-            if let task { TaskMenu(date: date, task: task) }
+            if let task, state.editingKey != key { TaskMenu(date: date, task: task) }
         }
 
-        // 인쇄된 점선 체크 박스 한가운데에 펜 표시
+        // 첫 줄의 인쇄된 점선 체크 박스 한가운데에 펜 표시
         if let task {
-            MarkButton(mark: task.mark, size: 42 * u, color: concept.accent, lineWidth: 5.6 * u, showsPlaceholder: false) {
+            let box = F.box(r0, rows: L.rows)
+            MarkButton(mark: task.mark, size: box.width * 0.98 * u, color: concept.accent,
+                       lineWidth: 5.6 * sc * u, showsPlaceholder: false) {
                 store.cycleMark(date, task.id)
             }
-            .position(x: F.boxMidX * u, y: F.box(i).midY * u)
+            .position(x: box.midX * u, y: box.midY * u)
         }
     }
 
     // MARK: MEMO
 
-    /// 왼쪽 작은 칸(꼬리표) + 본문
+    private static let memoFont: CGFloat = 46
+    private var memoTextRect: (x: CGFloat, width: CGFloat) { (F.categoryX + 16, F.leftEnd - 12 - (F.categoryX + 16)) }
+
+    /// 끝에 붙은 빈 메모는 칸으로만 남긴다
+    private func memoCount(_ d: DayRecord) -> Int {
+        var n = 0
+        for i in 0..<max(d.memos.count, d.memoTags.count) {
+            let m = i < d.memos.count ? d.memos[i] : ""
+            let t = i < d.memoTags.count ? d.memoTags[i] : ""
+            if !m.isEmpty || !t.isEmpty { n = i + 1 }
+        }
+        return n
+    }
+
+    private func memoKey(_ i: Int) -> String { "m|\(Dates.key(date))|\(i)" }
+
+    private func memoLayout(_ d: DayRecord) -> RuledText.Layout {
+        let n = memoCount(d)
+        var items = (0..<n).map { $0 < d.memos.count ? d.memos[$0] : "" }
+        if let k = state.editingKey, k == memoKey(n) || k == "mt|\(Dates.key(date))|\(n)" { items.append("") }
+        return RuledText.layout(items, minRows: F.memoCount, fontSize: Self.memoFont, width: memoTextRect.width - 12)
+    }
+
+    /// 왼쪽 작은 칸(꼬리표) + 본문. 본문이 길면 아래 칸으로 이어진다.
     @ViewBuilder
-    private func memoRow(_ i: Int) -> some View {
-        let row = F.memoRow(i)
-        let key = Dates.key(date)
-        InlineField(text: store.memoTag(date, i), font: Fonts.hand(34 * u), key: "mt|\(key)|\(i)",
-                    alignment: .center)
-            .padding(.top, 4 * u)
-            .place(CGRect(x: F.left + 4, y: row.minY, width: F.categoryX - F.left - 8, height: row.height), u)
-        InlineField(text: store.memo(date, i), font: Fonts.hand(46 * u), key: "m|\(key)|\(i)")
-            .padding(.top, 5 * u)
-            .place(CGRect(x: F.categoryX + 16, y: row.minY, width: F.leftEnd - 12 - (F.categoryX + 16),
-                          height: row.height), u)
+    private func memosView(_ d: DayRecord, _ L: RuledText.Layout) -> some View {
+        let p = F.memoPitch(L.rows)
+        let sc = L.scale
+        let dk = Dates.key(date)
+        ForEach(0..<L.lines.count, id: \.self) { i in
+            let r0 = L.start[i]
+            InlineField(text: store.memoTag(date, i), font: Fonts.hand(34 * sc * u), key: "mt|\(dk)|\(i)",
+                        alignment: .center)
+                .padding(.top, 4 * sc * u)
+                .place(CGRect(x: F.left + 4, y: F.memoTop + CGFloat(r0) * p, width: F.categoryX - F.left - 8, height: p), u)
+            RuledEntry(text: store.memo(date, i), lines: L.lines[i], key: memoKey(i),
+                       fontSize: Self.memoFont * sc, pitch: p, u: u,
+                       onSubmit: { [state] in state.editingKey = memoKey(i + 1) })
+                .place(CGRect(x: memoTextRect.x, y: F.memoTop + CGFloat(r0) * p, width: memoTextRect.width,
+                              height: CGFloat(L.lines[i].count) * p), u)
+        }
+        ForEach(L.used..<L.rows, id: \.self) { r in
+            let n = memoCount(d)
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { state.editingKey = memoKey(n) }
+                .place(CGRect(x: memoTextRect.x, y: F.memoTop + CGFloat(r) * p, width: memoTextRect.width, height: p), u)
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { state.editingKey = "mt|\(dk)|\(n)" }
+                .place(CGRect(x: F.left + 4, y: F.memoTop + CGFloat(r) * p, width: F.categoryX - F.left - 8, height: p), u)
+        }
+    }
+}
+
+// MARK: - Ruled entry (여러 칸에 걸쳐 쓰는 한 항목)
+
+/// 인쇄된 줄 여러 개에 걸쳐 쓴 손글씨 한 항목.
+/// 보기: 줄마다 따로 (형광펜·완료 줄도 줄마다). 편집: 같은 줄 간격의 여러 줄 입력칸.
+private struct RuledEntry: View {
+    @Binding var text: String
+    let lines: [String]
+    let key: String
+    /// 디자인 단위 글자 크기 / 줄 간격
+    let fontSize: CGFloat
+    let pitch: CGFloat
+    let u: CGFloat
+    var highlight: Color? = nil
+    var strike: Color? = nil
+    var onSubmit: (() -> Void)? = nil
+    var onEnd: (() -> Void)? = nil
+
+    @EnvironmentObject private var state: AppState
+    @Environment(\.isSnapshot) private var isSnapshot
+
+    var body: some View {
+        let lh = RuledText.lineHeight(fontSize: fontSize)
+        // 글자 줄을 인쇄된 칸 가운데보다 살짝 아래(줄 위에 얹히게)
+        let top = max(0, (pitch - lh) / 2 + fontSize * 0.09)
+        if state.editingKey == key && !isSnapshot {
+            InlineField(text: $text, font: Fonts.hand(fontSize * u), key: key, lines: max(lines.count, 1) + 1,
+                        lineSpacing: max(0, (pitch - lh) * u), onSubmit: onSubmit, onEnd: onEnd)
+                .padding(.top, top * u)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(Fonts.hand(fontSize * u))
+                        .foregroundStyle(Ink.text)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .background {
+                            if let highlight, !line.isEmpty {
+                                HighlighterBar(color: highlight)
+                                    .padding(.horizontal, -4 * u)
+                                    .padding(.top, 3 * u)
+                                    .padding(.bottom, 1 * u)
+                            }
+                        }
+                        .overlay { if let strike, !line.isEmpty { StrikeLine(color: strike) } }
+                        .padding(.top, top * u)
+                        .frame(maxWidth: .infinity, minHeight: pitch * u, maxHeight: pitch * u, alignment: .topLeading)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { state.editingKey = key }
+        }
     }
 }
 
@@ -198,26 +327,16 @@ private struct TotalTime: View {
 
 private struct CategoryTag: View {
     let name: String
-    let minutes: Int
-    let color: Color
     let u: CGFloat
 
     var body: some View {
-        VStack(spacing: -3 * u) {
-            Text(name)
-                .font(Fonts.hand(37 * u))
-                .foregroundStyle(Ink.text)
-            if minutes > 0 {
-                let (h, m) = formatHM(minutes)
-                Text("\(h)H\(m)M")
-                    .font(Fonts.rounded(18.5 * u, .heavy))
-                    .foregroundStyle(color)
-            }
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(false)
+        Text(name)
+            .font(Fonts.hand(37 * u))
+            .foregroundStyle(Ink.text)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
     }
 }
 

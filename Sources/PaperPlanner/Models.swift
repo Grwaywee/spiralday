@@ -60,7 +60,7 @@ struct DayRecord: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         tasks = try c.decodeIfPresent([PlanTask].self, forKey: .tasks) ?? []
         let s = try c.decodeIfPresent([Int].self, forKey: .slots) ?? []
-        slots = Self.pad(s, Self.slotCount, -1)
+        slots = Array(Self.pad(s, Self.slotCount, -1).prefix(Self.slotCount))
         comment = try c.decodeIfPresent(String.self, forKey: .comment) ?? ""
         memoTags = Self.pad(try c.decodeIfPresent([String].self, forKey: .memoTags) ?? [], Self.memoCount, "")
         memos = Self.pad(try c.decodeIfPresent([String].self, forKey: .memos) ?? [], Self.memoCount, "")
@@ -69,7 +69,7 @@ struct DayRecord: Codable, Equatable {
     }
 
     private static func pad<T>(_ a: [T], _ n: Int, _ fill: T) -> [T] {
-        Array((a + Array(repeating: fill, count: n)).prefix(n))
+        a.count >= n ? a : a + Array(repeating: fill, count: n - a.count)
     }
 
     var isEmpty: Bool {
@@ -363,12 +363,21 @@ final class PlannerStore: ObservableObject {
         Binding(get: { self.day(d)[keyPath: kp] }, set: { v in self.editDay(d) { $0[keyPath: kp] = v } })
     }
 
+    /// 메모는 3칸이 기본이고, 넘치면 늘어난다
     func memoTag(_ d: Date, _ i: Int) -> Binding<String> {
-        Binding(get: { self.day(d).memoTags[i] }, set: { v in self.editDay(d) { $0.memoTags[i] = v } })
+        Binding(get: { let t = self.day(d).memoTags; return i < t.count ? t[i] : "" },
+                set: { v in self.editDay(d) { r in
+                    while r.memoTags.count <= i { r.memoTags.append("") }
+                    r.memoTags[i] = v
+                } })
     }
 
     func memo(_ d: Date, _ i: Int) -> Binding<String> {
-        Binding(get: { self.day(d).memos[i] }, set: { v in self.editDay(d) { $0.memos[i] = v } })
+        Binding(get: { let m = self.day(d).memos; return i < m.count ? m[i] : "" },
+                set: { v in self.editDay(d) { r in
+                    while r.memos.count <= i { r.memos.append("") }
+                    r.memos[i] = v
+                } })
     }
 
     func weekField(_ s: Date, _ kp: WritableKeyPath<WeekRecord, String>) -> Binding<String> {

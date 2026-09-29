@@ -201,7 +201,7 @@ private struct WeekDayColumn: View {
                     font: Fonts.hand(30 * u),
                     key: key,
                     tapKey: task == nil ? "t|\(dk)|\(min(tasks.count, WK.taskLines - 1))" : nil,
-                    strike: task?.mark == .done ? store.concept(d).accent : nil,
+                    highlight: task?.mark == .done ? (store.category(task?.cat)?.color ?? store.concept(d).tint) : nil,
                     onSubmit: {
                         if i + 1 < WK.taskLines { st.editingKey = "t|\(dk)|\(i + 1)" } else { st.endEditing() }
                     },

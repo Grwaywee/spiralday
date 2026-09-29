@@ -13,8 +13,8 @@ enum DailyForm {
     // MARK: 세로 위치
     /// (양식 위 빈 여백에 추가) DATE / D-DAY 머리선. 칸은 이 선과 COMMENT 머리선 사이.
     static let dateRuleY: CGFloat = 72
-    /// COMMENT / TOTAL TIME 머리선
-    static let headerY: CGFloat = 180.3
+    /// COMMENT / TOTAL TIME 머리선 — DATE 칸과 COMMENT 칸의 높이가 같도록 DATE 머리선과 닫는 선의 한가운데
+    static var headerY: CGFloat { (dateRuleY + closeY) / 2 }
     /// 두 칸을 닫는 선
     static let closeY: CGFloat = 366.7
     /// TASKS / TIMETABLE 머리선 = 격자 맨 위
@@ -78,9 +78,9 @@ enum DailyForm {
     // MARK: 칸 (편집 영역)
     static var commentBox: CGRect { CGRect(x: left, y: headerY, width: leftEnd - left, height: closeY - headerY) }
     static var totalBox: CGRect { CGRect(x: timeLeft, y: headerY, width: timeRight - timeLeft, height: closeY - headerY) }
-    /// DATE / D-DAY 칸 (머리선 아래 ~ COMMENT 라벨 위)
-    static var dateBox: CGRect { CGRect(x: left, y: dateRuleY + 6, width: leftEnd - left, height: headerY - dateRuleY - 20) }
-    static var ddayBox: CGRect { CGRect(x: timeLeft, y: dateRuleY + 6, width: timeRight - timeLeft, height: headerY - dateRuleY - 20) }
+    /// DATE / D-DAY 칸 — COMMENT / TOTAL TIME 칸과 같은 크기 (머리선 ~ 다음 머리선)
+    static var dateBox: CGRect { CGRect(x: left, y: dateRuleY, width: leftEnd - left, height: headerY - dateRuleY) }
+    static var ddayBox: CGRect { CGRect(x: timeLeft, y: dateRuleY, width: timeRight - timeLeft, height: headerY - dateRuleY) }
 
     /// 할 일 i 번째 줄 (0...14)
     static func taskRow(_ i: Int) -> CGRect {
@@ -90,9 +90,27 @@ enum DailyForm {
     static func memoRow(_ i: Int) -> CGRect {
         CGRect(x: left, y: lineY(memoRow + i), width: leftEnd - left, height: pitch)
     }
-    static func box(_ i: Int) -> CGRect {
-        let mid = lineY(i) + pitch / 2
-        return CGRect(x: boxMinX, y: mid - boxSize / 2, width: boxSize, height: boxSize)
+    static func box(_ i: Int) -> CGRect { box(i, rows: taskCount) }
+
+    // 칸이 넘쳐서 줄 수가 늘어난 경우: 같은 높이를 rows 줄로 나눈다
+    static var tasksHeight: CGFloat { CGFloat(taskCount) * pitch }
+    static var memoTop: CGFloat { lineY(memoRow) }
+    static var memoHeight: CGFloat { CGFloat(memoCount) * pitch }
+    static func taskPitch(_ rows: Int) -> CGFloat { tasksHeight / CGFloat(max(rows, 1)) }
+    static func memoPitch(_ rows: Int) -> CGFloat { memoHeight / CGFloat(max(rows, 1)) }
+    static func taskRowRect(_ r: Int, rows: Int) -> CGRect {
+        let p = taskPitch(rows)
+        return CGRect(x: left, y: gridTop + CGFloat(r) * p, width: leftEnd - left, height: p)
+    }
+    static func memoRowRect(_ r: Int, rows: Int) -> CGRect {
+        let p = memoPitch(rows)
+        return CGRect(x: left, y: memoTop + CGFloat(r) * p, width: leftEnd - left, height: p)
+    }
+    static func box(_ r: Int, rows: Int) -> CGRect {
+        let p = taskPitch(rows)
+        let size = min(boxSize, p * 0.57)
+        let mid = gridTop + (CGFloat(r) + 0.5) * p
+        return CGRect(x: boxMidX - size / 2, y: mid - size / 2, width: size, height: size)
     }
 }
 
@@ -101,6 +119,9 @@ enum DailyForm {
 /// 종이에 인쇄된 양식 전체 (라벨, 선, 점선, 체크 박스, 시각 숫자, 워드마크). 한 Canvas 로 그린다.
 struct DailyFormPrint: View {
     let u: CGFloat
+    /// 할 일 / 메모 칸 수 (양식 그대로면 15 / 3, 넘치면 늘어난다)
+    var taskRows = DailyForm.taskCount
+    var memoRows = DailyForm.memoCount
 
     private typealias F = DailyForm
 
@@ -131,20 +152,24 @@ struct DailyFormPrint: View {
         hline(&ctx, F.left, F.leftEnd, F.closeY, F.heavy, ink)
         hline(&ctx, F.timeLeft, F.timeRight, F.closeY, F.heavy, ink)
 
-        // TASKS · MEMO (19줄 격자)
+        // TASKS (늘어나면 같은 높이 안에서 줄 간격이 좁아진다)
         hline(&ctx, F.tasksRuleX, F.leftEnd, F.lineY(0), F.heavy, ink)
-        for r in 1..<F.leftRows {
-            let y = F.lineY(r)
-            switch r {
-            case F.taskCount:
-                hline(&ctx, F.left, F.leftEnd, y, F.heavy, ink)
-            case F.memoRow:
-                hline(&ctx, F.memoRuleX, F.leftEnd, y, F.heavy, ink)
-            case 5, 10:
+        let tp = F.taskPitch(taskRows)
+        for r in 1..<taskRows {
+            let y = F.gridTop + CGFloat(r) * tp
+            if r % 5 == 0 {
                 hline(&ctx, F.left, F.leftEnd, y, F.medium, ink)
-            default:
+            } else {
                 hline(&ctx, F.left, F.leftEnd, y, F.hair, hair)
             }
+        }
+        hline(&ctx, F.left, F.leftEnd, F.lineY(F.taskCount), F.heavy, ink)
+
+        // MEMO
+        hline(&ctx, F.memoRuleX, F.leftEnd, F.memoTop, F.heavy, ink)
+        let mp = F.memoPitch(memoRows)
+        for r in 1..<memoRows {
+            hline(&ctx, F.left, F.leftEnd, F.memoTop + CGFloat(r) * mp, F.hair, hair)
         }
         hline(&ctx, F.left, F.leftEnd, F.gridBottom, F.heavy, ink)
 
@@ -193,8 +218,8 @@ struct DailyFormPrint: View {
                  gap: g, size: F.slotDot, color: dot)
         }
         // 체크 박스 (한 변에 점 7개)
-        for i in 0..<F.taskCount {
-            let b = F.box(i)
+        for i in 0..<taskRows {
+            let b = F.box(i, rows: taskRows)
             let step = b.width / 6
             let c = [CGPoint(x: b.minX, y: b.minY), CGPoint(x: b.maxX, y: b.minY),
                      CGPoint(x: b.maxX, y: b.maxY), CGPoint(x: b.minX, y: b.maxY)]
