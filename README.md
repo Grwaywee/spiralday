@@ -37,7 +37,7 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
 | ○ △ × → | 체크 박스를 누를 때마다 완료 → 일부 → 못함 → 미룸. **완료한 일에만 형광펜**이 그어지고, 같은 형광펜끼리 모입니다. |
 | 🎨 **날마다 컬러** | 9가지 컬러 컨셉 — TOTAL TIME · 요일 · D-day · 체크 표시 색이 함께 바뀝니다. 기본값은 설정에서. |
 | 🖨 **PDF 로 뽑기** | 일간 A4 세로 / **A4 반쪽 (두 장씩, 자르면 실물 크기)**, 주간 · 홈 A4 가로. 기간을 정해 한 번에. 벡터라 인쇄가 선명합니다. |
-| 🔒 **내 Mac 에만** | 네트워크 없음, 계정 없음, 광고 없음. JSON 파일로 저장. |
+| 🔒 **내 Mac 에만** | 계정 없음, 광고 없음, 추적 없음. JSON 파일로 저장. 인터넷은 업데이트 확인에만 써요. |
 
 ## 화면
 
@@ -52,16 +52,11 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
 
 ### 받아서 쓰기
 
-1. [spiralday.com](https://spiralday.com) 또는 [Releases](https://github.com/Grwaywee/spiralday/releases/latest) 에서 `Spiralday.zip` 을 받아 압축을 풉니다.
-2. `Spiralday.app` 을 **응용 프로그램** 폴더로 옮깁니다.
-3. 처음 열면 macOS 가 막습니다 (개인이 만든 앱이라 Apple 공증이 없어요). 한 번만 허용해 주세요.
-   - **macOS 15 이상**: 막혔다는 창을 닫고 **시스템 설정 → 개인정보 보호 및 보안** 맨 아래의 **그래도 열기** → 암호 입력
-   - **macOS 14**: 앱을 **오른쪽 클릭 → 열기**
-   - 또는 터미널에서 한 번에:
+1. [spiralday.com](https://spiralday.com) 또는 [Releases](https://github.com/Grwaywee/spiralday/releases/latest) 에서 **`Spiralday.dmg`** 를 받아 엽니다.
+2. 열린 창에서 **Spiralday** 를 **Applications** 폴더로 끌어다 놓습니다.
+3. 응용 프로그램 폴더(또는 Launchpad)에서 Spiralday 를 엽니다. 끝.
 
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/Spiralday.app
-   ```
+LeanAgileHungry Inc. 의 Developer ID 로 서명하고 Apple 공증(notarization)을 받은 앱이라, 따로 허용할 필요 없이 바로 열립니다.
 
 - macOS 14 Sonoma 이상, Apple Silicon · Intel 모두 지원
 - **자동 업데이트** — 하루 한 번 새 버전을 확인하고, 있으면 알려 줘요 (메뉴 Spiralday → 업데이트 확인…). [Sparkle](https://sparkle-project.org) 로 서명을 확인한 뒤 설치해요.
@@ -74,7 +69,7 @@ Xcode 16 이상 (Swift 6 툴체인) 이 필요합니다.
 git clone https://github.com/Grwaywee/spiralday.git
 cd spiralday
 ./build.sh                  # → build/Spiralday.app (이 Mac 용)
-./build.sh --release        # → 유니버설 빌드 + dist/Spiralday-x.y.z-macOS.zip
+./build.sh --release        # → 유니버설 빌드 + 서명 · 공증 + dist/Spiralday-x.y.z.dmg (설치용) · -macOS.zip (자동 업데이트용)
 ```
 
 ## 사용법
@@ -184,7 +179,18 @@ swift build
 
 1. `build.sh` 의 `VERSION` 을 올리고 `BUILD` 를 1 늘립니다.
 2. `Docs/release-notes/<VERSION>.md` 에 바뀐 점을 적습니다.
-3. `./release.sh` — 유니버설 빌드 → Sparkle EdDSA 서명 → `site/appcast.xml` → GitHub Release → 사이트 배포까지 한 번에.
+3. `./release.sh` — 유니버설 빌드 → Developer ID 서명 → Apple 공증 → 설치용 DMG → Sparkle EdDSA 서명 → `site/appcast.xml` → GitHub Release → 사이트 배포까지 한 번에.
+
+배포하는 Mac 에는 두 가지가 필요합니다.
+
+- 키체인의 **Developer ID Application** 인증서 (LeanAgileHungry Inc.)
+- 공증 자격 증명 프로필 `spiralday` — 한 번만 만들어 둡니다 (암호는 [appleid.apple.com](https://appleid.apple.com) 의 앱 암호):
+
+  ```bash
+  
+  ```
+
+설치 DMG 의 배경과 바로가기 아이콘은 `Scripts/dmg-background.swift` · `Scripts/weblink-icon.swift` 가 그리고, `Scripts/make-dmg.sh` 가 창 배치를 잡습니다 (`brew install create-dmg`).
 
 업데이트 서명 비밀 키는 배포하는 Mac 의 키체인(`spiralday` 계정)에만 있습니다. 잃어버리면 기존 사용자에게 업데이트를 보낼 수 없으니 반드시 백업하세요:
 `.build/artifacts/sparkle/Sparkle/bin/
