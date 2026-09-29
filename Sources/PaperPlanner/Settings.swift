@@ -68,7 +68,7 @@ private final class SettingsPanel: NSPanel {
 // MARK: - Sections
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case books, pens, concept, dday, shortcuts, data
+    case books, pens, concept, dday, pdf, shortcuts, data
 
     var id: Self { self }
 
@@ -78,6 +78,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .pens: "형광펜"
         case .concept: "컬러 컨셉"
         case .dday: "D-day"
+        case .pdf: "PDF로 뽑기"
         case .shortcuts: "단축키"
         case .data: "데이터"
         }
@@ -89,6 +90,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .pens: "타임테이블과 할 일에 칠하는 펜이에요. 이름과 색을 바꾸면 이미 칠한 칸에도 바로 반영돼요."
         case .concept: "TOTAL TIME, 요일, D-day 숫자, ○△× 표시에 쓰이는 강조색이에요."
         case .dday: "일간 페이지 위쪽 D-DAY 칸에 남은 날을 세어 적어 줘요."
+        case .pdf: "일간·주간·홈을 A4 로 뽑아요. 일간은 반쪽씩 두 장을 한 장에 놓으면 자른 뒤 실물 크기예요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
         case .data: "기록은 이 Mac 에만 저장되고, 적는 즉시 자동으로 저장돼요."
         }
@@ -100,6 +102,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .pens: "highlighter"
         case .concept: "paintpalette.fill"
         case .dday: "flag.fill"
+        case .pdf: "printer.fill"
         case .shortcuts: "keyboard.fill"
         case .data: "externaldrive.fill"
         }
@@ -111,6 +114,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .pens: Color(hex: "F2A93B")
         case .concept: Color(hex: "E5577E")
         case .dday: Color(hex: "7B61D1")
+        case .pdf: Color(hex: "E0674B")
         case .shortcuts: Color(hex: "8A8A93")
         case .data: Color(hex: "3A84F0")
         }
@@ -149,6 +153,7 @@ struct SettingsView: View {
                 case .pens: SettingsPensPane()
                 case .concept: SettingsConceptPane()
                 case .dday: SettingsDDayPane()
+                case .pdf: PDFExportView()
                 case .shortcuts: SettingsShortcutsPane()
                 case .data: SettingsDataPane()
                 }
