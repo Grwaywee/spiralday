@@ -14,6 +14,8 @@ final class AppState: ObservableObject {
     @Published var morphing = false
 
     let curl = CurlController()
+    /// 숫자 키로 형광펜을 고를 때 순서 → id 변환용
+    weak var store: PlannerStore?
     let baseDay: Date
     let baseWeek: Date
 
@@ -36,20 +38,29 @@ final class AppState: ObservableObject {
 
     // MARK: pages
 
-    var index: Int { kind == .weekly ? weekIndex : dayIndex }
+    var index: Int {
+        switch kind {
+        case .weekly: weekIndex
+        case .daily: dayIndex
+        case .home: 0
+        }
+    }
 
     func weekStart(_ i: Int) -> Date { Dates.add(days: 7 * i, to: baseWeek) }
     func dayDate(_ i: Int) -> Date { Dates.add(days: i, to: baseDay) }
 
     var currentDate: Date { kind == .weekly ? weekStart(weekIndex) : dayDate(dayIndex) }
 
+    /// 홈에서 주간/일간으로 갈 때 돌아갈 곳
+    private var lastPageKind: PageKind = .daily
+
     private func step(_ d: Int) {
-        if kind == .weekly { weekIndex += d } else { dayIndex += d }
+        if kind == .weekly { weekIndex += d } else if kind == .daily { dayIndex += d }
         onPageChange?()
     }
 
     private func setIndex(_ i: Int) {
-        if kind == .weekly { weekIndex = i } else { dayIndex = i }
+        if kind == .weekly { weekIndex = i } else if kind == .daily { dayIndex = i }
         onPageChange?()
     }
 
@@ -64,12 +75,18 @@ final class AppState: ObservableObject {
     // MARK: navigation
 
     func flip(_ dir: FlipDirection) {
-        guard !morphing else { return }
+        guard !morphing, kind.flips else { return }
         curl.flip(dir)
     }
 
     func goToday() {
         guard curl.isIdle, !morphing else { return }
+        if kind == .home {
+            dayIndex = 0
+            weekIndex = 0
+            setKind(lastPageKind)
+            return
+        }
         let target = 0
         let delta = target - index
         if delta == 0 { return }
@@ -90,7 +107,11 @@ final class AppState: ObservableObject {
     func switchKind(_ k: PageKind) {
         guard k != kind else { return }
         endEditing()
-        if k == .weekly {
+        if k == .home {
+            lastPageKind = kind
+        } else if kind == .home {
+            // 홈에서 돌아갈 때는 보던 날/주 그대로
+        } else if k == .weekly {
             weekIndex = Dates.daysBetween(baseWeek, Dates.weekStart(dayDate(dayIndex))) / 7
         } else {
             let ws = weekStart(weekIndex)
@@ -135,6 +156,7 @@ final class AppState: ObservableObject {
         case "t", "ㅅ": goToday(); return nil
         case "w", "ㅈ": switchKind(.weekly); return nil
         case "d", "ㅇ": switchKind(.daily); return nil
+        case "h", "ㅗ": switchKind(.home); return nil
         case "e", "ㄷ": tool = -1; return nil
         default: break
         }
@@ -145,8 +167,10 @@ final class AppState: ObservableObject {
         case 17: goToday()
         case 13: switchKind(.weekly)
         case 2: switchKind(.daily)
+        case 4: switchKind(.home)
         case 14: tool = -1
-        case let k where digits[k] != nil: tool = digits[k]!
+        case let k where digits[k] != nil:
+            if let cats = store?.categories, digits[k]! < cats.count { tool = cats[digits[k]!].id }
         default: return e
         }
         return nil

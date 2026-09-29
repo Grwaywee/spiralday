@@ -62,6 +62,7 @@ struct PaletteView: View {
     var body: some View {
         VStack(spacing: 12) {
             VStack(spacing: 4) {
+                kindButton(.home, "홈", "chart.bar.xaxis", "H")
                 kindButton(.weekly, "주간", "rectangle.split.3x1", "W")
                 kindButton(.daily, "일간", "doc.plaintext", "D")
             }
@@ -108,12 +109,22 @@ struct PaletteView: View {
                                  arrowEdge: .leading) {
                             PenEditor(id: c.id).environmentObject(store)
                         }
-                        .help("\(c.name) 형광펜 — 클릭: 선택 · 더블클릭: 이름 바꾸기 (\(c.id + 1))")
+                        .help("\(c.name) 형광펜 — 클릭: 선택 · 더블클릭: 이름·색 바꾸기")
                 }
                 EraserRow(selected: state.tool == -1)
                     .onTapGesture { select(-1) }
                     .help("지우개 (E)")
             }
+
+            Button { SettingsWindowController.shared.show(store: store, state: state) } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 28)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.primary.opacity(0.07)))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("설정 (⌘,) — 형광펜 이름·색, 기본 컬러, D-day")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 12)
@@ -306,16 +317,18 @@ private struct PenEditor: View {
     @EnvironmentObject private var store: PlannerStore
 
     var body: some View {
-        let c = store.categories[id]
+        let c = store.category(id) ?? Category(id: id, name: "", hex: "CCCCCC", counts: false)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Circle().fill(c.color).frame(width: 12, height: 12)
                 Text("형광펜").font(.system(size: 13, weight: .bold, design: .rounded))
             }
-            TextField("이름", text: Binding(get: { c.name }, set: { v in store.editPrefs { $0.categories[id].name = v } }))
+            TextField("이름", text: Binding(get: { c.name }, set: { v in store.updateCategory(id) { $0.name = v } }))
                 .textFieldStyle(.roundedBorder)
+            ColorPicker("색", selection: Binding(get: { c.color }, set: { v in store.updateCategory(id) { $0.hex = v.hexString } }),
+                        supportsOpacity: false)
             Toggle("TOTAL TIME 에 포함", isOn: Binding(get: { c.counts },
-                                                     set: { v in store.editPrefs { $0.categories[id].counts = v } }))
+                                                     set: { v in store.updateCategory(id) { $0.counts = v } }))
         }
         .padding(14)
         .frame(width: 220)

@@ -93,6 +93,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         case .daily:
             f.dateFormat = "yyyy년 M월 d일 EEEE"
             window.title = f.string(from: state.dayDate(state.dayIndex))
+        case .home:
+            window.title = "Paper Planner — 홈"
         case .weekly:
             let s = state.weekStart(state.weekIndex)
             let e = Dates.add(days: 6, to: s)
@@ -115,7 +117,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         case .daily:
             let h = min(vis.height * 0.9, 1180)
             return NSSize(width: (h * kind.aspect).rounded(), height: h.rounded())
-        case .weekly:
+        case .weekly, .home:
             var w = min((vis.width - paletteGap - paletteWidth - 40) * 0.92, 1760)
             var h = w / kind.aspect
             if h > vis.height * 0.9 { h = vis.height * 0.9; w = h * kind.aspect }

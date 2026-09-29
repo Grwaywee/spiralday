@@ -5,6 +5,13 @@ import CoreText
 // MARK: - Color
 
 extension Color {
+    /// sRGB "RRGGBB"
+    var hexString: String {
+        let c = NSColor(self).usingColorSpace(.sRGB) ?? .gray
+        return String(format: "%02X%02X%02X", Int((c.redComponent * 255).rounded()),
+                      Int((c.greenComponent * 255).rounded()), Int((c.blueComponent * 255).rounded()))
+    }
+
     init(hex: String, alpha: Double = 1) {
         var v: UInt64 = 0
         Scanner(string: hex.replacingOccurrences(of: "#", with: "")).scanHexInt64(&v)
@@ -119,16 +126,19 @@ enum BindingEdge { case top, leading }
 /// 창 = 종이 한 장. 모든 좌표는 "디자인 단위" (기준 레이아웃 좌표) 로 적고,
 /// 실제 크기는 u = 창 너비 / 디자인 너비 를 곱해서 그린다.
 enum PageKind: String, Codable {
-    case weekly, daily
+    case home, weekly, daily
 
     /// 일간: 1277 × 2000 (세로)
     /// 주간: 같은 용지를 가로로 눕힌 2000 × 1277
     var design: CGSize {
         switch self {
         case .daily: CGSize(width: 1277, height: 2000)
-        case .weekly: CGSize(width: 2000, height: 1277)
+        case .weekly, .home: CGSize(width: 2000, height: 1277)
         }
     }
+
+    /// 홈(통계)은 넘기는 페이지가 아니라 한 장짜리 표지
+    var flips: Bool { self != .home }
 
     var aspect: CGFloat { design.width / design.height }
 
@@ -182,7 +192,7 @@ enum SpiralBinding {
             return stride(from: 120.0, through: 1890.0, by: 94.5).map {
                 CGRect(x: 9, y: $0 - 8, width: 12, height: 16)
             }
-        case .weekly:
+        case .weekly, .home:
             // 왼쪽 위 모서리는 창 버튼(빨노초) 자리라 비워 둔다
             return stride(from: 170.0, through: 1965.0, by: 41.5).map {
                 CGRect(x: $0 - 8, y: 9, width: 16, height: 12)

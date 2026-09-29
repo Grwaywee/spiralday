@@ -253,20 +253,20 @@ struct SlotPainter: View {
 
     var body: some View {
         let slots = store.day(date).slots
-        let colors = store.categories.map(\.color)
+        let colors = Dictionary(uniqueKeysWithValues: store.categories.map { ($0.id, $0.color) })
         Canvas { ctx, _ in
             ctx.blendMode = .multiply
             for r in 0..<24 {
                 var c = 0
                 while c < 6 {
                     let v = slots[r * 6 + c]
-                    guard v >= 0, v < colors.count else { c += 1; continue }
+                    guard let color = colors[v] else { c += 1; continue }
                     var e = c
                     while e + 1 < 6 && slots[r * 6 + e + 1] == v { e += 1 }
                     let rect = CGRect(x: CGFloat(c) * cellW + 1, y: CGFloat(r) * rowH + rowH * inset,
                                       width: CGFloat(e - c + 1) * cellW - 2, height: rowH * (1 - 2 * inset))
                     ctx.fill(Path(roundedRect: rect, cornerRadius: min(3, rowH * 0.18)),
-                             with: .color(colors[v].opacity(0.86)))
+                             with: .color(color.opacity(0.86)))
                     c = e + 1
                 }
             }

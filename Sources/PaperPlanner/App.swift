@@ -9,11 +9,16 @@ struct PaperPlannerApp: App {
         // 창은 AppDelegate 가 직접 만든다 (창 = 종이, 비율 고정, 옆 팔레트)
         Settings { EmptyView() }
             .commands {
-                CommandGroup(replacing: .appSettings) {}
+                CommandGroup(replacing: .appSettings) {
+                    Button("설정…") { SettingsWindowController.shared.show(store: delegate.store, state: delegate.state) }
+                        .keyboardShortcut(",", modifiers: .command)
+                }
                 CommandGroup(replacing: .newItem) {}
                 CommandMenu("플래너") {
                     Button("주간 보기") { delegate.state.switchKind(.weekly) }.keyboardShortcut("1", modifiers: .command)
                     Button("일간 보기") { delegate.state.switchKind(.daily) }.keyboardShortcut("2", modifiers: .command)
+                    Button("홈 (통계)") { delegate.state.switchKind(.home) }.keyboardShortcut("0", modifiers: .command)
+
                     Divider()
                     Button("이전 장") { delegate.state.flip(.backward) }.keyboardShortcut("[", modifiers: .command)
                     Button("다음 장") { delegate.state.flip(.forward) }.keyboardShortcut("]", modifiers: .command)
@@ -39,8 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             store = PlannerStore()
         }
-        state = AppState(kind: Self.args.contains("--weekly") ? .weekly : store.data.prefs.lastKind)
+        state = AppState(kind: Self.args.contains("--weekly") ? .weekly
+                            : Self.args.contains("--home") ? .home : store.data.prefs.lastKind)
         super.init()
+        state.store = store
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -84,7 +91,7 @@ enum Snapshotter {
         sample.fillSample(around: Date())
         let blank = PlannerStore(inMemory: true)
 
-        for kind in [PageKind.daily, .weekly] {
+        for kind in [PageKind.daily, .weekly, .home] {
             let state = AppState(kind: kind)
             // 샘플 데이터는 이번 주 화요일에 가장 많다
             if kind == .daily { state.dayIndex = Dates.daysBetween(state.baseDay, Dates.add(days: 1, to: state.baseWeek)) }
@@ -95,6 +102,7 @@ enum Snapshotter {
                     write(img, dir.appendingPathComponent("\(name).png"))
                 }
             }
+            guard kind.flips else { continue }
             // 넘김 프레임 (절반 크기)
             let half = CGSize(width: size.width / 2, height: size.height / 2)
             let snap = PageSnapshotter(store: sample, state: state)

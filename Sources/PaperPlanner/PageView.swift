@@ -20,6 +20,8 @@ struct PageView: View {
                     DailyPage(date: state.dayDate(index), u: u)
                 case .weekly:
                     WeeklyPage(weekStart: state.weekStart(index), u: u)
+                case .home:
+                    HomePage(u: u)
                 }
             }
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
@@ -82,7 +84,8 @@ final class PageSnapshotter {
 
     private func prewarm(step: Int) {
         let offsets = [0, 1, -1]
-        guard step < offsets.count, state.curl.isIdle, !state.morphing, state.editingKey == nil else { return }
+        guard step < offsets.count, state.kind.flips, state.curl.isIdle, !state.morphing,
+              state.editingKey == nil else { return }
         let size = state.curl.pageSize
         _ = image(kind: state.kind, index: state.index + offsets[step], size: size, scale: state.curl.backingScale)
         let w = DispatchWorkItem { [weak self] in self?.prewarm(step: step + 1) }
@@ -106,7 +109,7 @@ struct RootView: View {
                     .opacity(state.morphing ? 0 : 1)
                 CurlOverlay(controller: state.curl)
                     .allowsHitTesting(false)
-                if !state.morphing {
+                if !state.morphing && state.kind.flips {
                     CornerZones(size: g.size, kind: state.kind)
                 }
             }

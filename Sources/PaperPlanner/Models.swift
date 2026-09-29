@@ -88,6 +88,7 @@ struct Prefs: Codable, Equatable {
     var defaultTheme = 0
 
     static let maxDDays = 2
+    static let maxCategories = 12
 
     private enum LegacyKeys: String, CodingKey { case ddayTitle, ddayDate }
 
@@ -106,7 +107,7 @@ struct Prefs: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let cats = try c.decodeIfPresent([Category].self, forKey: .categories) ?? []
-        categories = cats.count == Prefs.defaultCategories.count ? cats : Prefs.defaultCategories
+        categories = (1...Prefs.maxCategories).contains(cats.count) ? cats : Prefs.defaultCategories
         lastKind = try c.decodeIfPresent(PageKind.self, forKey: .lastKind) ?? .daily
         ddays = Array((try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []).prefix(Self.maxDDays))
         // 예전 버전의 D-day 하나짜리 저장 형식
@@ -263,18 +264,43 @@ final class PlannerStore: ObservableObject {
     var categories: [Category] { data.prefs.categories }
 
     func category(_ id: Int?) -> Category? {
-        guard let id, categories.indices.contains(id) else { return nil }
-        return categories[id]
+        guard let id else { return nil }
+        return categories.first { $0.id == id }
+    }
+
+    /// 형광펜 편집 (설정 창 / 팔레트)
+    func updateCategory(_ id: Int, _ f: (inout Category) -> Void) {
+        editPrefs { p in
+            if let i = p.categories.firstIndex(where: { $0.id == id }) { f(&p.categories[i]) }
+        }
+    }
+
+    @discardableResult
+    func addCategory(name: String = "새 형광펜", hex: String = "B9E4A8") -> Int? {
+        guard categories.count < Prefs.maxCategories else { return nil }
+        let id = (categories.map(\.id).max() ?? -1) + 1
+        editPrefs { $0.categories.append(Category(id: id, name: name, hex: hex, counts: true)) }
+        return id
+    }
+
+    /// 지운 형광펜으로 칠한 칸은 빈 칸으로 보이고, 그 색이던 할 일은 색 없음이 된다.
+    func removeCategory(_ id: Int) {
+        guard categories.count > 1 else { return }
+        editPrefs { $0.categories.removeAll { $0.id == id } }
+    }
+
+    func moveCategories(from: IndexSet, to: Int) {
+        editPrefs { $0.categories.move(fromOffsets: from, toOffset: to) }
     }
 
     func minutes(_ d: Date, cat: Int? = nil) -> Int {
         let slots = day(d).slots
-        let cats = categories
         let n: Int
         if let cat {
             n = slots.filter { $0 == cat }.count
         } else {
-            n = slots.filter { $0 >= 0 && $0 < cats.count && cats[$0].counts }.count
+            let counted = Set(categories.filter(\.counts).map(\.id))
+            n = slots.filter { counted.contains($0) }.count
         }
         return n * 10
     }
@@ -344,6 +370,7 @@ final class PlannerStore: ObservableObject {
     // Sample content for previews / snapshots
     func fillSample(around today: Date) {
         let ws = Dates.weekStart(today)
+        fillSampleHistory(before: ws, weeks: 6)
         editWeek(ws) { $0.goal = "런칭 전 QA 끝내고 금요일 전에 배포 준비 완료하기"; $0.review = "집중 시간이 늘었다!"; $0.stars = 4 }
         editPrefs {
             $0.ddays = [DDay(title: "런칭", date: Dates.add(days: 9, to: ws)),
@@ -377,6 +404,36 @@ final class PlannerStore: ObservableObject {
                     r.comment = "버려야 할 것을 못 버리면 스스로를 버리게 된다"
                     r.memoTags = ["내일", "메모", ""]
                     r.memos = ["오전에 QA 결과 공유", "회의실 예약 확인하기", ""]
+                }
+            }
+        }
+    }
+
+    /// 홈 통계용: 지난 몇 주 동안의 그럴듯한 기록 (결정적 의사 난수)
+    private func fillSampleHistory(before weekStart: Date, weeks: Int) {
+        var seed: UInt64 = 0xC0FFEE
+        func rnd(_ n: Int) -> Int {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Int((seed >> 33) % UInt64(n))
+        }
+        let names = ["기획서 정리", "고객 미팅", "메일 답장", "코드 리뷰", "주간 보고", "디자인 검토", "리서치", "운동", "독서", "1:1 미팅"]
+        let marks: [Mark] = [.done, .done, .done, .partial, .missed, .moved]
+        for w in 1...weeks {
+            for d in 0..<7 {
+                let day = Dates.add(days: -7 * w + d, to: weekStart)
+                let weekend = d >= 5
+                editDay(day) { r in
+                    let n = weekend ? rnd(3) : 3 + rnd(4)
+                    r.tasks = (0..<n).map { _ in PlanTask(text: names[rnd(names.count)], mark: marks[rnd(marks.count)], cat: rnd(7)) }
+                    var s = 2 + rnd(4)
+                    let blocks = weekend ? rnd(3) : 4 + rnd(4)
+                    for _ in 0..<blocks {
+                        let len = 3 + rnd(10)
+                        let cat = rnd(10) < 6 ? 0 : rnd(7)
+                        for k in s..<min(s + len, 90) { r.slots[k] = cat }
+                        s += len + rnd(5)
+                    }
+                    if rnd(4) == 0 { r.theme = rnd(ColorConcept.all.count) }
                 }
             }
         }
