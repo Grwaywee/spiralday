@@ -5,25 +5,26 @@
     <link>https://spiralday.com</link>
     <language>ko</language>
     <item>
-      <title>Spiralday 1.0.4</title>
-      <pubDate>Tue, 29 Sep 2026 16:08:40 +0000</pubDate>
-      <sparkle:version>5</sparkle:version>
-      <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
+      <title>Spiralday 1.0.5</title>
+      <pubDate>Wed, 30 Sep 2026 03:31:54 +0000</pubDate>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<ul><li>처음 켜면 책장에 ‘예시 플래너’가 한 권 들어 있어요. 오늘까지 14일을 미리 채워 둔 플래너라, 넘겨 보기만 해도 쓰는 법이 보여요</li>
-<li>형광펜으로 칠한 타임테이블, ○ △ × → 표시와 다음 날로 넘어간 할 일, 밥시간 화살표와 글씨 메모, COMMENT · MEMO, 날마다 다른 컬러와 D-day, DAY OFF 로 쉰 하루, 주간 목표와 별점까지 골고루 써 두었어요</li>
-<li>예시 플래너도 다른 플래너와 똑같이 펼치고, 고쳐 쓰고, PDF 로 뽑고, 지울 수 있어요. 팔레트 맨 위나 설정 → 플래너에서 펼쳐요</li>
-<li>지워도 내 플래너와 기록은 그대로예요. 다시 보고 싶으면 설정 → 플래너의 ‘예시 플래너 다시 넣기’로 언제든 다시 넣을 수 있어요</li>
-<li>이미 쓰고 있다면 업데이트 뒤 처음 켤 때 한 번만 꽂아 두고, 펼쳐 둔 플래너는 바꾸지 않아요. 한 번 지운 뒤에는 저절로 다시 생기지 않아요</li>
-<li>처음 쓰는 분은 전처럼 튜토리얼에서 내 플래너부터 만들어요. 만든 플래너가 펼쳐지고, 예시 플래너는 그 옆에 꽂혀 있어요</li>
-<li>→ 다음 날로 넘기기: 할 일에 → (미룸) 을 표시하면 다음 날에 같은 할 일이 같은 형광펜으로 한 번 넘어가요. 오른쪽 클릭의 ‘내일로 미루기’도 똑같아요</li>
-<li>넘어간 할 일도 보통 할 일처럼 고치고 표시하고, 또 → 로 다음 날에 넘길 수 있어요. 플래너의 마지막 날에서는 넘기지 않아요</li>
-<li>→ 를 다시 떼면 다음 날에 넘어간 할 일을 거둬요. 그 사이 다음 날에서 고쳐 쓰거나 표시했다면 그대로 남겨요</li>
-<li>DAY OFF: 일간 페이지 COMMENT 옆 ▾ 에서 작성하기 · DAY OFF 를 골라요. 쉬는 날에는 COMMENT 칸에 그날 컬러로 DAY OFF 가 크게 찍히고, PDF 에도 그대로 나와요</li>
-<li>적어 둔 COMMENT 는 지워지지 않고, 작성하기로 돌아오면 다시 보여요. 주간 페이지에는 그날 칸 위에 DAY OFF 가 작게 붙어요</li>
-<li>홈의 연속 기록은 DAY OFF 로 끊기지 않아요 (쉬는 날은 세지 않고 건너뛰어요). 최근 35일 달력에는 작은 점으로 표시돼요</li>
-<li>예시 플래너를 펼쳐 둔 채 새 플래너를 만들면, 예시 대신 내 첫 플래너의 형광펜과 기본 컬러를 이어받아요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.4/Spiralday-1.0.4-macOS.zip" sparkle:edSignature="/QaJVL3psxI3px+Ji0SfqF2PWknsgsViiwLRrCFPXRx6zhNRfwyZcVDIQ2xUapHcOaezSmFf0VEPAzrLwAvZDQ==" length="5407008" type="application/octet-stream"/>
+      <description><![CDATA[<ul><li>표지와 첫 장: 일간 · 주간 모두 책 맨 앞에 표지와 첫 장이 생겼어요. 표지 → 첫 장 → 첫날(첫 주) 순서라, 첫날에서 ← 로 넘기면 나와요. 표지 앞으로는 넘어가지 않아요</li>
+<li>표지에는 플래너 이름 · 기간 · 표지 색이 들어가요. 이름 · 기간 · 색은 설정 → 플래너에서 바꿔요</li>
+<li>첫 장에는 이 플래너에 적어 두고 싶은 말을 써요. 글 칸을 누르면 그 자리에서 쓰고 (⌥↩ 줄 바꿈, Esc 나 바깥을 누르면 끝), 길게 쓰면 글씨가 알맞게 줄어요. 예시 플래너 첫 장에도 한마디 적어 두었어요</li>
+<li>먼저 쓰고, 펜은 나중에: 할 일은 펜을 고르지 않고 바로 써요. 다 쓴 뒤 그 할 일의 왼쪽 칸을 누르면 형광펜(분류) 목록이 떠서 고르거나 ‘없음’으로 뺄 수 있어요. 주간에서는 할 일 앞 색 막대 자리를 눌러요</li>
+<li>아무 줄에나 쓰기: TASKS 15줄 중 아무 빈 줄이나 눌러 써요. 위에서부터 채우지 않아도 되고, 쓴 할 일은 그 줄에 그대로 있어요</li>
+<li>같은 형광펜끼리 모으기: 이미 쓰고 있는 형광펜을 고르면 그 할 일이 그 묶음 바로 아래로 옮겨 가요 (아래 할 일들은 빈 줄이 나올 때까지 한 줄씩 내려가요). 처음 쓰는 형광펜이면 쓴 줄에 그대로 있어요</li>
+<li>긴 할 일은 아래 줄이 비어 있으면 이어 쓰고, 아래에 다른 할 일이 있으면 글씨가 줄어 제 줄 안에 들어가요. Return 은 바로 아랫줄로 (같은 형광펜), ↑ ↓ 는 윗줄 · 아랫줄로 옮겨 가요</li>
+<li>→ 로 미룬 할 일은 다음 날, 같은 형광펜 묶음 바로 아래로 넘어가요 (같은 형광펜이 없으면 첫 빈 줄)</li>
+<li>이미 써 둔 할 일은 1.0.4 에서 보이던 줄에 그대로 있어요</li>
+<li>팔레트의 펜은 이제 타임테이블 전용이에요. 펜(또는 1–7)을 골라 10분 칸을 칠하고, 할 일의 형광펜은 왼쪽 칸에서 골라요</li>
+<li>주간 타임테이블을 더 크게: 위아래 여백을 줄이고 그만큼 시간 칸을 키웠어요 (한 시간 칸이 전보다 8% 높아요)</li>
+<li>플래너 둘러보기: 1.0.5 를 처음 켜면 (새로 설치했다면 처음 안내를 마친 뒤) 한 번, 일간 → 주간 → 홈 → 첫 장 · 표지 순서로 쓰는 법을 하나씩 짚어 줘요. D-day, COMMENT · DAY OFF, 할 일 쓰고 표시하고 넘기기, MEMO, 타임테이블 칠하기와 TOTAL TIME, 글씨 · 밥, 오늘의 컬러, 넘기는 법(단축키 · 클릭)까지 다 봐요. 예시 플래너가 있으면 그 책을 잠깐 펼쳐 보여 주고, 끝나면 보던 플래너 · 보던 페이지로 돌아와요. → · Return 다음, ← 이전, Esc 끝내기</li>
+<li>튜토리얼 다시 보기: 설정 → 튜토리얼에서 처음 안내(플래너 만들기)와 둘러보기(전체 · 일간 · 주간 · 홈 · 표지와 첫 장)를 골라 언제든 다시 볼 수 있어요. 도움말 → 플래너 둘러보기로도 바로 시작해요</li>
+<li>PDF 에 표지 포함: PDF 로 뽑을 때 ‘표지와 첫 장 넣기’가 기본으로 켜져 있어요 (일간 A4 · A4 반쪽 · 주간). A4 반쪽은 첫 장에 표지와 첫 장이 나란히 들어가서, 뽑아 묶으면 실제 책처럼 가지고 다닐 수 있어요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.5/Spiralday-1.0.5-macOS.zip" sparkle:edSignature="offjQRufIR4CPuUckEzpWvjVgX+Th32DDzE1k0WSybbFLPFF983NU/W+RamjxkVq7179/ChWmPZ/7itZISU2AQ==" length="5722391" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
