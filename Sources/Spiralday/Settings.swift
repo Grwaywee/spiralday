@@ -36,6 +36,12 @@ final class SettingsWindowController {
         show(store: store, state: state)
     }
 
+    /// 튜토리얼 목록을 펼친 채로 연다 (도움말 메뉴의 ‘튜토리얼 모음…’)
+    func showTutorials(store: PlannerStore, state: AppState) {
+        UserDefaults.standard.set(SettingsPane.tutorials.rawValue, forKey: SettingsView.paneKey)
+        show(store: store, state: state)
+    }
+
     private func makeWindow(store: PlannerStore, state: AppState) -> NSWindow {
         let w = SettingsPanel(contentRect: NSRect(origin: .zero, size: Self.size),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -68,7 +74,7 @@ private final class SettingsPanel: NSPanel {
 // MARK: - Sections
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case books, pens, concept, dday, pdf, shortcuts, data
+    case books, pens, concept, dday, pdf, shortcuts, tutorials, data
 
     var id: Self { self }
 
@@ -80,6 +86,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .dday: "D-day"
         case .pdf: "PDF로 뽑기"
         case .shortcuts: "단축키"
+        case .tutorials: "튜토리얼"
         case .data: "데이터"
         }
     }
@@ -87,11 +94,12 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .books: "플래너 한 권이 책 한 권이에요. 권마다 기록과 설정이 따로 있고, 골라서 펼쳐 써요."
-        case .pens: "타임테이블과 할 일에 칠하는 펜이에요. 이름과 색을 바꾸면 이미 칠한 칸에도 바로 반영돼요."
+        case .pens: "타임테이블을 칠하는 펜이에요. 할 일은 먼저 적고, 그 할 일의 왼쪽 칸을 눌러 여기 있는 형광펜으로 분류해요. 이름과 색을 바꾸면 이미 칠한 칸과 할 일에도 바로 반영돼요."
         case .concept: "TOTAL TIME, 요일, D-day 숫자, ○△× 표시에 쓰이는 강조색이에요."
         case .dday: "여기 저장한 D-day 를 날마다 골라 붙여요 · 목록에서 지우거나 고쳐도 이미 붙인 날은 그대로예요."
         case .pdf: "일간·주간·홈을 A4 로 뽑아요. 일간은 반쪽씩 두 장을 한 장에 놓으면 자른 뒤 실물 크기예요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
+        case .tutorials: "처음 안내와 플래너 둘러보기를 언제든, 보고 싶은 것만 골라 다시 볼 수 있어요."
         case .data: "기록은 이 Mac 에만 저장되고, 적는 즉시 자동으로 저장돼요."
         }
     }
@@ -104,6 +112,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .dday: "flag.fill"
         case .pdf: "printer.fill"
         case .shortcuts: "keyboard.fill"
+        case .tutorials: "graduationcap.fill"
         case .data: "externaldrive.fill"
         }
     }
@@ -116,6 +125,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .dday: Color(hex: "7B61D1")
         case .pdf: Color(hex: "E0674B")
         case .shortcuts: Color(hex: "8A8A93")
+        case .tutorials: Color(hex: "2FA3A0")
         case .data: Color(hex: "3A84F0")
         }
     }
@@ -155,6 +165,7 @@ struct SettingsView: View {
                 case .dday: SettingsDDayPane()
                 case .pdf: PDFExportView()
                 case .shortcuts: SettingsShortcutsPane()
+                case .tutorials: SettingsTutorialsPane()
                 case .data: SettingsDataPane()
                 }
             }
@@ -1138,7 +1149,8 @@ private struct SettingsPensPane: View {
                         }
                     }
                 } footer: {
-                    SettingsFootnote(text: "줄을 끌어서 순서를 바꿔요. 숫자 키 1–7 은 위에서부터 일곱 개의 펜을, E 는 지우개를 골라요. "
+                    SettingsFootnote(text: "줄을 끌어서 순서를 바꿔요. 숫자 키 1–7 은 위에서부터 일곱 개의 펜을, E 는 지우개를 골라요 (타임테이블 칠하기). "
+                                     + "할 일의 분류는 펜을 고르지 않아도 돼요 — 다 쓴 뒤 할 일 왼쪽 칸(주간은 왼쪽 색 막대)을 눌러 고르고, 끝낸(○) 일에 그 색 형광펜이 그어져요. "
                                      + "TOTAL TIME 에 포함하지 않은 펜(개인, 휴식 같은)은 하루 합계에서 빠져요.")
                 }
             }
@@ -1178,7 +1190,7 @@ private struct SettingsPensPane: View {
         let (h, m) = formatHM(cells * 10)
         var parts: [String] = []
         if cells > 0 { parts.append("칠한 칸 \(h)시간 \(m)분은 빈 칸이") }
-        if tasks > 0 { parts.append("할 일 \(tasks)개는 색 없음이") }
+        if tasks > 0 { parts.append("할 일 \(tasks)개는 분류 없음이") }
         return "이 펜으로 " + parts.joined(separator: ", ") + " 돼요. 되돌릴 수 없어요."
     }
 
@@ -1786,12 +1798,100 @@ extension SettingsShortcutRow where Detail == EmptyView {
     }
 }
 
+// MARK: - 튜토리얼
+
+/// 처음 안내(플래너 만들기)와 플래너 둘러보기를 골라 다시 본다
+private struct SettingsTutorialsPane: View {
+    @EnvironmentObject private var store: PlannerStore
+    @EnvironmentObject private var state: AppState
+    @ObservedObject private var tour = TourController.shared
+
+    var body: some View {
+        let sample = store.hasSampleBook
+        Form {
+            Section {
+                SettingsTutorialRow(symbol: "sparkles", title: "처음 안내 (플래너 만들기)",
+                                    detail: "처음 켰을 때 본 안내예요. 새 플래너 만들기부터 넘기기, 칠하기, 할 일까지 일곱 장으로 봐요.",
+                                    count: nil, action: replayOnboarding)
+            } header: {
+                VStack(alignment: .leading, spacing: 18) {
+                    SettingsPaneHeader(pane: .tutorials)
+                    SettingsSectionTitle(title: "처음 안내")
+                }
+            }
+
+            Section {
+                ForEach(TourKind.allCases) { k in
+                    SettingsTutorialRow(symbol: k.symbol, title: k.title, detail: k.detail, count: k.stepCount) {
+                        startTour(k)
+                    }
+                }
+            } header: {
+                SettingsSectionTitle(title: "플래너 둘러보기")
+            } footer: {
+                SettingsFootnote(text: (sample
+                    ? "둘러보는 동안 예시 플래너를 잠깐 펼쳐 채워 둔 날을 보여 주고, 끝나면 보던 플래너와 페이지로 돌아와요. "
+                    : "지금 펼친 플래너로 둘러봐요. 끝나면 보던 페이지로 돌아와요. ")
+                    + "→ · Return 다음, ← 이전, Esc 끝내기. 도움말 메뉴의 ‘플래너 둘러보기’로도 바로 시작할 수 있어요.")
+            }
+        }
+        .disabled(tour.isRunning)
+    }
+
+    /// 안내가 플래너 창과 팔레트를 가리키므로, 설정 창은 닫고 비켜 준다
+    private func startTour(_ k: TourKind) {
+        SettingsWindowController.shared.window?.close()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { TourController.shared.start(k) }
+    }
+
+    private func replayOnboarding() {
+        UserDefaults.standard.set(false, forKey: OnboardingController.doneKey)
+        SettingsWindowController.shared.window?.close()
+        OnboardingController.shared.show(store: store, state: state, completion: {})
+    }
+}
+
+/// 튜토리얼 한 줄: 아이콘 · 이름 · 설명 · 단계 수 · 보기
+private struct SettingsTutorialRow: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let count: Int?
+    let action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            SettingsIconTile(symbol: symbol, tint: SettingsPane.tutorials.tint, size: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(title)
+                    if let count {
+                        Text("\(count)단계")
+                            .font(.system(size: 11, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Button("보기", action: action)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 // MARK: - 데이터
 
 private struct SettingsDataPane: View {
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @State private var result: SettingsDataResult?
+    /// ‘튜토리얼 보기…’ 로 튜토리얼 항목을 펼친다
+    @AppStorage(SettingsView.paneKey) private var paneRaw = SettingsPane.books.rawValue
     /// 익명 사용 통계 (Telemetry). 설치 번호는 앱을 켤 때 만들어진다.
     @AppStorage(Telemetry.enabledKey) private var telemetryEnabled = true
     @AppStorage(Telemetry.installIDKey) private var installID = ""
@@ -1895,14 +1995,14 @@ private struct SettingsDataPane: View {
             Section {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("처음 사용 안내")
-                        Text("플래너 만들기부터 넘기기, 칠하기까지 처음에 본 안내를 다시 보여 줘요.")
+                        Text("튜토리얼")
+                        Text("처음 안내(플래너 만들기)와 플래너 둘러보기 — 전체 · 일간 · 주간 · 홈 · 표지와 첫 장을 골라 다시 봐요.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    Button("튜토리얼 다시 보기") { replayTutorial() }
+                    Button("튜토리얼 보기…") { paneRaw = SettingsPane.tutorials.rawValue }
                 }
                 .padding(.vertical, 2)
             } header: {
@@ -1973,12 +2073,6 @@ private struct SettingsDataPane: View {
         }
     }
 
-    private func replayTutorial() {
-        UserDefaults.standard.set(false, forKey: "onboardingDone")
-        // 안내가 플래너 창과 팔레트를 가리키므로, 설정 창은 닫고 비켜 준다
-        SettingsWindowController.shared.window?.close()
-        OnboardingController.shared.show(store: store, state: state, completion: {})
-    }
 }
 
 private enum SettingsDataResult: Equatable {
@@ -2071,9 +2165,8 @@ private enum SettingsDataFile {
         guard let raw = try? Data(contentsOf: src), var data = try? decode(raw) else { return nil }
         // 1.0.2 까지의 백업이면 D-day 를 날마다 따로 붙이는 방식으로 옮긴다 (가져온 파일은 그대로 둔다)
         if !data.prefs.ddaysPerDay { _ = PlannerStore.migrateDDaysPerDay(&data, today: Date(), book: nil) }
-        for (k, r) in data.days where PlannerStore.grouped(r.tasks) != r.tasks {
-            data.days[k]?.tasks = PlannerStore.grouped(r.tasks)
-        }
+        // 할 일 줄 (1.0.5): 앱이 책을 열 때와 같게. 줄이 있으면 그 줄 그대로, 1.0.4 까지의 백업이면 그때 보이던 줄로
+        for (k, r) in data.days where !r.taskRowsReady { data.days[k]?.assignTaskRows() }
         var name = bookName(from: src) ?? "가져온 플래너"
         if store.books.contains(where: { $0.name == name }) { name += " (백업)" }
         let today = Dates.day(Date())

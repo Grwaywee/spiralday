@@ -18,7 +18,7 @@ struct DailyPage: View {
 
     var body: some View {
         let day = store.day(date)
-        let tasksL = taskLayout(day.tasks)
+        let tasksL = F.taskLayout(day.tasks)
         let memoL = memoLayout(day)
         ZStack(alignment: .topLeading) {
             DailyFormPrint(u: u, taskRows: tasksL.rows, memoRows: memoL.rows, commentMenu: reservesCommentMenu)
@@ -139,87 +139,129 @@ struct DailyPage: View {
     }
 
     // MARK: TASKS
+    // 1.0.5: 할 일은 아무 줄에나 쓰고 (누른 줄에 그대로 남는다), 형광펜(분류)은 다 쓴 뒤에 그 할 일의 왼쪽 칸을 눌러 고른다.
+    // 오른쪽 팔레트의 펜은 타임테이블을 칠할 때만 쓴다.
 
-    private static let taskFont: CGFloat = 46
-    /// 줄바꿈 계산 폭: 편집 칸보다 살짝 좁게 잡아서 입력 중에도 줄 수가 어긋나지 않게 한다
-    private var taskTextRect: (x: CGFloat, width: CGFloat) { (F.categoryX + 16, F.boxMinX - 14 - (F.categoryX + 16)) }
+    private func taskKey(_ id: UUID) -> String { AppState.taskKey(date, id) }
 
-    private func taskKey(_ id: UUID) -> String { "t|\(Dates.key(date))|\(id.uuidString)" }
-
-    /// 긴 할 일은 아래 칸으로 이어 쓰고, 칸이 모자라면 줄 수를 늘려(간격·글자를 조금씩 줄여) 모두 담는다.
-    private func taskLayout(_ tasks: [PlanTask]) -> RuledText.Layout {
-        RuledText.layout(tasks.map(\.text), minRows: F.taskCount, fontSize: Self.taskFont, width: taskTextRect.width - 12)
-    }
-
-    /// 빈 칸을 누르면: 고른 형광펜 묶음 끝에 새 할 일을 만들고 바로 쓰기
-    private func startNewTask() {
-        let cat = state.tool >= 0 ? state.tool : nil
-        state.editingKey = taskKey(store.addTask(date, after: nil, cat: cat))
+    /// 빈 줄을 누르면: 그 줄에 새 할 일을 만들고 바로 쓰기 (형광펜은 나중에 왼쪽 칸에서)
+    private func startTask(at row: Int) {
+        state.editingKey = taskKey(store.addTask(date, row: row))
     }
 
     @ViewBuilder
-    private func tasksView(_ tasks: [PlanTask], _ L: RuledText.Layout) -> some View {
+    private func tasksView(_ tasks: [PlanTask], _ L: RuledText.RowLayout) -> some View {
         let p = F.taskPitch(L.rows)
-        ForEach(Array(tasks.enumerated()), id: \.element.id) { i, _ in
-            if i < L.lines.count { taskEntry(i, tasks, L) }
-        }
-        // 빈 칸: 누르면 새 할 일
-        ForEach(L.used..<L.rows, id: \.self) { r in
+        // 빈 줄: 누르면 그 줄에 새 할 일
+        ForEach(L.emptyRows, id: \.self) { r in
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture { startNewTask() }
-                .place(CGRect(x: taskTextRect.x, y: F.gridTop + CGFloat(r) * p, width: taskTextRect.width, height: p), u)
+                .onTapGesture { startTask(at: r) }
+                .place(CGRect(x: F.taskTextX, y: F.gridTop + CGFloat(r) * p, width: F.taskTextWidth, height: p), u)
+        }
+        ForEach(Array(tasks.enumerated()), id: \.element.id) { k, _ in
+            if k < L.items.count { taskEntry(k, tasks, L) }
         }
     }
 
     @ViewBuilder
-    private func taskEntry(_ i: Int, _ tasks: [PlanTask], _ L: RuledText.Layout) -> some View {
+    private func taskEntry(_ k: Int, _ tasks: [PlanTask], _ L: RuledText.RowLayout) -> some View {
         let p = F.taskPitch(L.rows)
         let sc = L.scale
-        let task: PlanTask? = tasks[i]
-        let cat = store.category(task?.cat)
-        let r0 = L.start[i]
-        let lines = L.lines[i]
-        let key = taskKey(tasks[i].id)
+        let task = tasks[k]
+        let item = L.items[k]
+        let cat = store.category(task.cat)
+        let r0 = item.row
+        let id = task.id
+        let key = taskKey(id)
 
-        // 같은 형광펜이 이어지는 묶음의 첫 줄에만 카테고리 이름 + 그 색으로 칠한 시간
-        if let task, let cat, i == 0 || tasks[i - 1].cat != task.cat {
+        // 형광펜 이름: 바로 윗줄의 할 일과 형광펜이 다르거나 윗줄이 비었을 때만 (같은 형광펜이 이어지면 묶음처럼 첫 줄에만)
+        if let cat, L.owner(r0 - 1).map({ store.category(tasks[$0].cat)?.id != cat.id }) ?? true {
             CategoryTag(name: cat.name, u: u * sc)
                 .place(CGRect(x: F.left + 6, y: F.gridTop + CGFloat(r0) * p + 3 * sc, width: F.categoryX - F.left - 12,
                               height: p - 6 * sc), u)
         }
+        // 왼쪽 칸: 누르면 형광펜(분류) 메뉴. 화면에서만 (넘김 스냅샷 · PDF 에는 없다)
+        if !isSnapshot {
+            TaskCategoryCell(date: date, taskID: id, hint: Fonts.hand(30 * sc * u), cornerRadius: 6 * u)
+                .place(CGRect(x: F.left + 3, y: F.gridTop + CGFloat(r0) * p + 3 * sc, width: F.categoryX - F.left - 7,
+                              height: CGFloat(item.span) * p - 6 * sc), u)
+        }
 
-        let id = tasks[i].id
         RuledEntry(
             text: store.taskText(date, id: id),
-            lines: lines, key: key, fontSize: Self.taskFont * sc, pitch: p, u: u,
-            // 형광펜은 끝낸 일에만 긋는다
-            highlight: task?.mark == .done ? (cat?.color ?? concept.tint) : nil,
-            // Enter: 같은 형광펜으로 바로 아래에 이어 쓰기
-            onSubmit: { [store, state, date] in
-                let nid = store.addTask(date, after: id, cat: tasks[i].cat)
-                state.editingKey = "t|\(Dates.key(date))|\(nid.uuidString)"
+            lines: item.lines, key: key, fontSize: F.taskFont * sc * item.fit, pitch: p, u: u,
+            // 형광펜은 끝낸(○) 일에만, 그 할 일의 형광펜 색으로 긋는다 (형광펜이 없으면 긋지 않는다)
+            highlight: task.mark == .done ? cat?.color : nil,
+            // Return: 바로 아랫줄이 비었으면 거기에 새 할 일 (같은 형광펜), 할 일이 있으면 그 할 일로
+            onSubmit: { [store, state, date] in Self.submitTask(store, state, date, id) },
+            onEnd: { [store, state, date] in store.cleanup(date, keep: state.editingTaskID(on: date)) },
+            // ↑ ↓ : 윗줄 / 아랫줄로 (빈 줄이면 거기에 새 할 일)
+            canMoveLine: { [store, state, date] down in
+                state.editingKey == AppState.taskKey(date, id) && Self.caretAtEdge(store, date, id, down: down)
             },
-            onEnd: { [store, state, date] in
-                let dk = "t|\(Dates.key(date))|"
-                let keep = state.editingKey.flatMap { $0.hasPrefix(dk) ? UUID(uuidString: String($0.dropFirst(dk.count))) : nil }
-                store.cleanup(date, keep: keep)
-            }
+            moveLine: { [store, state, date] down in Self.moveLine(store, state, date, id, down: down) }
         )
-        .place(CGRect(x: taskTextRect.x, y: F.gridTop + CGFloat(r0) * p, width: taskTextRect.width,
-                      height: CGFloat(lines.count) * p), u)
+        .place(CGRect(x: F.taskTextX, y: F.gridTop + CGFloat(r0) * p, width: F.taskTextWidth,
+                      height: CGFloat(item.span) * p), u)
         .contextMenu {
-            if let task, state.editingKey != key { TaskMenu(date: date, task: task) }
+            if state.editingKey != key { TaskMenu(date: date, task: task) }
         }
 
         // 첫 줄의 인쇄된 점선 체크 박스 한가운데에 펜 표시
-        if let task {
-            let box = F.box(r0, rows: L.rows)
-            MarkButton(mark: task.mark, size: box.width * 0.98 * u, color: concept.accent,
-                       lineWidth: 5.6 * sc * u, showsPlaceholder: false) {
-                store.cycleMark(date, task.id)
-            }
-            .position(x: box.midX * u, y: box.midY * u)
+        let box = F.box(r0, rows: L.rows)
+        MarkButton(mark: task.mark, size: box.width * 0.98 * u, color: concept.accent,
+                   lineWidth: 5.6 * sc * u, showsPlaceholder: false) {
+            store.cycleMark(date, id)
+        }
+        .position(x: box.midX * u, y: box.midY * u)
+    }
+
+    /// Return: 이 할 일이 쓰는 줄 바로 아래가 비었으면 그 줄에 새 할 일 (형광펜이 있으면 같은 형광펜),
+    /// 다른 할 일이 있으면 그 할 일을 이어서 쓴다. 맨 아랫줄이면 쓰기를 마친다.
+    private static func submitTask(_ store: PlannerStore, _ state: AppState, _ date: Date, _ id: UUID) {
+        let day = store.day(date)
+        guard let k = day.tasks.firstIndex(where: { $0.id == id }) else { state.endEditing(); return }
+        let L = day.taskLayout
+        let next = L.items[k].row + L.items[k].span
+        // 맨 아랫줄에서도 글이 있으면 한 줄 더 (칸이 하나 늘고 줄 간격이 조금 줄어든다)
+        guard next < L.rows || (next == L.rows && !day.tasks[k].text.isEmpty) else { state.endEditing(); return }
+        if next < L.rows, let o = L.owner(next) {
+            state.editingKey = AppState.taskKey(date, day.tasks[o].id)
+        } else {
+            state.editingKey = AppState.taskKey(date, store.addTask(date, row: next, cat: day.tasks[k].cat))
+        }
+    }
+
+    /// ↑ ↓ 로 줄을 옮겨도 되는지: 긴 할 일 안에서는 글자 커서가 첫 줄(↑) / 마지막 줄(↓)에 있을 때만,
+    /// 그리고 옮겨 갈 줄이 있을 때만 (맨 윗줄에서 ↑, 맨 아랫줄에서 ↓ 는 글상자에 맡긴다).
+    private static func caretAtEdge(_ store: PlannerStore, _ date: Date, _ id: UUID, down: Bool) -> Bool {
+        let day = store.day(date)
+        guard let k = day.tasks.firstIndex(where: { $0.id == id }) else { return false }
+        let L = day.taskLayout
+        let item = L.items[k]
+        let target = down ? item.row + item.span : item.row - 1
+        guard target >= 0, target < L.rows else { return false }
+        guard let tv = NSApp.keyWindow?.firstResponder as? NSTextView else { return true }
+        let ranges = RuledText.lineRanges(tv.string, fontSize: F.taskFont * L.scale * item.fit, width: F.taskWrapWidth)
+        let caret = tv.selectedRange().location
+        let line = ranges.lastIndex { $0.location <= caret } ?? 0
+        return down ? line >= ranges.count - 1 : line == 0
+    }
+
+    /// ↑ : 이 할 일 바로 윗줄, ↓ : 이 할 일이 쓰는 줄 바로 아랫줄. 그 줄을 쓰는 할 일이 있으면 그 할 일을,
+    /// 비어 있으면 그 줄에 새 할 일(형광펜 없이)을 쓴다. 아무것도 쓰지 않고 떠나면 빈 할 일은 지워진다.
+    private static func moveLine(_ store: PlannerStore, _ state: AppState, _ date: Date, _ id: UUID, down: Bool) {
+        let day = store.day(date)
+        guard let k = day.tasks.firstIndex(where: { $0.id == id }) else { return }
+        let L = day.taskLayout
+        let item = L.items[k]
+        let target = down ? item.row + item.span : item.row - 1
+        guard target >= 0, target < L.rows else { return }
+        if let o = L.owner(target) {
+            state.editingKey = AppState.taskKey(date, day.tasks[o].id)
+        } else {
+            state.editingKey = AppState.taskKey(date, store.addTask(date, row: target))
         }
     }
 
@@ -312,6 +354,9 @@ private struct RuledEntry: View {
     var strike: Color? = nil
     var onSubmit: (() -> Void)? = nil
     var onEnd: (() -> Void)? = nil
+    /// 쓰는 중에 ↑ ↓ 로 윗줄 / 아랫줄로 옮기기 (할 일). canMoveLine 이 false 면 키는 글상자가 받는다.
+    var canMoveLine: (@MainActor (_ down: Bool) -> Bool)? = nil
+    var moveLine: (@MainActor (_ down: Bool) -> Void)? = nil
 
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
@@ -324,6 +369,9 @@ private struct RuledEntry: View {
             InlineField(text: $text, font: Fonts.hand(fontSize * u), key: key, lines: max(lines.count, 1) + 1,
                         lineSpacing: max(0, (pitch - lh) * u), onSubmit: onSubmit, onEnd: onEnd)
                 .padding(.top, top * u)
+                .background {
+                    if let canMoveLine, let moveLine { LineKeyMonitor(canMove: canMoveLine, move: moveLine) }
+                }
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
@@ -348,6 +396,52 @@ private struct RuledEntry: View {
             .contentShape(Rectangle())
             .onTapGesture { state.editingKey = key }
         }
+    }
+}
+
+/// 할 일을 쓰는 동안 ↑ ↓ 를 글상자보다 먼저 받는다. canMove 가 true 면 키를 먹고 줄을 옮긴다.
+/// 한글을 조합하는 중이면 키를 글상자로 흘려 보내 조합을 끝내게 하고 (마지막 글자가 남도록) 줄은 바로 뒤에 옮긴다.
+private struct LineKeyMonitor: View {
+    let canMove: @MainActor (_ down: Bool) -> Bool
+    let move: @MainActor (_ down: Bool) -> Void
+    @State private var box = LineKeyMonitorBox()
+
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .onAppear { box.install(canMove: canMove, move: move) }
+            .onDisappear { box.remove() }
+    }
+}
+
+@MainActor
+private final class LineKeyMonitorBox {
+    private var token: Any?
+
+    func install(canMove: @escaping @MainActor (Bool) -> Bool, move: @escaping @MainActor (Bool) -> Void) {
+        remove()
+        token = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            // ↓ 125 · ↑ 126, 다른 키를 함께 누르지 않았을 때만
+            let code = e.keyCode
+            guard code == 125 || code == 126,
+                  e.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return e }
+            let down = code == 125
+            let eat: Bool = MainActor.assumeIsolated {
+                guard canMove(down) else { return false }
+                if (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true {
+                    Task { @MainActor in move(down) }
+                    return false
+                }
+                move(down)
+                return true
+            }
+            return eat ? nil : e
+        }
+    }
+
+    func remove() {
+        if let token { NSEvent.removeMonitor(token) }
+        token = nil
     }
 }
 

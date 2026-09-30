@@ -17,7 +17,7 @@ import AppKit
 
 // MARK: - Layout (디자인 단위)
 
-private enum WK {
+enum WK {
     static let page = PageKind.weekly.design
     // 2 × 42 + 7 × 260 + 6 × 16 = 2000
     static let margin: CGFloat = 42
@@ -25,8 +25,14 @@ private enum WK {
     static let colW: CGFloat = 260
     static func colX(_ i: Int) -> CGFloat { margin + CGFloat(i) * (colW + gap) }
 
+    // 세로 배치 (1.0.5 에서 위아래 여백을 48 줄이고 그만큼 타임테이블 행을 24 → 26 으로 키웠다)
+    //   0–60     위 여백 (스프링 구멍 9–21, 가장 작은 창에서도 창 버튼 아래)
+    //   60–98    머리줄
+    //   116–1174 요일 칸 (날짜 56 · 할 일 350 · 16 · 타임테이블 26 × 24 = 624 · 12)
+    //   1218     합계 줄 — 그 아래 59 는 넘김 모서리 자리
+
     // 머리줄: 칸 하나를 세로선으로 나눈 모양 두 개
-    static let headTop: CGFloat = 86
+    static let headTop: CGFloat = 60
     static let headH: CGFloat = 38
     /// MY GOAL │ 목표 — 월요일 왼쪽부터 금요일 오른쪽까지
     static let goalFrame = CGRect(x: margin, y: headTop, width: colX(4) + colW - margin, height: headH)
@@ -39,16 +45,16 @@ private enum WK {
     static let starsBox = CGRect(x: reviewSplit, y: headTop, width: reviewFrame.maxX - reviewSplit, height: headH)
 
     // 요일 칸 — 아래 값은 칸 왼쪽 위 기준
-    static let colTop: CGFloat = 156
+    static let colTop: CGFloat = headTop + headH + 18
     static let dayHeadH: CGFloat = 56
     static let taskH: CGFloat = 35
     static let taskLines = 10
     static let ttTop: CGFloat = dayHeadH + taskH * CGFloat(taskLines) + 16
-    static let rowH: CGFloat = 24
+    static let rowH: CGFloat = 26
     static let ttBottom: CGFloat = ttTop + rowH * 24
     static let boxBottom: CGFloat = ttBottom + 12
-    /// 합계 아래 줄. 종이 아래 모서리의 넘김 영역(아래 58 단위) 보다 위에 둔다.
-    static let footRule: CGFloat = 1214 - colTop
+    /// 합계 아래 줄. 종이 아래 모서리의 넘김 영역(1219 부터 아래 58 단위) 보다 위에 둔다.
+    static let footRule: CGFloat = 1218 - colTop
     static let pad: CGFloat = 12
     static let hourW: CGFloat = 26
     static let cellsX: CGFloat = pad + hourW
@@ -188,15 +194,15 @@ private struct WeekDayColumn: View {
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
+    @Environment(\.isSnapshot) private var isSnapshot
     @State private var hover = false
 
     var body: some View {
         let tasks = store.day(date).tasks
-        let dk = Dates.key(date)
         ZStack(alignment: .topLeading) {
             header
             ForEach(0..<WK.taskLines, id: \.self) { i in
-                taskLine(i, tasks, dk)
+                taskLine(i, tasks)
             }
             // 형광펜처럼 인쇄된 칸 선이 비쳐 보이게 종이와 곱하기로 합성
             SlotPainter(date: date, cellW: WK.cellW * u, rowH: WK.rowH * u)
@@ -262,9 +268,9 @@ private struct WeekDayColumn: View {
         .help("이 날 일간 페이지 열기")
     }
 
-    // 할 일 한 줄: 카테고리 색 표시 · 손글씨 · 펜 표시
-    @ViewBuilder private func taskLine(_ i: Int, _ tasks: [PlanTask], _ dk: String) -> some View {
-        let key = "t|\(dk)|\(i)"
+    // 할 일 한 줄: 카테고리 색 표시 · 손글씨 · 펜 표시.
+    // 그날 할 일을 일간의 줄 순서대로, 빈 줄은 건너뛰고 위에서부터 채운다 (tasks 는 줄 순서).
+    @ViewBuilder private func taskLine(_ i: Int, _ tasks: [PlanTask]) -> some View {
         let task: PlanTask? = i < tasks.count ? tasks[i] : nil
         let more = i == WK.taskLines - 1 ? tasks.count - WK.taskLines : 0
         let y = WK.taskY(i)
@@ -277,24 +283,37 @@ private struct WeekDayColumn: View {
                 .frame(width: 4 * u, height: 17 * u)
                 .offset(x: WK.tickX * u, y: (y + 11) * u)
         }
+        // 왼쪽 색 막대 자리: 누르면 형광펜(분류) 메뉴 (화면에서만)
+        if let task, !isSnapshot {
+            TaskCategoryCell(date: d, taskID: task.id, cornerRadius: 3 * u)
+                .place(CGRect(x: WK.tickX - 8, y: y + 3, width: WK.textX - WK.tickX + 6, height: WK.taskH - 6), u)
+        }
 
-        // 한 줄에 다 들어가도록 필요한 만큼 글씨를 줄인다
-        let textW = WK.textEnd - WK.textX - (more > 0 ? 42 : 0)
-        let fit = RuledText.oneLineScale(task?.text ?? "", fontSize: 28, width: textW - 6)
-        InlineField(text: store.taskText(d, i, defaultCat: { st.tool >= 0 ? st.tool : nil }),
-                    font: Fonts.hand(28 * fit * u),
-                    key: key,
-                    tapKey: task == nil ? "t|\(dk)|\(min(tasks.count, WK.taskLines - 1))" : nil,
-                    highlight: task?.mark == .done ? (store.category(task?.cat)?.color ?? store.concept(d).tint) : nil,
-                    onSubmit: {
-                        if i + 1 < WK.taskLines { st.editingKey = "t|\(dk)|\(i + 1)" } else { st.endEditing() }
-                    },
-                    onEnd: { store.cleanup(d) })
-            .contextMenu {
-                // 편집 중에는 글상자 기본 메뉴(복사·붙여넣기)를 가리지 않는다
-                if let task, st.editingKey != key { TaskMenu(date: d, task: task) }
-            }
-            .place(CGRect(x: WK.textX, y: y + 3, width: textW, height: WK.taskH - 4), u)
+        if let task {
+            let key = AppState.taskKey(d, task.id)
+            // 한 줄에 다 들어가도록 필요한 만큼 글씨를 줄인다
+            let textW = WK.textEnd - WK.textX - (more > 0 ? 42 : 0)
+            let fit = RuledText.oneLineScale(task.text, fontSize: 28, width: textW - 6)
+            let cat = store.category(task.cat)
+            InlineField(text: store.taskText(d, id: task.id),
+                        font: Fonts.hand(28 * fit * u),
+                        key: key,
+                        // 형광펜은 끝낸(○) 일에만, 그 할 일의 형광펜 색으로 (형광펜이 없으면 긋지 않는다)
+                        highlight: task.mark == .done ? cat?.color : nil,
+                        onSubmit: { Self.submit(store, st, d, after: task.id) },
+                        onEnd: { store.cleanup(d, keep: st.editingTaskID(on: d)) })
+                .contextMenu {
+                    // 편집 중에는 글상자 기본 메뉴(복사·붙여넣기)를 가리지 않는다
+                    if st.editingKey != key { TaskMenu(date: d, task: task) }
+                }
+                .place(CGRect(x: WK.textX, y: y + 3, width: textW, height: WK.taskH - 4), u)
+        } else {
+            // 빈 줄: 누르면 일간에서 마지막으로 쓴 줄 다음의 빈 줄에 새 할 일 → 이 칸의 첫 빈 줄에서 쓴다
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { st.editingKey = AppState.taskKey(d, store.addTaskAfterLast(d)) }
+                .place(CGRect(x: WK.textX, y: y + 3, width: WK.textEnd - WK.textX, height: WK.taskH - 4), u)
+        }
 
         if more > 0 {
             Text("+\(more)")
@@ -320,6 +339,18 @@ private struct WeekDayColumn: View {
                 store.cycleMark(d, task.id)
             }
             .position(x: b.midX * u, y: b.midY * u)
+        }
+    }
+
+    /// Return: 아래 칸에 할 일이 있으면 그 할 일을 이어서 쓰고, 비어 있으면 새 할 일 (형광펜이 있으면 같은 형광펜).
+    /// 마지막 칸이면 쓰기를 마친다.
+    private static func submit(_ store: PlannerStore, _ state: AppState, _ d: Date, after id: UUID) {
+        let tasks = store.day(d).tasks
+        guard let i = tasks.firstIndex(where: { $0.id == id }), i + 1 < WK.taskLines else { state.endEditing(); return }
+        if i + 1 < tasks.count {
+            state.editingKey = AppState.taskKey(d, tasks[i + 1].id)
+        } else {
+            state.editingKey = AppState.taskKey(d, store.addTaskAfterLast(d, cat: tasks[i].cat))
         }
     }
 

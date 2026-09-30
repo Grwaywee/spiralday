@@ -16,7 +16,7 @@ import AppKit
 
 // MARK: - Layout (디자인 단위)
 
-private enum HM {
+enum HM {
     static let page = PageKind.home.design
     static let left: CGFloat = 48
     static let right: CGFloat = 1952

@@ -7,6 +7,7 @@ import SwiftUI
 //   일간 · A4 반쪽   A4 가로 한 장에 이틀 (가운데를 자르면 실물 크기 한 장씩)
 //   주간 · A4 가로   한 주 한 장
 //   홈   · A4 가로
+// 일간 · 주간은 맨 앞에 표지와 첫 장을 넣을 수 있다 (A4 반쪽이면 첫 장에 둘이 나란히).
 // 페이지는 SwiftUI 뷰를 그대로 PDF 에 그려서 글씨·선이 벡터로 선명하게 남는다.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -74,11 +75,26 @@ enum PDFExporter {
         (pageCount + layout.perSheet - 1) / layout.perSheet
     }
 
+    /// 표지와 첫 장을 넣을 수 있는 용지인지 (일간 · 주간. 펼친 책이 있을 때)
+    static func canIncludeFront(_ layout: PDFLayout, store: PlannerStore) -> Bool {
+        layout.kind.flips && store.activeBook != nil
+    }
+
+    /// PDF 한 장 한 장: 표지 · 첫 장 또는 날짜 페이지
+    private enum Item {
+        case front(FrontPage)
+        case page(Date)
+    }
+
     /// PDF 파일을 만든다. progress 는 0…1.
-    static func export(_ layout: PDFLayout, from: Date, to: Date, cutGuides: Bool,
+    /// frontMatter: 맨 앞에 표지와 첫 장을 넣는다 (일간 · 주간). A4 반쪽이면 첫 장에 둘이 나란히 들어간다.
+    static func export(_ layout: PDFLayout, from: Date, to: Date, cutGuides: Bool, frontMatter: Bool = true,
                        store: PlannerStore, state: AppState, to url: URL,
                        progress: @escaping (Double) -> Void) async throws {
-        let dates = pages(layout, from: from, to: to)
+        var items = pages(layout, from: from, to: to).map(Item.page)
+        if frontMatter && canIncludeFront(layout, store: store) {
+            items.insert(contentsOf: FrontPage.allCases.map(Item.front), at: 0)
+        }
         var box = CGRect(origin: .zero, size: layout.sheet)
         guard let pdf = CGContext(url as CFURL, mediaBox: &box, [
             kCGPDFContextCreator as String: "Spiralday",
@@ -86,13 +102,19 @@ enum PDFExporter {
         ] as CFDictionary) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        let sheets = stride(from: 0, to: dates.count, by: layout.perSheet).map {
-            Array(dates[$0..<min($0 + layout.perSheet, dates.count)])
+        let sheets = stride(from: 0, to: items.count, by: layout.perSheet).map {
+            Array(items[$0..<min($0 + layout.perSheet, items.count)])
         }
         for (n, group) in sheets.enumerated() {
             pdf.beginPDFPage(nil)
-            for (slotIndex, date) in group.enumerated() {
-                draw(layout, date: date, in: slot(layout, slotIndex), pdf: pdf, store: store, state: state)
+            for (slotIndex, item) in group.enumerated() {
+                let r = slot(layout, slotIndex)
+                switch item {
+                case .page(let date): draw(layout, date: date, in: r, pdf: pdf, store: store, state: state)
+                case .front(let page):
+                    render(FrontMatterSheet(page: page, kind: layout.kind), kind: layout.kind, in: r, pdf: pdf,
+                           store: store, state: state)
+                }
             }
             if layout == .dailyHalf && cutGuides { drawCutGuide(pdf, layout.sheet) }
             pdf.endPDFPage()
@@ -123,8 +145,14 @@ enum PDFExporter {
         case .weekly: index = Dates.daysBetween(state.baseWeek, date) / 7
         case .home: index = 0
         }
+        render(PageView(kind: kind, index: index), kind: kind, in: slot, pdf: pdf, store: store, state: state)
+    }
+
+    /// 한 페이지(디자인 크기)를 자리에 맞춰 벡터로 그린다
+    private static func render(_ page: some View, kind: PageKind, in slot: CGRect, pdf: CGContext,
+                               store: PlannerStore, state: AppState) {
         let size = kind.design
-        let content = PageView(kind: kind, index: index)
+        let content = page
             .frame(width: size.width, height: size.height)
             .environment(\.isSnapshot, true)
             .environment(\.isPrinting, true)
@@ -199,6 +227,8 @@ struct PDFExportView: View {
     @State private var from = Dates.day(Date())
     @State private var to = Dates.day(Date())
     @State private var cutGuides = true
+    /// 맨 앞에 표지와 첫 장 넣기 (일간 · 주간)
+    @State private var frontMatter = true
     @State private var progress: Double? = nil
     @State private var error: String? = nil
     @State private var prepared = false
@@ -221,7 +251,8 @@ struct PDFExportView: View {
 
     var body: some View {
         let pages = PDFExporter.pages(layout, from: from, to: to)
-        let sheets = PDFExporter.sheetCount(layout, pageCount: pages.count)
+        let front = includesFront ? FrontPage.allCases.count : 0
+        let sheets = PDFExporter.sheetCount(layout, pageCount: pages.count + front)
         Form {
             Section {
                 Picker("무엇을", selection: $kind) {
@@ -239,6 +270,13 @@ struct PDFExportView: View {
                     .pickerStyle(.radioGroup)
                     if dailyLayout == .dailyHalf {
                         Toggle("가운데 자르는 선 넣기", isOn: $cutGuides)
+                    }
+                }
+                if PDFExporter.canIncludeFront(layout, store: store) {
+                    Toggle(isOn: $frontMatter) {
+                        Text("표지와 첫 장 넣기")
+                        Text(layout == .dailyHalf ? "첫 장에 표지와 첫 장이 나란히 들어가요. 실제 책처럼 묶을 수 있어요."
+                                                  : "맨 앞에 표지, 그다음 장에 첫 장(적어 둔 말)이 들어가요.")
                     }
                 }
                 Text(layout.detail).font(.callout).foregroundStyle(.secondary)
@@ -335,11 +373,15 @@ struct PDFExportView: View {
         return "\(c.month!)/\(c.day!)"
     }
 
+    /// 이번 PDF 에 표지와 첫 장이 들어가는지
+    private var includesFront: Bool { frontMatter && PDFExporter.canIncludeFront(layout, store: store) }
+
     private func summary(_ pages: Int, _ sheets: Int) -> String {
+        let front = includesFront ? "표지·첫 장 + " : ""
         switch kind {
         case .home: return "A4 가로 1장"
-        case .weekly: return "\(pages)주 · A4 가로 \(sheets)장"
-        case .daily: return layout == .dailyHalf ? "\(pages)일 · A4 가로 \(sheets)장 (두 장씩)" : "\(pages)일 · A4 세로 \(sheets)장"
+        case .weekly: return "\(front)\(pages)주 · A4 가로 \(sheets)장"
+        case .daily: return layout == .dailyHalf ? "\(front)\(pages)일 · A4 가로 \(sheets)장 (두 장씩)" : "\(front)\(pages)일 · A4 세로 \(sheets)장"
         }
     }
 
@@ -367,7 +409,7 @@ struct PDFExportView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         progress = 0
         do {
-            try await PDFExporter.export(layout, from: from, to: to, cutGuides: cutGuides,
+            try await PDFExporter.export(layout, from: from, to: to, cutGuides: cutGuides, frontMatter: frontMatter,
                                          store: store, state: state, to: url) { p in progress = p }
             progress = nil
             NSWorkspace.shared.open(url)

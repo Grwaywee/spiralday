@@ -27,6 +27,8 @@ extension PlannerStore {
         var data = PlannerData()
         data.prefs.categories = Prefs.defaultCategories
         data.prefs.ddaysPerDay = true
+        // 첫 장 (1.0.5): 책 맨 앞에 적어 둔 하고 싶은 말
+        data.prefs.motto = SampleBook.motto
 
         // 저장한 D-day: 오늘 뒤의 날짜 셋
         let saved: [SampleBook.DDayKind: DDay] = Dictionary(uniqueKeysWithValues: SampleBook.DDayKind.allCases.map { k in
@@ -59,8 +61,11 @@ extension PlannerStore {
                     carryNext.append(PlanTask(id: ids.next(), text: task.text, mark: t.then, cat: task.cat, carriedFrom: task.id))
                 }
             }
-            // 어제 → 로 넘어온 할 일: 앱처럼 같은 형광펜 묶음의 끝에 (묶음이 없으면 맨 끝)
-            r.tasks = PlannerStore.grouped(tasks + carried)
+            // 할 일 줄 (1.0.5): 같은 형광펜끼리 모아 위에서부터 한 줄씩 (1.0.4 와 같은 모양).
+            // 어제 → 로 넘어올 할 일이 있으면 그 형광펜 묶음 바로 아래 줄을 비워 두어, 앱의 → (insertCarried) 처럼
+            // "같은 형광펜이 쓰는 마지막 줄 아래의 첫 빈 줄" 에 들어가게 한다. blankBefore 는 한 줄 비우고 쓴 예시.
+            r.tasks = SampleBook.rowed(PlannerStore.grouped(tasks), reserveAfter: carried.map(\.cat), blankBefore: page.blankBefore)
+            for c in carried { r.insertCarried(c) }
             carried = carryNext
 
             // 타임테이블 · 밥시간 · 글씨 메모 (오늘은 저녁 6시 전까지만)
@@ -109,6 +114,8 @@ enum SampleBook {
     /// 오늘은 이 시각 전까지만 칠하고, 저녁 일(late)은 아직 표시하지 않는다
     static let todayCutoff = "18:00"
     static let todayComment = "남은 것도 하나씩, 천천히 해 보자"
+    /// 첫 장에 적은 말 (명언이 아니라 이 사람이 스스로 적은 다짐, 한 줄은 짧게)
+    static let motto = "완벽한 하루 말고\n조금 나아진 하루\n그거면 충분해"
 
     /// 형광펜 (Prefs.defaultCategories 의 id)
     enum Pen {
@@ -170,12 +177,30 @@ enum SampleBook {
         var ddays: [DDayKind] = []
         /// 쉬는 날 (DAY OFF). 이야기에서 하루뿐 — dayOffStoryDay
         var dayOff = false
+        /// 이 할 일(형광펜끼리 모은 순서) 앞에서 한 줄 비우고 쓴다 — 할 일은 아무 줄에나 쓸 수 있다는 예시 (1.0.5)
+        var blankBefore: Int? = nil
     }
 
     struct Week { let goal: String, review: String, stars: Int }
 
     /// 월 = 0 … 일 = 6
     static func weekday(_ d: Date) -> Int { ((Dates.comp(d).weekday ?? 2) + 5) % 7 }
+
+    /// 형광펜끼리 모은 할 일에 위에서부터 줄을 매긴다. reserveAfter 의 형광펜마다 그 묶음 바로 아래에 한 줄씩 비워 두고
+    /// (어제 → 로 넘어올 자리), blankBefore 번째 할 일 앞에서 한 줄 비운다.
+    static func rowed(_ tasks: [PlanTask], reserveAfter cats: [Int?], blankBefore: Int?) -> [PlanTask] {
+        var out: [PlanTask] = []
+        var row = 0
+        for (i, t) in tasks.enumerated() {
+            if i == blankBefore { row += 1 }
+            var t = t
+            t.row = row
+            out.append(t)
+            row += 1
+            if i + 1 == tasks.count || tasks[i + 1].cat != t.cat { row += cats.filter { $0 == t.cat }.count }
+        }
+        return out
+    }
 
     /// "HH:mm" → 타임테이블 칸 (06:00 = 0, 다음날 05:50 = 143). "24:00" 같은 끝 시각도 받는다.
     static func slot(_ hm: String) -> Int {
@@ -317,7 +342,8 @@ enum SampleBook {
              meals: [meal("12:00", "13:00"), meal("19:00", "19:50")],
              comment: "월요일 치고 괜찮은 출발!",
              memos: [memo("할 것", "견적서 3곳 비교하기"), memo("메모", "회의실 3층 예약함")],
-             theme: nil, ddays: [.exam]),
+             // 회사 일 아래에 한 줄 비우고 저녁 일을 쓴 날 (첫째 주 월요일은 오늘이 무슨 요일이든 14일 안에 있다)
+             theme: nil, ddays: [.exam], blankBefore: 4),
         // 화
         Page(tasks: [t("행사 장소 후보 조사", P.focus, .done),
                      moved("견적서 3곳 비교", P.focus, then: .done),
@@ -550,6 +576,7 @@ enum SampleBook {
 ///   daily-YYYY-MM-DD.png        14일치 일간 (1277 × 2000, --snapshot 과 같은 PageSnapshotter)
 ///   daily-YYYY-MM-DD-write.png  DAY OFF 날을 ▾ → 작성하기로 돌렸을 때 (가려 둔 COMMENT)
 ///   weekly-YYYY-MM-DD.png       겹치는 주 (주 시작 날짜)
+///   daily-cover.png · daily-motto.png · weekly-cover.png · weekly-motto.png   책 맨 앞의 표지 · 첫 장
 ///   home.png                    홈
 ///   onboarding-ready.png        튜토리얼 마지막 장 (예시 플래너 안내 줄)
 ///   settings-books*.png         설정 → 플래너 (예시 표시 / 지운 뒤 ‘다시 넣기’)
@@ -623,7 +650,7 @@ enum SampleBookTest {
         check("내용 점검 (오늘): 요일·이야기 순서 · 주간 목표는 그 주 이야기 · → 는 다음 날에 하나 (carriedFrom · 같은 글 · 같은 형광펜 · "
               + "이야기대로 표시) · 넘어온 할 일은 전날 → 에서 · ○ 형광펜은 타임테이블에도 · 오늘은 쓰는 중 (→ 없음) · 오늘 D-day · "
               + "D-day 0/1/2개 날 · 이웃한 날 컬러 다름 · 컬러 5가지 이상 · 주간 목표와 별점 · TOTAL 평일 4–10시간 / 주말 1–3시간 · "
-              + "DAY OFF 는 쉬는 날(첫째 주 일요일) 하루만, 가볍게", found.isEmpty)
+              + "DAY OFF 는 쉬는 날(첫째 주 일요일) 하루만, 가볍게 · 할 일 줄은 15줄 안 · 형광펜끼리 이어서 · 한 줄 비우고 쓴 날", found.isEmpty)
         // 오늘의 요일에 따라 준비 주 · 첫째 주 · 둘째 주에서 잘라 오는 곳이 달라지므로, 요일 7가지 모두 내용만 따로 점검한다
         var rotations: [String] = []
         for k in 1..<7 {
@@ -641,7 +668,7 @@ enum SampleBookTest {
             if !p.isEmpty { appDiffs.append("\(Dates.key(other)): " + p.joined(separator: " / ")) }
         }
         for r in appDiffs { print("  · \(r)") }
-        check("→ 넘기기가 앱과 같다 (요일 7가지): 표시를 떼고 앱에서 → 를 다시 누르면 같은 자리에 같은 할 일이 넘어가고, "
+        check("→ 넘기기가 앱과 같다 (요일 7가지): 표시를 떼고 앱에서 → 를 다시 누르면 같은 줄에 같은 할 일이 넘어가고, "
               + "그대로 → 를 또 눌러도 늘지 않는다", appDiffs.isEmpty)
 
         var ws = Dates.weekStart(book.start)
@@ -654,6 +681,18 @@ enum SampleBookTest {
             print("주간 \(Dates.key(ws)) 목표 ‘\(w.goal)’ · 별 \(w.stars) · 돌아보기 ‘\(w.review)’")
             ws = Dates.add(days: 7, to: ws)
         }
+
+        // 책 맨 앞의 표지 · 첫 장 (하고 싶은 말)
+        for kind in [PageKind.daily, .weekly] {
+            let state = AppState(kind: kind, today: today)
+            state.store = store
+            for page in FrontPage.allCases {
+                render(store, state, kind, state.frontIndex(page, kind),
+                       dir.appendingPathComponent("\(kind.rawValue)-\(page == .cover ? "cover" : "motto").png"))
+            }
+        }
+        check("첫 장에 하고 싶은 말이 적혀 있다 (‘\(store.data.prefs.motto.replacingOccurrences(of: "\n", with: " / "))’)",
+              store.data.prefs.motto == SampleBook.motto)
 
         let home = AppState(kind: .home, today: today)
         home.store = store
@@ -700,6 +739,7 @@ enum SampleBookTest {
         if data.days.count != SampleBook.dayCount { out.append("기록한 날이 \(data.days.count)일 (14일 밖에 넘어간 것)") }
         var previousTheme: Int? = nil
         var carriedCount = 0
+        var blankDays = 0
         for i in 0..<SampleBook.dayCount {
             let d = Dates.add(days: i, to: start), k = Dates.key(d)
             guard let r = data.days[k] else { out.append("\(k) 기록 없음"); continue }
@@ -720,7 +760,12 @@ enum SampleBookTest {
                 if !(3...8).contains(r.tasks.count) { out.append("\(k) 할 일 \(r.tasks.count)개") }
                 if weekend ? !(60...180).contains(minutes) : !(240...600).contains(minutes) { out.append("\(k) TOTAL \(minutes)분") }
             }
+            // 할 일 줄 (1.0.5): 15줄 안에서 줄 순서대로 겹치지 않게, 같은 형광펜끼리 이어서 (빈 줄은 건너뛰고 본다)
+            if !r.taskRowsReady || r.tasks.contains(where: { ($0.row ?? .max) >= DailyForm.taskCount }) {
+                out.append("\(k) 할 일 줄이 어긋남 \(r.tasks.map { $0.row ?? -1 })")
+            }
             if PlannerStore.grouped(r.tasks) != r.tasks { out.append("\(k) 형광펜끼리 모이지 않음") }
+            if let last = r.tasks.last?.row, last + 1 > r.tasks.count { blankDays += 1 }
             if r.comment.isEmpty { out.append("\(k) COMMENT 없음") }
             // → : 앱처럼 다음 날에 이 할 일에서 넘어온 것(carriedFrom = 이 id)이 꼭 하나 — 같은 글 · 같은 형광펜 ·
             // 이야기에서 정한 표시. 오늘은 플래너의 마지막 날이라 앱도 넘기지 않으므로 → 가 없어야 한다.
@@ -761,6 +806,7 @@ enum SampleBookTest {
             }
         }
         if carriedCount == 0 { out.append("다음 날로 넘어간 할 일이 없음") }
+        if blankDays == 0 { out.append("한 줄 비우고 쓴 날이 없음 (아무 줄에나 쓰는 예시)") }
         if data.days.values.filter(\.dayOff).count != 1 { out.append("DAY OFF 가 \(data.days.values.filter(\.dayOff).count)일") }
         if Set(data.days.values.map(\.ddays.count)) != [0, 1, 2] { out.append("D-day 0/1/2개 날이 다 있지 않음") }
         if Set(data.days.values.compactMap(\.theme)).count < 5 || !data.days.values.contains(where: { $0.theme == nil }) {
@@ -779,11 +825,11 @@ enum SampleBookTest {
     /// 예시의 → 마다 앱의 PlannerStore.setMark 를 그대로 거쳐 본다. 어긋난 것을 글로 돌려준다.
     ///  1) 예시 그대로 → 를 또 눌러도 다음 날 할 일이 늘지 않는다 (앱이 넘어간 것으로 알아본다)
     ///  2) 넘어간 할 일을 지우고 표시를 뗀 뒤 → 를 누르고, 넘어간 것에 이야기대로 표시하면 예시와 똑같아진다
-    ///     (글 · 형광펜 · 표시 · carriedFrom · 자리. 새로 만든 할 일의 id 만 다르다)
+    ///     (글 · 형광펜 · 표시 · carriedFrom · 줄. 새로 만든 할 일의 id 만 다르다)
     static func carryMismatches(today: Date) -> [String] {
         let (book, data) = PlannerStore.makeSampleBook(today: today)
         func shape(_ days: [String: DayRecord]) -> [String: [String]] {
-            days.mapValues { $0.tasks.map { "\($0.text)|\($0.cat ?? -1)|\($0.mark.rawValue)|\($0.carriedFrom?.uuidString ?? "-")" } }
+            days.mapValues { $0.tasks.map { "\($0.text)|\($0.cat ?? -1)|\($0.mark.rawValue)|\($0.carriedFrom?.uuidString ?? "-")|\($0.row ?? -1)" } }
         }
         var out: [String] = []
         let same = PlannerStore(inMemory: true)

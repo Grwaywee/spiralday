@@ -28,6 +28,9 @@ struct PlanTask: Identifiable, Codable, Equatable {
     /// → (미룸) 으로 전날에서 넘어온 할 일이면: 전날 할 일의 id (1.0.4).
     /// 없으면 nil — 예전 파일에는 없는 키라 nil 로 읽고, nil 이면 JSON 에 적지 않는다 (자동 Codable 의 Optional 규칙).
     var carriedFrom: UUID? = nil
+    /// 일간 TASKS 의 몇째 줄에 적었는지 (0 부터, 1.0.5). 할 일은 적은 줄에 그대로 있고 저절로 모이거나 옮겨지지 않는다.
+    /// 예전 파일에는 없는 키라 nil 로 읽고, 처음 열 때 그때 보이던 줄을 매긴다 (DayRecord.assignTaskRows).
+    var row: Int? = nil
 }
 
 /// 타임테이블 위에 쓰는 것: 손글씨 메모, 밥시간(아이콘 → 화살표)
@@ -113,6 +116,133 @@ struct DayRecord: Codable, Equatable {
     var isEmpty: Bool { !hasRecord && ddays.isEmpty && !dayOff }
 }
 
+// MARK: - 할 일 줄 (1.0.5)
+// 할 일은 TASKS 의 아무 줄에나 쓰고(PlanTask.row), 형광펜(분류)은 쓴 뒤에 왼쪽 칸을 눌러 고른다.
+// tasks 배열은 늘 줄 순서로 둔다 (주간 페이지 · 통계 · 예시 점검이 그 순서로 읽는다).
+
+extension DayRecord {
+    /// 모든 할 일에 줄이 있고, 줄 순서대로 놓여 있고, 겹치지 않는지
+    var taskRowsReady: Bool {
+        var last = -1
+        for t in tasks {
+            guard let r = t.row, r > last else { return false }
+            last = r
+        }
+        return true
+    }
+
+    /// 줄 번호가 없는 할 일에 줄을 매기고 줄 순서로 놓는다.
+    /// - 모두 없으면 (1.0.4 까지의 기록): 그때 보이던 그대로 — 같은 형광펜끼리 모은 순서로, 긴 할 일이 이어 쓰던 줄까지.
+    ///   (한 줄짜리만 있으면 0, 1, 2, …) 백업 없이 메모리에서 바꾸고 다음 저장 때 파일에 적힌다 (키만 늘어난다).
+    /// - 일부만 없거나 같은 줄에 둘이면: 줄이 있는 것은 그대로, 나머지는 위에서부터 빈 줄에.
+    mutating func assignTaskRows() {
+        guard !taskRowsReady else { return }
+        if tasks.allSatisfy({ $0.row == nil }) {
+            let g = PlannerStore.grouped(tasks)
+            let starts = DailyForm.legacyTaskRows(g.map(\.text))
+            tasks = g.enumerated().map { i, t in
+                var t = t
+                t.row = i < starts.count ? starts[i] : i
+                return t
+            }
+            return
+        }
+        var used = Set<Int>()
+        var pending: [Int] = []
+        let order = tasks.indices.sorted { (tasks[$0].row ?? .max, $0) < (tasks[$1].row ?? .max, $1) }
+        for i in order {
+            if let r = tasks[i].row, r >= 0, used.insert(r).inserted { continue }
+            pending.append(i)
+        }
+        var next = 0
+        for i in pending {
+            while used.contains(next) { next += 1 }
+            tasks[i].row = next
+            used.insert(next)
+        }
+        tasks = order.map { tasks[$0] }.sorted { $0.row! < $1.row! }
+    }
+
+    /// 할 일을 제 줄에 놓은 모양 (긴 할 일이 이어 쓴 줄, 막혀서 줄인 글자, 늘어난 칸 수). 일간 페이지와 같은 계산.
+    var taskLayout: RuledText.RowLayout { DailyForm.taskLayout(tasks) }
+
+    /// 할 일이 쓰고 있는 마지막 줄 (긴 할 일이 이어 쓴 줄까지). which 에 맞는 할 일이 없으면 nil.
+    func lastTaskLine(where which: (PlanTask) -> Bool) -> Int? {
+        let L = taskLayout
+        return tasks.indices.last(where: { which(tasks[$0]) }).map { L.items[$0].row + L.items[$0].span - 1 }
+    }
+
+    /// 새 할 일을 놓을 줄: after 보다 아래의 첫 빈 줄 → 없으면 맨 위부터 첫 빈 줄 →
+    /// 그래도 없으면 맨 끝에 한 줄 더 (그만큼 TASKS 칸 수가 늘고 모든 줄이 같은 비율로 조금 작아진다).
+    func freeTaskRow(after: Int) -> Int {
+        let L = taskLayout
+        if let r = L.emptyRows.first(where: { $0 > after }) ?? L.emptyRows.first { return r }
+        return L.rows
+    }
+
+    /// 할 일 하나를 row 줄에 넣는다 (그 줄을 이미 다른 할 일이 쓰고 있으면 그 아래 빈 줄에). 넣은 줄을 돌려준다.
+    @discardableResult
+    mutating func insertTask(_ t: PlanTask, row: Int) -> Int {
+        assignTaskRows()
+        var t = t
+        let r = row < 0 || taskLayout.owner(row) != nil ? freeTaskRow(after: row) : row
+        t.row = r
+        tasks.append(t)
+        tasks.sort { $0.row! < $1.row! }
+        return r
+    }
+
+    /// → 로 전날에서 넘어온 할 일을 넣는다: 같은 형광펜(없음은 없음끼리) 할 일이 쓰는 마지막 줄 아래의 첫 빈 줄 →
+    /// 그 형광펜이 없거나 아래에 빈 줄이 없으면 맨 위부터 첫 빈 줄 → 빈 줄이 하나도 없으면 맨 끝에 한 줄 더.
+    /// 마지막 경우에 맨 끝에 붙이는 것은: 이미 쓴 할 일의 줄을 옮기지 않고(쓴 자리는 그대로), 넘어온 할 일도 가리지 않고
+    /// 보이게 하려는 것. TASKS 칸 수가 하나 늘고 모든 줄이 같은 비율로 조금 작아진다 (1.0.4 에서 넘칠 때와 같은 모양).
+    /// 앱의 → (PlannerStore.setMark) 와 예시 플래너가 같이 쓴다.
+    @discardableResult
+    mutating func insertCarried(_ t: PlanTask) -> Int {
+        assignTaskRows()
+        // 같은 형광펜 묶음이 있으면 그 바로 아래로 (아래 할 일들은 빈 줄이 나올 때까지 한 줄씩 내려간다)
+        if t.cat != nil, let end = lastTaskLine(where: { $0.cat == t.cat }) {
+            return insertShifting(t, at: end + 1)
+        }
+        let after = lastTaskLine { $0.cat == t.cat } ?? -1
+        return insertTask(t, row: freeTaskRow(after: after))
+    }
+
+    /// row 줄에 할 일을 끼워 넣는다. 그 줄부터 이어진 할 일들은 빈 줄이 나올 때까지 한 줄씩 아래로 밀린다
+    /// (빈 줄이 없으면 맨 끝에 한 줄 더). 1.0.4 까지처럼 같은 형광펜끼리 붙여 두려고 쓴다.
+    @discardableResult
+    mutating func insertShifting(_ t: PlanTask, at row: Int) -> Int {
+        assignTaskRows()
+        var cursor = row + 1
+        for k in tasks.indices where tasks[k].row! >= row {
+            guard tasks[k].row! < cursor else { break }   // 빈 줄을 만나면 거기서 멈춘다
+            tasks[k].row = cursor
+            cursor += 1
+        }
+        var t = t
+        t.row = row
+        tasks.append(t)
+        tasks.sort { $0.row! < $1.row! }
+        return row
+    }
+
+    /// 형광펜을 고른 할 일을 같은 형광펜 묶음으로 옮긴다: 그 형광펜을 쓰는 다른 할 일이 있고
+    /// 이미 그 묶음에 붙어 있지 않으면, 묶음의 마지막 줄 바로 아래로 (insertShifting). 없으면 제 줄에 그대로.
+    mutating func joinCategoryGroup(_ id: UUID) {
+        assignTaskRows()
+        guard let i = tasks.firstIndex(where: { $0.id == id }), let cat = tasks[i].cat else { return }
+        let L = taskLayout
+        let others = tasks.indices.filter { $0 != i && tasks[$0].cat == cat }
+        guard !others.isEmpty else { return }
+        let start = L.items[i].row, end = start + L.items[i].span
+        // 이미 묶음 바로 아래나 바로 위에 붙어 있으면 그대로
+        if others.contains(where: { L.items[$0].row + L.items[$0].span == start || L.items[$0].row == end }) { return }
+        let t = tasks.remove(at: i)
+        guard let groupEnd = lastTaskLine(where: { $0.cat == cat }) else { tasks.insert(t, at: i); return }
+        insertShifting(t, at: groupEnd + 1)
+    }
+}
+
 struct WeekRecord: Codable, Equatable {
     var goal = ""
     var review = ""
@@ -138,6 +268,12 @@ struct Prefs: Codable, Equatable {
     var defaultTheme = 0
     /// D-day 를 날마다 따로 붙이는 파일인지. 1.0.2 까지의 파일은 false 로 읽혀서 처음 열 때 한 번 옮긴다.
     var ddaysPerDay = true
+    /// 첫 장(표지 다음 장)에 적는 말. 비어 있으면 파일에 남기지 않는다.
+    var motto: String {
+        get { mottoText ?? "" }
+        set { mottoText = newValue.isEmpty ? nil : newValue }
+    }
+    private var mottoText: String?
 
     /// 하루에 붙일 수 있는 D-day 수
     static let maxDDays = 2
@@ -170,6 +306,7 @@ struct Prefs: Codable, Equatable {
         }
         defaultTheme = try c.decodeIfPresent(Int.self, forKey: .defaultTheme) ?? 0
         ddaysPerDay = try c.decodeIfPresent(Bool.self, forKey: .ddaysPerDay) ?? false
+        mottoText = try c.decodeIfPresent(String.self, forKey: .mottoText).flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 
@@ -410,8 +547,8 @@ final class PlannerStore: ObservableObject {
         if folder == nil { return memoryBooks[id] ?? PlannerData() }
         guard let url = bookURL(id),
               var d = Self.openBookFile(url, book: library.books.first { $0.id == id })?.data else { return PlannerData() }
-        // 예전 기록도 같은 형광펜끼리 모아 둔다
-        for (k, r) in d.days where Self.grouped(r.tasks) != r.tasks { d.days[k]?.tasks = Self.grouped(r.tasks) }
+        // 1.0.4 까지의 기록: 할 일에 그때 보이던 줄을 매긴다 (다음 저장 때 파일에 적힌다)
+        for (k, r) in d.days where !r.taskRowsReady { d.days[k]?.assignTaskRows() }
         return d
     }
 
@@ -651,12 +788,20 @@ final class PlannerStore: ObservableObject {
     }
 
     // Days
-    func day(_ d: Date) -> DayRecord { data.days[Dates.key(d)] ?? DayRecord() }
+    /// 그날 기록. 할 일은 늘 줄이 매겨져 줄 순서로 온다 (가져온 예전 백업처럼 줄이 없는 기록도 보이던 줄로).
+    func day(_ d: Date) -> DayRecord {
+        var r = data.days[Dates.key(d)] ?? DayRecord()
+        if !r.taskRowsReady { r.assignTaskRows() }
+        return r
+    }
 
     func editDay(_ d: Date, _ f: (inout DayRecord) -> Void) {
         let k = Dates.key(d)
         var r = data.days[k] ?? DayRecord()
+        // 고치기 전후로 할 일 줄을 맞춘다 (줄 없이 더한 할 일은 위에서부터 빈 줄에)
+        if !r.taskRowsReady { r.assignTaskRows() }
         f(&r)
+        if !r.taskRowsReady { r.assignTaskRows() }
         data.days[k] = r.isEmpty ? nil : r
         scheduleSave()
     }
@@ -838,7 +983,8 @@ final class PlannerStore: ObservableObject {
 
     // Bindings
     /// 같은 형광펜(카테고리)끼리 모은다. 묶음 순서는 처음 나온 순서, 묶음 안 순서는 그대로.
-    static func grouped(_ tasks: [PlanTask]) -> [PlanTask] {
+    /// 1.0.4 까지 할 일을 보여 주던 순서라서, 이제는 줄이 없는 예전 기록에 줄을 매길 때만 쓴다 (assignTaskRows).
+    nonisolated static func grouped(_ tasks: [PlanTask]) -> [PlanTask] {
         var order: [Int?] = []
         var buckets: [Int?: [PlanTask]] = [:]
         for t in tasks {
@@ -848,26 +994,21 @@ final class PlannerStore: ObservableObject {
         return order.flatMap { buckets[$0] ?? [] }
     }
 
-    private func regroup(_ d: Date) {
-        let t = day(d).tasks
-        let g = Self.grouped(t)
-        if g != t { editDay(d) { $0.tasks = g } }
+    /// 빈 할 일을 row 줄에 만들어 그 id 를 돌려준다 (그 줄을 이미 다른 할 일이 쓰고 있으면 그 아래 빈 줄에).
+    /// 형광펜(분류)은 보통 없이 만들고, 다 쓴 뒤에 왼쪽 칸을 눌러 고른다.
+    @discardableResult
+    func addTask(_ d: Date, row: Int, cat: Int? = nil) -> UUID {
+        let t = PlanTask(text: "", cat: cat)
+        editDay(d) { $0.insertTask(t, row: row) }
+        return t.id
     }
 
-    /// 빈 할 일을 만들어 그 id 를 돌려준다.
-    /// after 가 있으면 그 바로 아래, 없으면 같은 형광펜 묶음의 끝 (없으면 맨 끝).
+    /// 빈 할 일을 마지막으로 쓴 줄 다음의 빈 줄에 만든다 (주간 페이지의 빈 줄을 눌렀을 때).
+    /// 아래에 빈 줄이 없으면 위에서부터 첫 빈 줄, 그것도 없으면 맨 끝에 한 줄 더.
     @discardableResult
-    func addTask(_ d: Date, after id: UUID?, cat: Int?) -> UUID {
+    func addTaskAfterLast(_ d: Date, cat: Int? = nil) -> UUID {
         let t = PlanTask(text: "", cat: cat)
-        editDay(d) { r in
-            if let id, let i = r.tasks.firstIndex(where: { $0.id == id }) {
-                r.tasks.insert(t, at: i + 1)
-            } else if cat != nil, let last = r.tasks.lastIndex(where: { $0.cat == cat }) {
-                r.tasks.insert(t, at: last + 1)
-            } else {
-                r.tasks.append(t)
-            }
-        }
+        editDay(d) { r in r.insertTask(t, row: r.freeTaskRow(after: r.lastTaskLine { _ in true } ?? -1)) }
         return t.id
     }
 
@@ -875,18 +1016,6 @@ final class PlannerStore: ObservableObject {
         Binding(
             get: { self.day(d).tasks.first { $0.id == id }?.text ?? "" },
             set: { v in self.editDay(d) { r in if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].text = v } } }
-        )
-    }
-
-    func taskText(_ d: Date, _ i: Int, defaultCat: @escaping () -> Int?) -> Binding<String> {
-        Binding(
-            get: { let t = self.day(d).tasks; return i < t.count ? t[i].text : "" },
-            set: { v in
-                self.editDay(d) { r in
-                    if i < r.tasks.count { r.tasks[i].text = v }
-                    else if !v.isEmpty { r.tasks.append(PlanTask(text: v, cat: defaultCat())) }
-                }
-            }
         )
     }
 
@@ -915,12 +1044,11 @@ final class PlannerStore: ObservableObject {
         Binding(get: { self.week(s)[keyPath: kp] }, set: { v in self.editWeek(s) { $0[keyPath: kp] = v } })
     }
 
-    /// 비어 있는 할 일을 지우고(지금 쓰고 있는 것은 남긴다) 형광펜별로 다시 모은다.
+    /// 비어 있는 할 일을 지운다 (지금 쓰고 있는 것은 남긴다). 글을 다 지운 할 일은 이렇게 없어진다.
+    /// 남은 할 일은 제 줄에 그대로 있다 (모으거나 당기지 않는다).
     func cleanup(_ d: Date, keep: UUID? = nil) {
-        if day(d).tasks.contains(where: { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) {
-            editDay(d) { $0.tasks.removeAll { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
-        }
-        regroup(d)
+        guard day(d).tasks.contains(where: { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) else { return }
+        editDay(d) { $0.tasks.removeAll { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
     }
 
     /// 펜 클릭: ○ → △ → × → → → 없음
@@ -950,7 +1078,7 @@ final class PlannerStore: ObservableObject {
         day(Dates.add(days: 1, to: d)).tasks.first { $0.carriedFrom == id }
     }
 
-    /// → : 다음 날에 같은 글 · 같은 형광펜 · 표시 없는 할 일을 하나 만든다 (같은 형광펜 묶음 끝).
+    /// → : 다음 날에 같은 글 · 같은 형광펜 · 표시 없는 할 일을 하나 만든다 (자리는 DayRecord.insertCarried).
     /// 이미 넘긴 것이 있거나, 다음 날이 이 플래너의 기간 밖이거나, 빈 할 일이면 하지 않는다.
     /// 넘어간 할 일은 보통 할 일과 같아서 고치고 표시하고 또 → 로 넘길 수 있다.
     private func carryForward(_ d: Date, _ t: PlanTask) {
@@ -958,10 +1086,7 @@ final class PlannerStore: ObservableObject {
         guard !t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               activeBook?.contains(next) ?? true,
               carriedCopy(of: t.id, from: d) == nil else { return }
-        editDay(next) { r in
-            r.tasks.append(PlanTask(text: t.text, cat: t.cat, carriedFrom: t.id))
-            r.tasks = Self.grouped(r.tasks)
-        }
+        editDay(next) { $0.insertCarried(PlanTask(text: t.text, cat: t.cat, carriedFrom: t.id)) }
     }
 
     /// → 를 뗐을 때: 다음 날에 넘긴 할 일을 그대로 두었으면 (표시 없음 · 글과 형광펜이 같으면) 지운다.
@@ -972,21 +1097,15 @@ final class PlannerStore: ObservableObject {
         editDay(Dates.add(days: 1, to: d)) { $0.tasks.removeAll { $0.id == copy.id } }
     }
 
+    /// 할 일의 형광펜(분류)을 고른다 (nil = 없음). 같은 형광펜을 쓰는 할 일이 이미 있으면
+    /// 그 묶음 바로 아래로 옮겨 1.0.4 까지처럼 같은 형광펜끼리 모아 둔다. 처음 쓰는 형광펜이면 제 줄에 그대로.
     func setCategory(_ d: Date, _ id: UUID, _ cat: Int?) {
+        guard let t = day(d).tasks.first(where: { $0.id == id }), t.cat != cat else { return }
         editDay(d) { r in
-            if let i = r.tasks.firstIndex(where: { $0.id == id }) {
-                let t = r.tasks.remove(at: i)
-                var moved = t
-                moved.cat = cat
-                // 새 형광펜 묶음의 끝으로 옮긴다 (그 묶음이 없으면 제자리)
-                if cat != nil, let last = r.tasks.lastIndex(where: { $0.cat == cat }) {
-                    r.tasks.insert(moved, at: last + 1)
-                } else {
-                    r.tasks.insert(moved, at: min(i, r.tasks.count))
-                }
-            }
+            guard let i = r.tasks.firstIndex(where: { $0.id == id }) else { return }
+            r.tasks[i].cat = cat
+            r.joinCategoryGroup(id)
         }
-        regroup(d)
     }
 
     /// 할 일을 지운다. 이미 다음 날로 넘긴 할 일은 그날의 할 일이라 그대로 둔다.
@@ -1036,7 +1155,7 @@ final class PlannerStore: ObservableObject {
         for i in 0..<7 {
             let d = Dates.add(days: i, to: ws)
             editDay(d) { r in
-                r.tasks = sample[i].map { PlanTask(text: $0.0, mark: $0.2, cat: $0.1) }
+                r.tasks = sample[i].enumerated().map { k, t in PlanTask(text: t.0, mark: t.2, cat: t.1, row: k) }
                 for (a, b, c) in paint[i] { for s in a...b { r.slots[s] = c } }
                 r.theme = [nil, nil, 3, 6, 4, 7, 2][i]
                 if i == 1 {
@@ -1068,7 +1187,7 @@ final class PlannerStore: ObservableObject {
                 let weekend = d >= 5
                 editDay(day) { r in
                     let n = weekend ? rnd(3) : 3 + rnd(4)
-                    r.tasks = (0..<n).map { _ in PlanTask(text: names[rnd(names.count)], mark: marks[rnd(marks.count)], cat: rnd(7)) }
+                    r.tasks = (0..<n).map { k in PlanTask(text: names[rnd(names.count)], mark: marks[rnd(marks.count)], cat: rnd(7), row: k) }
                     var s = 2 + rnd(4)
                     let blocks = weekend ? rnd(3) : 4 + rnd(4)
                     for _ in 0..<blocks {

@@ -30,8 +30,8 @@ enum StarPrompt {
         let d = UserDefaults.standard
         guard !d.bool(forKey: doneKey), d.integer(forKey: daysKey) >= daysNeeded else { return }
         schedule(persist: true) {
-            // 튜토리얼 중이거나 내 플래너가 없으면 이번에는 건너뛴다 (다음에 켤 때 다시). 예시 플래너는 세지 않는다
-            guard !store.userBooks.isEmpty, !onboardingShowing else { return nil }
+            // 튜토리얼 · 둘러보기 중이거나 내 플래너가 없으면 이번에는 건너뛴다 (다음에 켤 때 다시). 예시 플래너는 세지 않는다
+            guard !store.userBooks.isEmpty, !onboardingShowing, !TourController.shared.isRunning else { return nil }
             return window()
         }
     }

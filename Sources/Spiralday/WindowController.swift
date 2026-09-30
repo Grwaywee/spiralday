@@ -90,6 +90,11 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private func updateTitle() {
         let book = store.activeBook.map { "\($0.name) — " } ?? ""
         defer { window.title = book + window.title }
+        // 책 맨 앞의 표지 · 첫 장
+        if let front = state.front {
+            window.title = front.title
+            return
+        }
         let f = DateFormatter()
         f.locale = Locale(identifier: "ko_KR")
         switch state.kind {

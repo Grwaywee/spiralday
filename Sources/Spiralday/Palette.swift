@@ -62,6 +62,7 @@ struct PaletteView: View {
     var body: some View {
         VStack(spacing: 12) {
             BookMenu()
+                .tourTarget(.book)
 
             VStack(spacing: 4) {
                 kindButton(.home, "홈", "chart.bar.xaxis", "H")
@@ -74,6 +75,7 @@ struct PaletteView: View {
                     IconButton(icon: "chevron.left", help: "이전 장 (←)") { state.flip(.backward) }
                     IconButton(icon: "chevron.right", help: "다음 장 (→)") { state.flip(.forward) }
                 }
+                .tourTarget(.arrows)
                 Button { state.goToday() } label: {
                     Text("오늘")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -83,6 +85,7 @@ struct PaletteView: View {
                 }
                 .buttonStyle(.plain)
                 .help("오늘로 (T)")
+                .tourTarget(.today)
                 Button { editingDDay = true } label: {
                     Label("D-day", systemImage: "flag.fill")
                         .labelStyle(.titleAndIcon)
@@ -98,35 +101,51 @@ struct PaletteView: View {
                         .environmentObject(store)
                 }
                 .help(state.kind == .daily ? "D-day — 보고 있는 날에 붙이기" : "D-day — 오늘에 붙이기")
+                // 표지·첫 장에서는 붙일 날이 없다 (첫날이 바뀌지 않게)
+                .disabled(state.kind == .daily && state.front != nil)
+                .opacity(state.kind == .daily && state.front != nil ? 0.4 : 1)
+                .tourTarget(.dday)
             }
 
             Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.horizontal, 6)
 
             ConceptPicker()
+                // 표지·첫 장에서는 고를 날이 없다 (첫날의 컬러가 바뀌지 않게)
+                .disabled(state.kind == .daily && state.front != nil)
+                .opacity(state.kind == .daily && state.front != nil ? 0.4 : 1)
+                .tourTarget(.concept)
 
             Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.horizontal, 6)
 
             VStack(spacing: 6) {
-                ForEach(store.categories) { c in
-                    PenRow(color: c.color, name: c.name, selected: state.tool == c.id)
-                        .onTapGesture(count: 2) { editing = c.id }
-                        .onTapGesture { select(c.id) }
-                        .popover(isPresented: Binding(get: { editing == c.id }, set: { if !$0 { editing = nil } }),
-                                 arrowEdge: .leading) {
-                            PenEditor(id: c.id).environmentObject(store)
-                        }
-                        .help("\(c.name) 형광펜 — 클릭: 선택 · 더블클릭: 이름·색 바꾸기")
+                // 둘러보기가 가리킬 수 있게 펜 묶음을 한 덩어리로 (같은 간격이라 모양은 그대로)
+                VStack(spacing: 6) {
+                    ForEach(store.categories) { c in
+                        PenRow(color: c.color, name: c.name, selected: state.tool == c.id)
+                            .onTapGesture(count: 2) { editing = c.id }
+                            .onTapGesture { select(c.id) }
+                            .popover(isPresented: Binding(get: { editing == c.id }, set: { if !$0 { editing = nil } }),
+                                     arrowEdge: .leading) {
+                                PenEditor(id: c.id).environmentObject(store)
+                            }
+                            // 할 일의 형광펜(분류)은 할 일 왼쪽 칸에서 고른다. 여기 펜은 타임테이블 칠하기용.
+                            .help("\(c.name) 형광펜 — 타임테이블 칠하기 · 클릭: 선택 · 더블클릭: 이름·색 바꾸기")
+                    }
                 }
+                .tourTarget(.pens)
                 EraserRow(selected: state.tool == -1)
                     .onTapGesture { select(-1) }
                     .help("지우개 (E) — 칠한 칸, 글씨, 밥시간을 지운다")
+                    .tourTarget(.eraser)
                 HStack(spacing: 4) {
                     ToolChip(icon: "pencil.line", title: "글씨", selected: state.tool == AppState.textTool)
                         .onTapGesture { select(AppState.textTool) }
                         .help("타임테이블에 글씨 쓰기 — 칸을 누르거나 끌어서 쓰기 시작")
+                        .tourTarget(.text)
                     ToolChip(icon: "fork.knife", title: "밥", selected: state.tool == AppState.mealTool)
                         .onTapGesture { select(AppState.mealTool) }
                         .help("밥시간 — 시작 칸부터 끝 칸까지 끌기 (누르기만 하면 1시간)")
+                        .tourTarget(.meal)
                 }
             }
 
@@ -139,12 +158,15 @@ struct PaletteView: View {
             }
             .buttonStyle(.plain)
             .help("설정 (⌘,) — 형광펜 이름·색, 기본 컬러, D-day")
+            .tourTarget(.settings)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 12)
         .frame(width: MainWindowController.paletteWidth)
         .modifier(PaletteBackground())
         .padding(6) // 그림자 여유
+        // 플래너 둘러보기: 도구 자리를 알려 주고, 둘러보는 동안에는 누를 수 없다
+        .tourPaletteRoot()
     }
 
     private func select(_ id: Int) {
@@ -169,6 +191,7 @@ struct PaletteView: View {
         .buttonStyle(.plain)
         .help("\(title) 보기 (\(key))")
         .animation(.snappy(duration: 0.25), value: on)
+        .tourTarget(k == .home ? .home : k == .weekly ? .weekly : .daily)
     }
 }
 

@@ -23,6 +23,7 @@ final class AppState: ObservableObject {
         didSet { bindStore() }
     }
     private var bookWatch: AnyCancellable?
+    private var frontWatch: AnyCancellable?
     let baseDay: Date
     let baseWeek: Date
 
@@ -61,16 +62,45 @@ final class AppState: ObservableObject {
         return lo...max(lo, hi)
     }
 
-    private var range: ClosedRange<Int> {
-        switch kind {
-        case .weekly: weekRange
-        case .daily: dayRange
-        case .home: 0...0
+    // MARK: front pages (책의 첫 장보다 앞: 표지 → 첫 장 → 첫 날/첫 주)
+    // 앞 장은 첫 장 바로 앞의 번호를 쓴다 (일간: 첫날 −2 = 표지, −1 = 첫 장 / 주간: 첫 주 기준 같은 식).
+    // 그래서 넘기기·모서리 끌기·스와이프·페이지 넘김 스냅샷이 모두 번호 하나로 그대로 동작한다.
+
+    /// 앞 장이 있는지 (펼친 책이 있을 때만)
+    var hasFront: Bool { book != nil }
+
+    /// k 쪽(일간/주간)에서 그 앞 장의 번호
+    func frontIndex(_ page: FrontPage, _ k: PageKind) -> Int {
+        let first = k == .weekly ? weekRange.lowerBound : dayRange.lowerBound
+        return first - FrontPage.allCases.count + page.rawValue
+    }
+
+    /// k 쪽의 index 번째 장이 앞 장이면 그 장
+    func frontPage(kind k: PageKind, index i: Int) -> FrontPage? {
+        guard hasFront, k.flips else { return nil }
+        let first = k == .weekly ? weekRange.lowerBound : dayRange.lowerBound
+        return FrontPage(rawValue: i - (first - FrontPage.allCases.count))
+    }
+
+    /// 지금 펼친 장이 표지 / 첫 장이면 그 장 (날짜 페이지·홈이면 nil)
+    var front: FrontPage? { frontPage(kind: kind, index: index) }
+
+    /// 넘길 수 있는 범위 = 앞 장 + 책의 날(주)
+    private func pageRange(_ k: PageKind) -> ClosedRange<Int> {
+        let r = k == .weekly ? weekRange : dayRange
+        switch k {
+        case .home: return 0...0
+        default: return (r.lowerBound - (hasFront ? FrontPage.allCases.count : 0))...r.upperBound
         }
     }
 
+    private func clampPage(_ i: Int, _ k: PageKind) -> Int {
+        let r = pageRange(k)
+        return min(max(i, r.lowerBound), r.upperBound)
+    }
+
     /// 지금 페이지에서 delta 장 넘길 수 있는지
-    func canStep(_ delta: Int) -> Bool { kind.flips && range.contains(index + delta) }
+    func canStep(_ delta: Int) -> Bool { kind.flips && pageRange(kind).contains(index + delta) }
 
     private func clampDay(_ i: Int) -> Int { min(max(i, dayRange.lowerBound), dayRange.upperBound) }
     private func clampWeek(_ i: Int) -> Int { min(max(i, weekRange.lowerBound), weekRange.upperBound) }
@@ -87,6 +117,17 @@ final class AppState: ObservableObject {
                     self.endEditing()
                     self.dayIndex = self.clampDay(0)
                     self.weekIndex = self.clampWeek(0)
+                    self.onPageChange?()
+                }
+            }
+        // 같은 책의 기간·이름·표지 색을 바꿔도 (설정) 보던 표지 / 첫 장에 그대로 머문다.
+        // $library 는 바뀌기 직전에 알려 주므로 여기서 본 front 는 바꾸기 전 기준이다.
+        frontWatch = store?.$library
+            .sink { [weak self] lib in
+                guard let self, let f = self.front, let id = self.store?.library.activeID, lib.activeID == id else { return }
+                DispatchQueue.main.async {
+                    guard self.store?.library.activeID == id, self.kind.flips, self.front != f else { return }
+                    if self.kind == .weekly { self.weekIndex = self.frontIndex(f, .weekly) } else { self.dayIndex = self.frontIndex(f, .daily) }
                     self.onPageChange?()
                 }
             }
@@ -109,16 +150,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    func weekStart(_ i: Int) -> Date { Dates.add(days: 7 * i, to: baseWeek) }
-    func dayDate(_ i: Int) -> Date { Dates.add(days: i, to: baseDay) }
+    /// 앞 장(표지·첫 장)의 번호는 책의 첫 주 / 첫날로 읽는다 (팔레트의 컬러·D-day, PDF ‘지금 페이지’ 등)
+    func weekStart(_ i: Int) -> Date { Dates.add(days: 7 * (hasFront ? max(i, weekRange.lowerBound) : i), to: baseWeek) }
+    func dayDate(_ i: Int) -> Date { Dates.add(days: hasFront ? max(i, dayRange.lowerBound) : i, to: baseDay) }
 
     var currentDate: Date { kind == .weekly ? weekStart(weekIndex) : dayDate(dayIndex) }
 
     /// 홈에서 주간/일간으로 갈 때 돌아갈 곳
     private var lastPageKind: PageKind = .daily
+    /// 창 비율이 바뀌는 중이면 바뀐 뒤의 쪽 (apply 전까지 kind 는 아직 이전 쪽이다)
+    private var morphTarget: PageKind?
 
     private func step(_ d: Int) {
-        if kind == .weekly { weekIndex += d } else if kind == .daily { dayIndex += d }
+        // 넘기는 중에 쌓인 넘김이 책 밖으로 나가지 않게 범위 안으로
+        if kind == .weekly {
+            weekIndex = clampPage(weekIndex + d, .weekly)
+        } else if kind == .daily {
+            dayIndex = clampPage(dayIndex + d, .daily)
+        }
         onPageChange?()
     }
 
@@ -175,6 +224,9 @@ final class AppState: ObservableObject {
             lastPageKind = kind
         } else if kind == .home {
             // 홈에서 돌아갈 때는 보던 날/주 그대로
+        } else if let f = front {
+            // 표지 / 첫 장에서 바꾸면 다른 쪽의 같은 장
+            if k == .weekly { weekIndex = frontIndex(f, .weekly) } else { dayIndex = frontIndex(f, .daily) }
         } else if k == .weekly {
             weekIndex = clampWeek(Dates.daysBetween(baseWeek, Dates.weekStart(dayDate(dayIndex))) / 7)
         } else {
@@ -187,13 +239,49 @@ final class AppState: ObservableObject {
 
     private func setKind(_ k: PageKind) {
         guard curl.isIdle, !morphing, k != kind else { return }
+        morphTarget = k
         let apply = { [weak self] in
             guard let self else { return }
             self.kind = k
+            self.morphTarget = nil
             self.curl.edge = k.edge
             self.onPageChange?()
         }
         if let kindTransition { kindTransition(k, apply) } else { apply() }
+    }
+
+    /// 표지 / 첫 장을 편다 (튜토리얼 등에서 쓴다).
+    /// - k: 일간/주간 중 어느 쪽에서 (nil = 지금 쪽, 홈이면 마지막으로 보던 쪽, 창 비율이 바뀌는 중이면 바뀐 뒤의 쪽)
+    /// 같은 쪽이면 종이를 넘겨서 가고 (여러 장이면 한 번에), 다른 쪽이면 그 장을 편 채로 쪽을 바꾼다.
+    /// 넘기는 중이거나 다른 쪽으로 바뀌는 중이면 끝난 뒤에 다시 해 본다.
+    func showFront(_ page: FrontPage, in k: PageKind? = nil) {
+        showFront(page, in: k, tries: 0)
+    }
+
+    private func showFront(_ page: FrontPage, in k: PageKind?, tries: Int) {
+        guard hasFront else { return }
+        let showing = morphTarget ?? kind
+        let target = k ?? (showing == .home ? lastPageKind : showing)
+        guard target.flips else { return }
+        let busy = !curl.isIdle || (morphing && target != showing)
+        if busy {
+            guard tries < 40 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.showFront(page, in: k, tries: tries + 1)
+            }
+            return
+        }
+        endEditing()
+        let i = frontIndex(page, target)
+        if target == kind && !morphing {
+            let delta = i - index
+            guard delta != 0 else { return }
+            curl.flip(delta > 0 ? .forward : .backward, landingOffset: abs(delta) == 1 ? nil : delta)
+            return
+        }
+        // 다른 쪽으로 가거나 (홈 → 일간 등) 창 비율이 바뀌는 중: 그 장을 바로 편다
+        if target == .weekly { weekIndex = i } else { dayIndex = i }
+        if target == showing { onPageChange?() } else { setKind(target) }
     }
 
     // MARK: keyboard & trackpad

@@ -189,13 +189,15 @@ struct TaskMenu: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        Menu("형광펜 색") {
-            Button("없음") { store.setCategory(date, task.id, nil) }
+        // 할 일 왼쪽 칸(주간: 왼쪽 색 막대)을 누르면 뜨는 메뉴와 같은 것
+        Menu("형광펜 (분류)") {
             ForEach(store.categories) { c in
                 Button { store.setCategory(date, task.id, c.id) } label: {
                     Text((task.cat == c.id ? "✓ " : "   ") + c.name)
                 }
             }
+            Divider()
+            Button((store.category(task.cat) == nil ? "✓ " : "   ") + "없음") { store.setCategory(date, task.id, nil) }
         }
         Menu("체크 표시") {
             ForEach(Mark.allCases, id: \.self) { m in
@@ -214,10 +216,121 @@ struct TaskMenu: View {
 }
 
 extension AppState {
-    /// 그날 할 일을 쓰는 중이면 편집을 끝낸다. 주간 페이지의 할 일 칸은 순서로 묶여 있어서
-    /// 쓰는 도중에 그날 할 일이 늘거나 줄면 (→ 로 넘기기 · 거두기) 다른 줄에 써질 수 있다.
+    /// 할 일 편집 키: "t|yyyy-MM-dd|<할 일 id>" (일간 · 주간이 같이 쓴다)
+    static func taskKey(_ d: Date, _ id: UUID) -> String { "t|\(Dates.key(d))|\(id.uuidString)" }
+
+    /// 그날 할 일을 쓰는 중이면 그 할 일의 id
+    func editingTaskID(on d: Date) -> UUID? {
+        let dk = "t|\(Dates.key(d))|"
+        guard let k = editingKey, k.hasPrefix(dk) else { return nil }
+        return UUID(uuidString: String(k.dropFirst(dk.count)))
+    }
+
+    /// 그날 할 일을 쓰는 중이면 편집을 끝낸다. → 로 넘기기 · 거두기로 그날 할 일이 늘거나 줄면
+    /// 쓰던 줄 아래가 막히거나 주간 칸의 순서가 바뀌므로, 쓰던 것을 먼저 마친다.
     func endEditingTasks(on d: Date) {
         if editingKey?.hasPrefix("t|\(Dates.key(d))|") == true { endEditing() }
+    }
+}
+
+// MARK: - 형광펜(분류) 고르기 메뉴 (1.0.5)
+
+/// 할 일을 먼저 쓰고, 형광펜(분류)은 나중에 고른다. 일간 TASKS 의 왼쪽 칸이나 주간 할 일 줄의 왼쪽 색 막대를 누르면
+/// 마우스 자리에 작은 메뉴가 뜬다: 형광펜마다 색 견본 + 이름, 그리고 "없음". 지금 것에 체크.
+@MainActor
+enum TaskCategoryMenu {
+    static func show(store: PlannerStore, date: Date, taskID: UUID) {
+        guard let task = store.day(date).tasks.first(where: { $0.id == taskID }) else { return }
+        let current = store.category(task.cat)?.id
+        let menu = NSMenu(title: "형광펜")
+        menu.autoenablesItems = false
+        menu.addItem(NSMenuItem.sectionHeader(title: "형광펜 (분류)"))
+        for c in store.categories {
+            let item = ActionMenuItem(title: c.name) { store.setCategory(date, taskID, c.id) }
+            item.image = swatch(c.color)
+            item.state = current == c.id ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let none = ActionMenuItem(title: "없음") { store.setCategory(date, taskID, nil) }
+        none.image = swatch(nil)
+        none.state = current == nil ? .on : .off
+        menu.addItem(none)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    /// 형광펜으로 짧게 한 번 그은 색 견본 (없음: 옅은 점선 테두리만)
+    private static func swatch(_ color: Color?) -> NSImage? {
+        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        let view = ZStack {
+            if let color {
+                shape.fill(color)
+                shape.stroke(Color.black.opacity(0.12), lineWidth: 0.6)
+            } else {
+                shape.stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [2, 1.6]))
+            }
+        }
+        .frame(width: 20, height: 11)
+        .padding(.vertical, 1)
+        let r = ImageRenderer(content: view)
+        r.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let img = r.nsImage
+        img?.isTemplate = false
+        return img
+    }
+}
+
+/// 눌렀을 때 클로저를 부르는 메뉴 항목
+private final class ActionMenuItem: NSMenuItem {
+    private let run: () -> Void
+
+    init(title: String, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(ActionMenuItem.fire), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) { fatalError("init(coder:) 는 쓰지 않는다") }
+
+    @objc private func fire() { run() }
+}
+
+/// 할 일 왼쪽 칸 (일간: 카테고리 칸, 주간: 색 막대 자리). 누르면 형광펜 메뉴가 뜬다.
+/// 화면에서만 있고 (넘김 스냅샷 · PDF 에는 없다), 마우스를 올리면 옅게 드러난다.
+struct TaskCategoryCell: View {
+    let date: Date
+    let taskID: UUID
+    /// 형광펜이 없는 할 일이면 마우스를 올렸을 때 "분류" 글씨를 옅게 보여 준다 (nil = 보여 주지 않는다)
+    var hint: Font? = nil
+    var cornerRadius: CGFloat = 6
+
+    @EnvironmentObject private var store: PlannerStore
+    @State private var hover = false
+
+    var body: some View {
+        let cat = store.category(store.day(date).tasks.first { $0.id == taskID }?.cat)
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Ink.pen.opacity(hover ? 0.08 : 0))
+            if hover, cat == nil, let hint {
+                Text("분류 ▾")
+                    .font(hint)
+                    .foregroundStyle(Ink.faint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { TaskCategoryMenu.show(store: store, date: date, taskID: taskID) }
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: NSCursor.pointingHand.set()
+            case .ended: NSCursor.arrow.set()
+            }
+        }
+        .onDisappear { if hover { NSCursor.arrow.set() } }
+        .help(cat.map { "형광펜: \($0.name) — 눌러서 바꾸기" } ?? "눌러서 형광펜(분류) 고르기")
     }
 }
 

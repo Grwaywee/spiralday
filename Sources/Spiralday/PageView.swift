@@ -15,13 +15,18 @@ struct PageView: View {
                 PaperSurface(kind: kind, u: u)
                     .contentShape(Rectangle())
                     .onTapGesture { state.endEditing() }
-                switch kind {
-                case .daily:
-                    DailyPage(date: state.dayDate(index), u: u)
-                case .weekly:
-                    WeeklyPage(weekStart: state.weekStart(index), u: u)
-                case .home:
-                    HomePage(u: u)
+                // 책의 첫 장 앞: 표지 · 첫 장
+                if let front = state.frontPage(kind: kind, index: index) {
+                    FrontMatterPage(page: front, kind: kind, u: u)
+                } else {
+                    switch kind {
+                    case .daily:
+                        DailyPage(date: state.dayDate(index), u: u)
+                    case .weekly:
+                        WeeklyPage(weekStart: state.weekStart(index), u: u)
+                    case .home:
+                        HomePage(u: u)
+                    }
                 }
             }
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
@@ -87,7 +92,10 @@ final class PageSnapshotter {
         guard step < offsets.count, state.kind.flips, state.curl.isIdle, !state.morphing,
               state.editingKey == nil else { return }
         let size = state.curl.pageSize
-        _ = image(kind: state.kind, index: state.index + offsets[step], size: size, scale: state.curl.backingScale)
+        // 책 밖(표지 앞, 마지막 장 뒤)은 넘어갈 수 없으니 그리지 않는다
+        if step == 0 || state.canStep(offsets[step]) {
+            _ = image(kind: state.kind, index: state.index + offsets[step], size: size, scale: state.curl.backingScale)
+        }
         let w = DispatchWorkItem { [weak self] in self?.prewarm(step: step + 1) }
         prewarmWork = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: w)
@@ -112,6 +120,8 @@ struct RootView: View {
                 if !state.morphing && state.kind.flips {
                     CornerZones(size: g.size, kind: state.kind)
                 }
+                // 플래너 둘러보기 (코치 마크). 둘러보는 중이 아니면 아무것도 그리지 않는다.
+                TourOverlay(size: g.size)
             }
             .frame(width: g.size.width, height: g.size.height)
             .onAppear { state.curl.pageSize = g.size }

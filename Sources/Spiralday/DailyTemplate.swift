@@ -116,6 +116,32 @@ enum DailyForm {
         let mid = gridTop + (CGFloat(r) + 0.5) * p
         return CGRect(x: boxMidX - size / 2, y: mid - size / 2, width: size, height: size)
     }
+
+    // MARK: 할 일 손글씨 (1.0.5: 줄마다 따로 쓴다)
+
+    /// 할 일 글자 크기 (디자인 단위, 15줄일 때)
+    static let taskFont: CGFloat = 46
+    /// 할 일 글을 쓰는 칸 (카테고리 점선 뒤 ~ 체크 박스 앞)
+    static var taskTextX: CGFloat { categoryX + 16 }
+    static var taskTextWidth: CGFloat { boxMinX - 14 - taskTextX }
+    /// 줄바꿈 계산 폭: 편집 칸보다 살짝 좁게 잡아서 입력 중에도 줄 수가 어긋나지 않게 한다
+    static var taskWrapWidth: CGFloat { taskTextWidth - 12 }
+
+    /// 할 일들을 제 줄에 놓는다 (tasks 는 row 순서, DayRecord.assignTaskRows 를 거친 것).
+    /// 긴 할 일은 아래 빈 줄로 이어 쓰고, 막히면 가진 줄에 맞춰 글자를 줄인다.
+    /// 할 일이 15번째 줄보다 아래에 있으면(할 일이 15개보다 많으면) 그 줄까지 칸을 늘려 같은 높이에 넣는다.
+    static func taskLayout(_ tasks: [PlanTask]) -> RuledText.RowLayout {
+        Fonts.register()
+        return RuledText.rowLayout(tasks.map { ($0.row ?? 0, $0.text) }, minRows: taskCount,
+                                   fontSize: taskFont, width: taskWrapWidth)
+    }
+
+    /// 1.0.4 까지의 일간 페이지에서 할 일이 시작하던 줄: 위에서부터 차례로 흘려 쓰고 긴 할 일은 아래 칸으로 이어 썼다.
+    /// 줄 번호가 없는 예전 기록을 처음 열 때 이 줄에 그대로 둔다 (한 줄짜리 할 일만 있으면 0, 1, 2, …).
+    static func legacyTaskRows(_ texts: [String]) -> [Int] {
+        Fonts.register()
+        return RuledText.layout(texts, minRows: taskCount, fontSize: taskFont, width: taskWrapWidth).start
+    }
 }
 
 // MARK: - Printed form

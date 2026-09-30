@@ -11,7 +11,7 @@ import SwiftUI
 // MARK: - Window
 
 /// 안내 창. App 이 본 창을 열기 전에 띄우고, 끝나면 completion 에서 본 창을 연다.
-/// 설정의 ‘튜토리얼 다시 보기’로 본 창이 열려 있을 때 다시 띄울 수도 있다.
+/// 설정 → 튜토리얼의 ‘처음 안내’로 본 창이 열려 있을 때 다시 띄울 수도 있다.
 /// 빨간 버튼으로 닫아도 앱을 쓸 수 있게: 플래너가 없으면 기본 플래너를 한 권 만들고 끝낸다.
 @MainActor
 final class OnboardingController: NSObject, NSWindowDelegate {
@@ -1808,7 +1808,7 @@ private struct TasksPage: View {
                             .padding(.leading, 51)
                     }
                     TipRow(title: "끝낸 일엔 형광펜",
-                           detail: "○ 로 끝내면 그 일의 형광펜이 그어지고, 같은 형광펜끼리 모여요.") {
+                           detail: "○ 로 끝내면 그 일의 형광펜이 그어져요. 분류는 쓴 뒤 왼쪽 칸에서 골라요.") {
                         Text("완료")
                             .font(Fonts.hand(15))
                             .foregroundStyle(Ink.text)

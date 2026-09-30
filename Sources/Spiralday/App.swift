@@ -14,11 +14,21 @@ struct SpiraldayApp: App {
                     Button("업데이트 확인…") { delegate.checkForUpdates() }
                 }
                 CommandGroup(replacing: .appSettings) {
-                    Button("설정…") { SettingsWindowController.shared.show(store: delegate.store, state: delegate.state) }
+                    // 둘러보는 중에는 설정에서 책을 바꾸지 못하게 (돌아갈 책이 어긋난다)
+                    Button("설정…") {
+                        guard !TourController.shared.isRunning else { NSSound.beep(); return }
+                        SettingsWindowController.shared.show(store: delegate.store, state: delegate.state)
+                    }
                         .keyboardShortcut(",", modifiers: .command)
                 }
                 CommandGroup(replacing: .newItem) {}
                 CommandGroup(replacing: .help) {
+                    Button("플래너 둘러보기") { TourController.shared.start(.full) }
+                    Button("튜토리얼 모음…") {
+                        guard !TourController.shared.isRunning else { NSSound.beep(); return }
+                        SettingsWindowController.shared.showTutorials(store: delegate.store, state: delegate.state)
+                    }
+                    Divider()
                     Button("Spiralday 웹사이트") { Links.open(Links.website) }
                     Button("버그 신고 · 기능 제안…") { Links.open(Links.feedback) }
                     Divider()
@@ -27,20 +37,32 @@ struct SpiraldayApp: App {
                     Button("개인정보 처리방침") { Links.open(Links.privacy) }
                     Button("린에자일헝그리") { Links.open(Links.company) }
                 }
+                // 플래너 둘러보기 중에는 넘기기 · 쪽 바꾸기가 쉰다 (둘러보기가 장을 옮긴다)
                 CommandMenu("플래너") {
-                    Button("주간 보기") { delegate.state.switchKind(.weekly) }.keyboardShortcut("1", modifiers: .command)
-                    Button("일간 보기") { delegate.state.switchKind(.daily) }.keyboardShortcut("2", modifiers: .command)
-                    Button("홈 (통계)") { delegate.state.switchKind(.home) }.keyboardShortcut("0", modifiers: .command)
+                    Button("주간 보기") { planner { $0.switchKind(.weekly) } }.keyboardShortcut("1", modifiers: .command)
+                    Button("일간 보기") { planner { $0.switchKind(.daily) } }.keyboardShortcut("2", modifiers: .command)
+                    Button("홈 (통계)") { planner { $0.switchKind(.home) } }.keyboardShortcut("0", modifiers: .command)
 
                     Divider()
-                    Button("이전 장") { delegate.state.flip(.backward) }.keyboardShortcut("[", modifiers: .command)
-                    Button("다음 장") { delegate.state.flip(.forward) }.keyboardShortcut("]", modifiers: .command)
-                    Button("오늘") { delegate.state.goToday() }.keyboardShortcut("t", modifiers: .command)
+                    Button("이전 장") { planner { $0.flip(.backward) } }.keyboardShortcut("[", modifiers: .command)
+                    Button("다음 장") { planner { $0.flip(.forward) } }.keyboardShortcut("]", modifiers: .command)
+                    Button("오늘") { planner { $0.goToday() } }.keyboardShortcut("t", modifiers: .command)
                     Divider()
-                    Button("PDF로 내보내기…") { PDFExportWindowController.shared.show(store: delegate.store, state: delegate.state) }
-                        .keyboardShortcut("p", modifiers: .command)
+                    Button("PDF로 내보내기…") {
+                        planner { _ in PDFExportWindowController.shared.show(store: delegate.store, state: delegate.state) }
+                    }
+                    .keyboardShortcut("p", modifiers: .command)
                 }
             }
+    }
+}
+
+extension SpiraldayApp {
+    /// 플래너 메뉴 항목: 둘러보는 중이면 아무것도 하지 않는다
+    @MainActor
+    private func planner(_ f: (AppState) -> Void) {
+        guard !TourController.shared.isRunning else { return }
+        f(delegate.state)
     }
 }
 
@@ -85,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.migrateDefaults()
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
             || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
-            || Self.args.contains("--sample-book-test") {
+            || Self.args.contains("--sample-book-test") || Self.args.contains("--tour-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -155,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     Snapshotter.run(to: dir)
                     Snapshotter.onboarding(to: dir)
+                    FrontMatterSnapshot.run(to: dir)
                     exit(0)
                 }
             }
@@ -169,6 +192,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let dir = URL(fileURLWithPath: Self.args[i + 1])
             Fonts.activate {
                 Task { @MainActor in exit(await SampleBookTest.run(to: dir)) }
+            }
+            return
+        }
+        // 플래너 둘러보기 확인용: 메모리에만 만든 예시 플래너로 모든 단계를 PNG 로 찍고 단계 목록을 찍은 뒤 끝낸다
+        if let i = Self.args.firstIndex(of: "--tour-test") {
+            guard i + 1 < Self.args.count else {
+                print("사용법: Spiralday --tour-test <결과 폴더>")
+                exit(2)
+            }
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            Fonts.activate {
+                Task { @MainActor in exit(TourTest.run(to: dir)) }
             }
             return
         }
@@ -203,7 +238,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController = wc
         wc.show()
         state.installMonitors()
+        TourController.shared.attach(store: store, state: state, window: wc.window)
         if Self.args.contains("--settings") { SettingsWindowController.shared.show(store: store, state: state) }
+        // 플래너 둘러보기: 처음 한 번만 저절로 (새 사용자는 처음 안내를 마친 뒤, 기존 사용자는 1.0.5 를 처음 켰을 때).
+        // --tour 는 데모에서도 바로 띄워 본다.
+        if Self.args.contains("--tour") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { TourController.shared.start(.full) }
+        } else if !Self.args.contains("--demo") && !Self.args.contains("--settings") {
+            TourController.shared.startFirstTimeIfNeeded()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
