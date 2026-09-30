@@ -5,26 +5,22 @@
     <link>https://spiralday.com</link>
     <language>ko</language>
     <item>
-      <title>Spiralday 1.0.5</title>
-      <pubDate>Wed, 30 Sep 2026 03:31:54 +0000</pubDate>
-      <sparkle:version>6</sparkle:version>
-      <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
+      <title>Spiralday 1.0.6</title>
+      <pubDate>Wed, 30 Sep 2026 13:12:21 +0000</pubDate>
+      <sparkle:version>7</sparkle:version>
+      <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<ul><li>표지와 첫 장: 일간 · 주간 모두 책 맨 앞에 표지와 첫 장이 생겼어요. 표지 → 첫 장 → 첫날(첫 주) 순서라, 첫날에서 ← 로 넘기면 나와요. 표지 앞으로는 넘어가지 않아요</li>
-<li>표지에는 플래너 이름 · 기간 · 표지 색이 들어가요. 이름 · 기간 · 색은 설정 → 플래너에서 바꿔요</li>
-<li>첫 장에는 이 플래너에 적어 두고 싶은 말을 써요. 글 칸을 누르면 그 자리에서 쓰고 (⌥↩ 줄 바꿈, Esc 나 바깥을 누르면 끝), 길게 쓰면 글씨가 알맞게 줄어요. 예시 플래너 첫 장에도 한마디 적어 두었어요</li>
-<li>먼저 쓰고, 펜은 나중에: 할 일은 펜을 고르지 않고 바로 써요. 다 쓴 뒤 그 할 일의 왼쪽 칸을 누르면 형광펜(분류) 목록이 떠서 고르거나 ‘없음’으로 뺄 수 있어요. 주간에서는 할 일 앞 색 막대 자리를 눌러요</li>
-<li>아무 줄에나 쓰기: TASKS 15줄 중 아무 빈 줄이나 눌러 써요. 위에서부터 채우지 않아도 되고, 쓴 할 일은 그 줄에 그대로 있어요</li>
-<li>같은 형광펜끼리 모으기: 이미 쓰고 있는 형광펜을 고르면 그 할 일이 그 묶음 바로 아래로 옮겨 가요 (아래 할 일들은 빈 줄이 나올 때까지 한 줄씩 내려가요). 처음 쓰는 형광펜이면 쓴 줄에 그대로 있어요</li>
-<li>긴 할 일은 아래 줄이 비어 있으면 이어 쓰고, 아래에 다른 할 일이 있으면 글씨가 줄어 제 줄 안에 들어가요. Return 은 바로 아랫줄로 (같은 형광펜), ↑ ↓ 는 윗줄 · 아랫줄로 옮겨 가요</li>
-<li>→ 로 미룬 할 일은 다음 날, 같은 형광펜 묶음 바로 아래로 넘어가요 (같은 형광펜이 없으면 첫 빈 줄)</li>
-<li>이미 써 둔 할 일은 1.0.4 에서 보이던 줄에 그대로 있어요</li>
-<li>팔레트의 펜은 이제 타임테이블 전용이에요. 펜(또는 1–7)을 골라 10분 칸을 칠하고, 할 일의 형광펜은 왼쪽 칸에서 골라요</li>
-<li>주간 타임테이블을 더 크게: 위아래 여백을 줄이고 그만큼 시간 칸을 키웠어요 (한 시간 칸이 전보다 8% 높아요)</li>
-<li>플래너 둘러보기: 1.0.5 를 처음 켜면 (새로 설치했다면 처음 안내를 마친 뒤) 한 번, 일간 → 주간 → 홈 → 첫 장 · 표지 순서로 쓰는 법을 하나씩 짚어 줘요. D-day, COMMENT · DAY OFF, 할 일 쓰고 표시하고 넘기기, MEMO, 타임테이블 칠하기와 TOTAL TIME, 글씨 · 밥, 오늘의 컬러, 넘기는 법(단축키 · 클릭)까지 다 봐요. 예시 플래너가 있으면 그 책을 잠깐 펼쳐 보여 주고, 끝나면 보던 플래너 · 보던 페이지로 돌아와요. → · Return 다음, ← 이전, Esc 끝내기</li>
-<li>튜토리얼 다시 보기: 설정 → 튜토리얼에서 처음 안내(플래너 만들기)와 둘러보기(전체 · 일간 · 주간 · 홈 · 표지와 첫 장)를 골라 언제든 다시 볼 수 있어요. 도움말 → 플래너 둘러보기로도 바로 시작해요</li>
-<li>PDF 에 표지 포함: PDF 로 뽑을 때 ‘표지와 첫 장 넣기’가 기본으로 켜져 있어요 (일간 A4 · A4 반쪽 · 주간). A4 반쪽은 첫 장에 표지와 첫 장이 나란히 들어가서, 뽑아 묶으면 실제 책처럼 가지고 다닐 수 있어요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.5/Spiralday-1.0.5-macOS.zip" sparkle:edSignature="offjQRufIR4CPuUckEzpWvjVgX+Th32DDzE1k0WSybbFLPFF983NU/W+RamjxkVq7179/ChWmPZ/7itZISU2AQ==" length="5722391" type="application/octet-stream"/>
+      <description><![CDATA[<ul><li>일간 · 주간 · 홈을 바꾸거나 모니터를 연결 · 분리하는 등 화면 배치가 바뀔 때 가끔 앱이 꺼지던 문제를 고쳤어요</li>
+<li>팔레트 접기: 팔레트 끝의 작은 화살표나 ⌘\ 로 접으면 종이 옆에 가느다란 손잡이만 남아요. 손잡이에는 지금 고른 도구(형광펜 색 · 지우개 · 글씨 · 밥)가 보이고, 접혀 있어도 그 도구로 타임테이블을 그대로 칠할 수 있어요</li>
+<li>손잡이에 마우스를 올리면 팔레트가 펼쳐지고, 팔레트에서 벗어나면 다시 접혀요. 손잡이를 누르거나, 마우스로 펼친 채 ⌘\ 를 누르면 펼친 채로 고정돼요. 타임테이블을 칠하다 마우스를 누른 채 지나갈 때는 펼치지 않아요</li>
+<li>접혀 있을 때 1–7 · E 로 도구를 바꾸면 팔레트가 잠깐 펼쳐져 무엇을 골랐는지 보여 주고 다시 접혀요</li>
+<li>설정 → 팔레트의 ‘팔레트 자동으로 접기’를 켜면 늘 접힌 채로 시작해요 (처음에는 꺼져 있어서 지금처럼 펼쳐져 있어요). 접었는지 펼쳤는지는 다음에 켤 때도 그대로예요</li>
+<li>팔레트 자리 고르기: 설정 → 팔레트에서 오른쪽(기본) · 왼쪽 · 위 · 아래를 그림으로 골라요. 고르면 바로 옮겨 가요</li>
+<li>위 · 아래에 두면 같은 도구가 가로 한 줄로 놓이고, 형광펜은 종이 쪽으로 끝을 세워요. 스프링이 달린 쪽(일간 왼쪽, 주간 · 홈 위)에서는 스프링을 비켜 조금 더 떨어져 붙어요</li>
+<li>화면에 자리가 없으면 반대쪽에 붙고, 새로 고른 쪽에 자리가 모자라면 창을 옮기거나 조금 줄여 자리를 만들어요. 초록 버튼(확대)과 쪽 바꾸기도 팔레트 자리를 비워 두고 맞춰요</li>
+<li>플래너 둘러보기는 팔레트가 어느 쪽에 있든 말풍선이 그 도구를 가리키고, 접혀 있으면 둘러보는 동안만 펼쳤다가 끝나면 다시 접어요</li>
+<li>‘동작 줄이기’(손쉬운 사용)를 켜 두면 팔레트를 접고 펼칠 때 움직이지 않고 바로 바뀌어요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.0.6/Spiralday-1.0.6-macOS.zip" sparkle:edSignature="eRFUl9iLlSu8d6J6RY1uYqQb35CmwTqO98npxjyDJ2iiRLGlNvQ8ST2jdE/KmpG1QaTNM2LNFLDw4kcbRSToCg==" length="5898187" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
