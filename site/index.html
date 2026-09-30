@@ -63,7 +63,7 @@
     z-index: 0;
   }
   a { color: inherit; }
-  img { max-width: 100%; display: block; }
+  img { max-width: 100%; height: auto; display: block; }
   .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
   /* 위쪽 스프링 링 */
@@ -208,7 +208,7 @@
     .grid, .steps { grid-template-columns: 1fr; }
     .hero { padding-top: 24px; gap: 30px; }
     .hero-shot .tag { left: 6px; }
-    .hero-shot img { max-height: none; }
+    .hero-shot img { max-height: none; width: min(100%, 440px); }
     nav a:not(.dl) { display: none; }
     .privacy { padding: 36px 26px; }
     section { padding: 48px 0; }
