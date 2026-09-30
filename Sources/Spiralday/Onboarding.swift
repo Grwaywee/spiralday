@@ -1578,7 +1578,7 @@ private struct HighlightPage: View {
                 Headline(text: "형광펜으로 하루를 칠해요", tint: OnboardingModel.Step.highlight.tint)
                 VStack(alignment: .leading, spacing: 17) {
                     TipRow(title: "10분 칸 칠하기",
-                           detail: "오른쪽 팔레트에서 형광펜을 고르고, 타임테이블 칸을 끌어서 칠해요.") {
+                           detail: "팔레트에서 형광펜을 고르고, 타임테이블 칸을 끌어서 칠해요.") {
                         HighlighterPen(color: OB.cats[0])
                             .scaleEffect(0.58)
                             .rotationEffect(.degrees(-30))

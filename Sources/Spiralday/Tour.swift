@@ -9,6 +9,7 @@ import SwiftUI
 //   · 키: → / Return 다음, ← 이전, Esc 끝내기. 도는 동안 플래너 단축키 · 종이 누르기 · 팔레트는 쉰다
 //     (단계가 허락한 곳만 누를 수 있다: 첫 장의 글 칸)
 //   · 팔레트의 도구를 가리킬 때는 팔레트의 그 도구가 빛나고 말풍선이 팔레트 쪽을 가리킨다
+//     (팔레트가 오른쪽 · 왼쪽 · 위 · 아래 어디에 있든. 접혀 있으면 둘러보는 동안만 펼친다)
 //   · 예시 플래너가 있으면 잠깐 그 책을 펼쳐 보여 주고 (마지막 날 전날 · 일곱 날이 다 찬 마지막 주),
 //     끝나면 보던 책 · 보던 장으로 돌아간다. 없으면 지금 책의 보던 날 · 주로 둘러본다
 //   · 저절로는 한 번만 (본 창을 처음 열 때: 새 사용자는 처음 안내 뒤, 기존 사용자는 1.0.5 첫 실행).
@@ -420,8 +421,11 @@ final class TourController: ObservableObject {
     @Published var glow: Set<TourPaletteTarget> = []
     /// 팔레트 도구들의 자리 (팔레트 창 내용 기준, 왼쪽 위 원점, pt). 팔레트가 알려 준다.
     @Published private(set) var paletteFrames: [TourPaletteTarget: CGRect] = [:]
-    /// 팔레트 창이 없을 때(스냅샷 점검) 팔레트가 종이 가운데 높이에 붙어 있다고 치고 쓰는 크기
+    /// 팔레트 창이 없을 때(스냅샷 점검) 팔레트가 종이 가장자리 가운데에 붙어 있다고 치고 쓰는 크기와 쪽
     var assumedPaletteSize: CGSize?
+    var assumedPaletteEdge: PaletteEdge = .right
+    /// 스냅샷 점검(--tour-test)은 둘러보기를 돌리지 않고도 팔레트 도구 자리를 받는다
+    var capturesPaletteFrames = false
 
     var isRunning: Bool { kind != nil }
     var step: TourStep? { steps.indices.contains(index) ? steps[index] : nil }
@@ -472,7 +476,7 @@ final class TourController: ObservableObject {
         guard self.kind == nil, let store, let state, let window = plannerWindow,
               store.activeBook != nil || store.hasSampleBook else { return }
         // 넘기거나 쪽을 바꾸는 중이면 끝난 뒤에
-        guard state.curl.isIdle, !state.morphing else {
+        guard state.curl.isIdle, !state.morphing, !state.frameBusy else {
             if tries < 40 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     self?.start(kind, firstTime: firstTime, tries: tries + 1)
@@ -544,21 +548,28 @@ final class TourController: ObservableObject {
     // MARK: palette
 
     func setPaletteFrames(_ frames: [TourPaletteTarget: CGRect]) {
+        // 둘러보기 중일 때만 받는다. 평소에도 받으면 팔레트가 다시 그려질 때마다 본 창까지 다시 그려지고,
+        // 그게 창 크기 바꾸기(쪽 전환 · 화면 배치 변경)와 겹치면 AppKit 이 멈춘다 (1.0.5 크래시).
+        guard isRunning || capturesPaletteFrames else { return }
         if frames != paletteFrames { paletteFrames = frames }
     }
 
-    /// 팔레트가 본 창의 어느 쪽에 있고, 가리킬 도구가 본 창 기준 어느 높이인지 (본 창 내용 좌표, 위가 0)
+    /// 팔레트가 본 창의 어느 쪽에 있고, 가리킬 도구가 본 창 기준 어디인지 (본 창 내용 좌표, 위가 0)
     func paletteGeometry(_ target: TourPaletteTarget?, in size: CGSize) -> TourPaletteGeometry {
         let frame = target.flatMap { paletteFrames[$0] }
-        if let win = plannerWindow, let panel = win.childWindows?.first(where: { $0 is PalettePanel }), panel.isVisible {
-            let trailing = panel.frame.midX >= win.frame.midX
+        if let win = plannerWindow, let panel = win.childWindows?.first(where: { $0 is PalettePanel }) as? PalettePanel,
+           panel.isVisible {
+            let side = panel.side
+            let p = panel.frame, w = win.frame
             // 팔레트 내용의 왼쪽 위 = 패널의 (minX, maxY). 본 창 내용은 창 전체(제목 막대 포함)를 덮는다.
-            let y = frame.map { win.frame.maxY - (panel.frame.maxY - $0.midY) }
-            return TourPaletteGeometry(trailing: trailing, y: y)
+            let along = frame.map { f in side.isVertical ? w.maxY - (p.maxY - f.midY) : p.minX + f.midX - w.minX }
+            return TourPaletteGeometry(side: side, along: along)
         }
-        // 팔레트 창이 없으면 (스냅샷): 창 오른쪽 옆, 세로 가운데에 붙어 있다고 친다 (PaletteController.reposition)
-        guard let frame, let ps = assumedPaletteSize else { return TourPaletteGeometry() }
-        return TourPaletteGeometry(trailing: true, y: (size.height - ps.height) / 2 + frame.midY)
+        // 팔레트 창이 없으면 (스냅샷): 종이 그 쪽 가장자리의 가운데에 붙어 있다고 친다 (PalettePlacement)
+        let side = assumedPaletteEdge
+        guard let frame, let ps = assumedPaletteSize else { return TourPaletteGeometry(side: side) }
+        let along = side.isVertical ? (size.height - ps.height) / 2 + frame.midY : (size.width - ps.width) / 2 + frame.midX
+        return TourPaletteGeometry(side: side, along: along)
     }
 
     // MARK: scenes
@@ -598,7 +609,7 @@ final class TourController: ObservableObject {
     /// 오래 걸리면 (8초) 도착하지 못했어도 말풍선은 보여 준다.
     private func settle(_ scene: TourScene, gen: Int, tries: Int = 0, drove: Int = 0) {
         guard gen == generation, isRunning, let state else { return }
-        let idle = state.curl.isIdle && !state.morphing
+        let idle = state.curl.isIdle && !state.morphing && !state.frameBusy
         if idle && matches(scene) || tries > 100 {
             withAnimation(.easeOut(duration: 0.22)) { arrived = true }
             return
@@ -657,7 +668,7 @@ final class TourController: ObservableObject {
 
     private func restorePage(_ s: Saved, switched: Bool, tries: Int) {
         guard kind == nil, let state else { return }
-        guard state.curl.isIdle, !state.morphing else {
+        guard state.curl.isIdle, !state.morphing, !state.frameBusy else {
             if tries < 80 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
                     self?.restorePage(s, switched: switched, tries: tries + 1)
@@ -768,10 +779,10 @@ final class TourController: ObservableObject {
 
 /// 팔레트의 자리 (본 창 내용 좌표)
 struct TourPaletteGeometry {
-    /// 팔레트가 본 창 오른쪽에 있는지 (자리가 없으면 왼쪽에 붙는다)
-    var trailing = true
-    /// 가리킬 도구의 세로 가운데 (모르면 nil)
-    var y: CGFloat? = nil
+    /// 팔레트가 본 창의 어느 쪽에 붙어 있는지 (고른 쪽에 자리가 없으면 반대쪽)
+    var side: PaletteEdge = .right
+    /// 가리킬 도구의 가운데: 옆이면 세로 자리(y), 위 · 아래면 가로 자리(x). 모르면 nil
+    var along: CGFloat? = nil
 }
 
 struct TourActions {
@@ -971,11 +982,22 @@ enum TourLayout {
         // 팔레트: 팔레트 쪽 가장자리에 붙이고 꼬리로 그 도구를 가리킨다
         if case .palette = step.spot {
             let h = height(fullW)
-            let ty = palette.y ?? size.height / 2
-            let cy = centerY(ty, h)
-            let x = palette.trailing ? size.width - m - fullW : m
-            return Placement(width: fullW, x: x, anchor: .center(cy),
-                             arrow: Arrow(edge: palette.trailing ? .trailing : .leading, pos: ty - cy))
+            switch palette.side {
+            case .right, .left:
+                let ty = palette.along ?? size.height / 2
+                let cy = centerY(ty, h)
+                let x = palette.side == .right ? size.width - m - fullW : m
+                return Placement(width: fullW, x: x, anchor: .center(cy),
+                                 arrow: Arrow(edge: palette.side == .right ? .trailing : .leading, pos: ty - cy))
+            case .top, .bottom:
+                let tx = palette.along ?? size.width / 2
+                let x = min(max(tx - fullW / 2, m), size.width - m - fullW)
+                // 위: 창 버튼 자리 아래에서 위를 가리키고, 아래: 창 아래 가장자리에서 아래를 가리킨다
+                return palette.side == .top
+                    ? Placement(width: fullW, x: x, anchor: .top(topMargin), arrow: Arrow(edge: .top, pos: tx - x))
+                    : Placement(width: fullW, x: x, anchor: .bottom(size.height - m - TourBubbleShape.length),
+                                arrow: Arrow(edge: .bottom, pos: tx - x))
+            }
         }
         guard let first = holes.first else {
             // 비춘 곳이 없으면 가운데
@@ -1323,15 +1345,25 @@ private struct TourPaletteRootModifier: ViewModifier {
         content
             .allowsHitTesting(!tour.isRunning)
             .onPreferenceChange(TourPaletteFramesKey.self) { v in
-                MainActor.assumeIsolated { TourController.shared.setPaletteFrames(v) }
+                MainActor.assumeIsolated {
+                    let tour = TourController.shared
+                    if tour.capturesPaletteFrames {
+                        // 스냅샷 점검(--tour-test): 본 창이 없고, 점검이 메인 큐에서 돌아 미루면 받지 못한다
+                        tour.setPaletteFrames(v)
+                    } else {
+                        // 그리는 도중에 본 창을 건드리지 않게 다음 차례로 미룬다
+                        DispatchQueue.main.async { TourController.shared.setPaletteFrames(v) }
+                    }
+                }
             }
     }
 }
 
 // MARK: - QA (--tour-test)
 
-/// `Spiralday --tour-test <dir>`: 메모리의 예시 플래너로 둘러보기의 모든 단계를 순서대로 PNG 로 찍고 단계 목록을 찍는다.
-///   NN_<id>.png        보통 창 크기 (일간 560 × 877, 주간 · 홈 1270 × 811 pt) × 2. 팔레트 단계면 옆에 팔레트도 그린다.
+/// `Spiralday --tour-test <dir> [--palette-edge right|left|top|bottom]`:
+/// 메모리의 예시 플래너로 둘러보기의 모든 단계를 순서대로 PNG 로 찍고 단계 목록을 찍는다.
+///   NN_<id>.png        보통 창 크기 (일간 560 × 877, 주간 · 홈 1270 × 811 pt) × 2. 팔레트 단계면 그 쪽에 팔레트도 그린다.
 ///   small/NN_<id>.png  가장 작은 창 (일간 358 × 560, 주간 · 홈 860 × 549 pt)
 /// 실제 데이터는 건드리지 않는다.
 @MainActor
@@ -1357,6 +1389,10 @@ enum TourTest {
         let small: [PageKind: CGSize] = [.daily: CGSize(width: 358, height: 560), .weekly: CGSize(width: 860, height: 549),
                                          .home: CGSize(width: 860, height: 549)]
         let tour = TourController.shared
+        let edge = PaletteModel.argumentEdge ?? .right
+        tour.assumedPaletteEdge = edge
+        tour.capturesPaletteFrames = true
+        print("팔레트: \(edge.title)")
         for (i, step) in steps.enumerated() {
             let kind = step.scene.kind
             let state = AppState(kind: kind)
@@ -1369,19 +1405,21 @@ enum TourTest {
             }
             // 팔레트 (빛나는 도구와 그 자리)
             tour.glow = step.glow
-            let pal = palette(store: store, state: state)
+            let pal = palette(store: store, state: state, edge: edge)
             tour.assumedPaletteSize = pal.size
             let name = String(format: "%02d_%@.png", i + 1, step.id)
             for (sizes, sub) in [(normal, ""), (small, "small/")] {
                 guard let size = sizes[kind],
                       let img = render(step, number: i + 1, count: steps.count, kind: kind, index: state.index, size: size,
-                                       store: store, state: state, palette: pal.image, paletteSize: pal.size)
+                                       store: store, state: state, palette: pal.image, paletteSize: pal.size, edge: edge)
                 else { print("✗ \(name) 을 그리지 못했어요"); continue }
                 Snapshotter.write(img, dir.appendingPathComponent(sub + name))
             }
         }
         tour.glow = []
         tour.assumedPaletteSize = nil
+        tour.assumedPaletteEdge = .right
+        tour.capturesPaletteFrames = false
         print("✓ \(steps.count)장 → \(dir.path)")
         return 0
     }
@@ -1403,8 +1441,11 @@ enum TourTest {
     }
 
     /// 팔레트를 화면 밖 창에 그려서 그림과 도구 자리를 얻는다
-    private static func palette(store: PlannerStore, state: AppState) -> (image: CGImage?, size: CGSize) {
-        let host = NSHostingView(rootView: PaletteView().environmentObject(store).environmentObject(state))
+    private static func palette(store: PlannerStore, state: AppState, edge: PaletteEdge) -> (image: CGImage?, size: CGSize) {
+        let host = NSHostingView(rootView: PaletteView(model: PaletteModel(testEdge: edge, open: true))
+            .environment(\.isSnapshot, true)
+            .environmentObject(store)
+            .environmentObject(state))
         let size = host.fittingSize
         let w = NSWindow(contentRect: NSRect(x: -20_000, y: -20_000, width: size.width, height: size.height),
                          styleMask: [.borderless], backing: .buffered, defer: false)
@@ -1429,7 +1470,8 @@ enum TourTest {
 
     /// 종이 + 둘러보기 레이어 (+ 팔레트) 를 한 장으로
     private static func render(_ step: TourStep, number: Int, count: Int, kind: PageKind, index: Int, size: CGSize,
-                               store: PlannerStore, state: AppState, palette: CGImage?, paletteSize: CGSize) -> CGImage? {
+                               store: PlannerStore, state: AppState, palette: CGImage?, paletteSize: CGSize,
+                               edge: PaletteEdge) -> CGImage? {
         let scale: CGFloat = 2
         let snap = PageSnapshotter(store: store, state: state)
         guard let page = snap.image(kind: kind, index: index, size: size, scale: scale) else { return nil }
@@ -1444,28 +1486,44 @@ enum TourTest {
         r.isOpaque = false
         guard let overlay = r.cgImage else { return nil }
 
-        // 팔레트는 창 오른쪽 옆, 세로 가운데 (PaletteController.reposition 과 같게). 창보다 크면 위아래로 삐져나온다.
+        // 팔레트는 그 쪽 가장자리의 가운데 (PalettePlacement 와 같게, 스프링 쪽이면 스프링만큼 더 띄운다).
+        // 종이보다 길면 삐져나온다. 좌표는 종이 왼쪽 위가 0.
         let showPalette = palette != nil && (!step.glow.isEmpty || target != nil)
-        let gap = MainWindowController.paletteGap - 6   // 팔레트 그림에는 그림자 여유 6 이 들어 있다
-        let py = (size.height - paletteSize.height) / 2
-        let top = showPalette ? min(0, py) : 0
-        let bottom = showPalette ? max(size.height, py + paletteSize.height) : size.height
-        let W = size.width + (showPalette ? gap + paletteSize.width + 10 : 0)
-        let pw = Int(W * scale), ph = Int((bottom - top) * scale)
+        // 팔레트 그림에는 그림자 여유가 들어 있다
+        let gap = MainWindowController.paletteGap - PaletteMetrics.margin
+            + PalettePlacement.ringClearance(edge, kind: kind, pageWidth: size.width)
+        let ps = paletteSize
+        let pal: CGRect = switch edge {
+        case .right: CGRect(x: size.width + gap, y: (size.height - ps.height) / 2, width: ps.width, height: ps.height)
+        case .left: CGRect(x: -gap - ps.width, y: (size.height - ps.height) / 2, width: ps.width, height: ps.height)
+        case .top: CGRect(x: (size.width - ps.width) / 2, y: -gap - ps.height, width: ps.width, height: ps.height)
+        case .bottom: CGRect(x: (size.width - ps.width) / 2, y: size.height + gap, width: ps.width, height: ps.height)
+        }
+        let pageRect = CGRect(origin: .zero, size: size)
+        var bounds = showPalette ? pageRect.union(pal) : pageRect
+        if showPalette {
+            // 팔레트 바깥쪽으로 조금 여유
+            switch edge {
+            case .right: bounds.size.width += 10
+            case .left: bounds.origin.x -= 10; bounds.size.width += 10
+            case .top: bounds.origin.y -= 10; bounds.size.height += 10
+            case .bottom: bounds.size.height += 10
+            }
+        }
+        let pw = Int((bounds.width * scale).rounded()), ph = Int((bounds.height * scale).rounded())
         guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         // 바탕 (데스크톱처럼 옅은 회색). CG 는 아래가 0 이라 위에서부터 잰 y 를 뒤집는다.
         ctx.setFillColor(NSColor(calibratedWhite: 0.84, alpha: 1).cgColor)
         ctx.fill(CGRect(x: 0, y: 0, width: pw, height: ph))
-        func flip(_ y: CGFloat, _ h: CGFloat) -> CGFloat { CGFloat(ph) - (y - top + h) * scale }
-        let pageRect = CGRect(x: 0, y: flip(0, size.height), width: size.width * scale, height: size.height * scale)
-        ctx.draw(page, in: pageRect)
-        ctx.draw(overlay, in: pageRect)
-        if showPalette, let palette {
-            ctx.draw(palette, in: CGRect(x: (size.width + gap) * scale, y: flip(py, paletteSize.height),
-                                         width: paletteSize.width * scale, height: paletteSize.height * scale))
+        func place(_ r: CGRect) -> CGRect {
+            CGRect(x: (r.minX - bounds.minX) * scale, y: CGFloat(ph) - (r.maxY - bounds.minY) * scale,
+                   width: r.width * scale, height: r.height * scale)
         }
+        ctx.draw(page, in: place(pageRect))
+        ctx.draw(overlay, in: place(pageRect))
+        if showPalette, let palette { ctx.draw(palette, in: place(pal)) }
         return ctx.makeImage()
     }
 }

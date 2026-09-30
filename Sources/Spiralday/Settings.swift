@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Window
 
-/// 설정 창 (플래너, 형광펜, 기본 컬러 컨셉, D-day, 단축키, 데이터). 팔레트의 톱니 버튼 / ⌘, 로 연다.
+/// 설정 창 (플래너, 형광펜, 기본 컬러 컨셉, D-day, PDF, 팔레트, 단축키, 튜토리얼, 데이터). 팔레트의 톱니 버튼 / ⌘, 로 연다.
 /// 패널이라 플래너의 트랙패드 넘김 처리에서 빠지고, 닫으면 초점이 곧바로 플래너 창으로 돌아간다.
 @MainActor
 final class SettingsWindowController {
@@ -74,7 +74,7 @@ private final class SettingsPanel: NSPanel {
 // MARK: - Sections
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case books, pens, concept, dday, pdf, shortcuts, tutorials, data
+    case books, pens, concept, dday, pdf, palette, shortcuts, tutorials, data
 
     var id: Self { self }
 
@@ -85,6 +85,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .concept: "컬러 컨셉"
         case .dday: "D-day"
         case .pdf: "PDF로 뽑기"
+        case .palette: "팔레트"
         case .shortcuts: "단축키"
         case .tutorials: "튜토리얼"
         case .data: "데이터"
@@ -98,6 +99,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .concept: "TOTAL TIME, 요일, D-day 숫자, ○△× 표시에 쓰이는 강조색이에요."
         case .dday: "여기 저장한 D-day 를 날마다 골라 붙여요 · 목록에서 지우거나 고쳐도 이미 붙인 날은 그대로예요."
         case .pdf: "일간·주간·홈을 A4 로 뽑아요. 일간은 반쪽씩 두 장을 한 장에 놓으면 자른 뒤 실물 크기예요."
+        case .palette: "도구 팔레트를 종이의 어느 쪽에 둘지, 쓰지 않을 때 접어 둘지 골라요. 모든 플래너에 똑같이 적용돼요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
         case .tutorials: "처음 안내와 플래너 둘러보기를 언제든, 보고 싶은 것만 골라 다시 볼 수 있어요."
         case .data: "기록은 이 Mac 에만 저장되고, 적는 즉시 자동으로 저장돼요."
@@ -111,6 +113,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .concept: "paintpalette.fill"
         case .dday: "flag.fill"
         case .pdf: "printer.fill"
+        case .palette: "sidebar.right"
         case .shortcuts: "keyboard.fill"
         case .tutorials: "graduationcap.fill"
         case .data: "externaldrive.fill"
@@ -124,6 +127,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .concept: Color(hex: "E5577E")
         case .dday: Color(hex: "7B61D1")
         case .pdf: Color(hex: "E0674B")
+        case .palette: Color(hex: "5E6AD2")
         case .shortcuts: Color(hex: "8A8A93")
         case .tutorials: Color(hex: "2FA3A0")
         case .data: Color(hex: "3A84F0")
@@ -164,6 +168,7 @@ struct SettingsView: View {
                 case .concept: SettingsConceptPane()
                 case .dday: SettingsDDayPane()
                 case .pdf: PDFExportView()
+                case .palette: SettingsPalettePane()
                 case .shortcuts: SettingsShortcutsPane()
                 case .tutorials: SettingsTutorialsPane()
                 case .data: SettingsDataPane()
@@ -1708,6 +1713,8 @@ private struct SettingsShortcutsPane: View {
                 SettingsShortcutRow(keys: ["H"], title: "홈 (전체 통계)", alt: "⌘0")
                 SettingsShortcutRow(keys: ["W"], title: "주간", alt: "⌘1")
                 SettingsShortcutRow(keys: ["D"], title: "일간", alt: "⌘2")
+                SettingsShortcutRow(keys: ["⌘", "\\"], title: "팔레트 접기 · 펼치기",
+                                    detail: "접혀 있어도 지금 고른 도구로 칠할 수 있어요")
             } header: {
                 SettingsSectionTitle(title: "보기")
             }
@@ -1716,7 +1723,8 @@ private struct SettingsShortcutsPane: View {
                 SettingsShortcutRow(keys: ["1", "–", "7"], title: "형광펜 고르기") {
                     penLegend
                 }
-                SettingsShortcutRow(keys: ["E"], title: "지우개")
+                SettingsShortcutRow(keys: ["E"], title: "지우개",
+                                    detail: "팔레트가 접혀 있으면 잠깐 펼쳐 무엇을 골랐는지 보여 줘요")
                 SettingsShortcutRow(keys: ["esc"], title: "글쓰기 마치기")
             } header: {
                 SettingsSectionTitle(title: "도구")
@@ -1795,6 +1803,53 @@ private struct SettingsShortcutRow<Detail: View>: View {
 extension SettingsShortcutRow where Detail == EmptyView {
     init(keys: [String], title: String, detail: String? = nil, alt: String? = nil) {
         self.init(keys: keys, title: title, detail: detail, alt: alt) { EmptyView() }
+    }
+}
+
+// MARK: - 팔레트
+
+/// 팔레트를 둘 자리 (오른쪽 · 왼쪽 · 위 · 아래) 와 자동으로 접기. 이 Mac 의 설정이라 모든 플래너에 똑같다.
+private struct SettingsPalettePane: View {
+    @ObservedObject private var palette = PaletteModel.shared
+
+    var body: some View {
+        Form {
+            Section {
+                PalettePositionPicker(edge: $palette.edge)
+                    .padding(.vertical, 6)
+            } header: {
+                VStack(alignment: .leading, spacing: 18) {
+                    SettingsPaneHeader(pane: .palette)
+                    SettingsSectionTitle(title: "자리", trailing: palette.edge.title)
+                }
+            } footer: {
+                SettingsFootnote(text: "고르면 바로 옮겨 가요. 위 · 아래에 두면 도구가 가로 한 줄로 놓여요. "
+                                 + "스프링이 달린 쪽(일간은 왼쪽, 주간 · 홈은 위)에서는 스프링을 비켜 조금 더 떨어져 붙고, "
+                                 + "화면에 자리가 없으면 반대쪽에 붙어요.")
+            }
+
+            Section {
+                Toggle(isOn: $palette.autoCollapse) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("팔레트 자동으로 접기")
+                        Text("평소에는 종이 옆에 가느다란 손잡이만 남겨 둬요. 손잡이에 마우스를 올리면 펼쳐지고, "
+                             + "팔레트에서 벗어나면 다시 접혀요.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.vertical, 2)
+                SettingsShortcutRow(keys: ["⌘", "\\"], title: "팔레트 접기 · 펼치기",
+                                    detail: "팔레트 끝의 작은 화살표나 접힌 손잡이를 눌러도 돼요")
+            } header: {
+                SettingsSectionTitle(title: "접기")
+            } footer: {
+                SettingsFootnote(text: "접혀 있어도 지금 고른 도구로 타임테이블을 칠할 수 있어요. 손잡이에 지금 도구가 보이고, "
+                                 + "1–7 · E 로 도구를 바꾸면 잠깐 펼쳐 무엇을 골랐는지 보여 줘요. "
+                                 + "손잡이를 누르면 펼친 채로 고정돼요.")
+            }
+        }
     }
 }
 

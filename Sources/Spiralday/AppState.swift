@@ -16,6 +16,8 @@ final class AppState: ObservableObject {
     @Published var fontsReady = false
     /// 주간 ↔ 일간 전환으로 창 비율이 바뀌는 중
     @Published var morphing = false
+    /// 팔레트 자리를 만드느라 창 크기를 바꾸는 중 (그동안 쪽을 바꾸지 않는다: 창 애니메이션이 겹치지 않게)
+    var frameBusy = false
 
     let curl = CurlController()
     /// 숫자 키로 형광펜을 고를 때 순서 → id 변환용, 펼친 책의 범위
@@ -31,6 +33,8 @@ final class AppState: ObservableObject {
     var kindTransition: ((_ to: PageKind, _ apply: @escaping () -> Void) -> Void)?
     /// 페이지/데이터가 바뀌었을 때 (창 제목, 스냅샷 미리 그리기 등)
     var onPageChange: (() -> Void)?
+    /// 단축키(1–7 · E)로 도구를 바꿨을 때 (접힌 팔레트를 잠깐 펼쳐 보여 준다)
+    var onToolShortcut: (() -> Void)?
 
     private var monitors: [Any] = []
     private var swipeActive = false
@@ -238,7 +242,7 @@ final class AppState: ObservableObject {
     }
 
     private func setKind(_ k: PageKind) {
-        guard curl.isIdle, !morphing, k != kind else { return }
+        guard curl.isIdle, !morphing, !frameBusy, k != kind else { return }
         morphTarget = k
         let apply = { [weak self] in
             guard let self else { return }
@@ -263,7 +267,7 @@ final class AppState: ObservableObject {
         let showing = morphTarget ?? kind
         let target = k ?? (showing == .home ? lastPageKind : showing)
         guard target.flips else { return }
-        let busy = !curl.isIdle || (morphing && target != showing)
+        let busy = !curl.isIdle || frameBusy || (morphing && target != showing)
         if busy {
             guard tries < 40 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -289,27 +293,28 @@ final class AppState: ObservableObject {
     func installMonitors() {
         guard monitors.isEmpty else { return }
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard let self else { return e }
-            return MainActor.assumeIsolated { self.handleKey(e) }
+            let eat = MainActor.assumeIsolated { self?.handleKey(e) ?? false }
+            return eat ? nil : e
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] e in
-            guard let self else { return e }
-            return MainActor.assumeIsolated { self.handleScroll(e) }
+            let eat = MainActor.assumeIsolated { self?.handleScroll(e) ?? false }
+            return eat ? nil : e
         } as Any)
     }
 
     private var isTyping: Bool { NSApp.keyWindow?.firstResponder is NSTextView }
 
-    private func handleKey(_ e: NSEvent) -> NSEvent? {
-        if e.keyCode == 53 { endEditing(); return isTyping ? nil : e }
-        if isTyping || !e.modifierFlags.intersection([.command, .control, .option]).isEmpty { return e }
+    /// 처리했으면 true (이벤트를 먹는다)
+    private func handleKey(_ e: NSEvent) -> Bool {
+        if e.keyCode == 53 { endEditing(); return isTyping }
+        if isTyping || !e.modifierFlags.intersection([.command, .control, .option]).isEmpty { return false }
         // 한글 입력 상태에서도 동작하도록 물리 키 코드와 자모 모두 확인
         switch e.charactersIgnoringModifiers?.lowercased() ?? "" {
-        case "t", "ㅅ": goToday(); return nil
-        case "w", "ㅈ": switchKind(.weekly); return nil
-        case "d", "ㅇ": switchKind(.daily); return nil
-        case "h", "ㅗ": switchKind(.home); return nil
-        case "e", "ㄷ": tool = -1; return nil
+        case "t", "ㅅ": goToday(); return true
+        case "w", "ㅈ": switchKind(.weekly); return true
+        case "d", "ㅇ": switchKind(.daily); return true
+        case "h", "ㅗ": switchKind(.home); return true
+        case "e", "ㄷ": pickTool(Self.eraser); return true
         default: break
         }
         let digits: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6]
@@ -320,32 +325,39 @@ final class AppState: ObservableObject {
         case 13: switchKind(.weekly)
         case 2: switchKind(.daily)
         case 4: switchKind(.home)
-        case 14: tool = -1
+        case 14: pickTool(Self.eraser)
         case let k where digits[k] != nil:
-            if let cats = store?.categories, digits[k]! < cats.count { tool = cats[digits[k]!].id }
-        default: return e
+            if let cats = store?.categories, digits[k]! < cats.count { pickTool(cats[digits[k]!].id) }
+        default: return false
         }
-        return nil
+        return true
+    }
+
+    /// 단축키로 도구 고르기 (팔레트가 접혀 있으면 잠깐 펼쳐 보여 준다)
+    private func pickTool(_ id: Int) {
+        tool = id
+        onToolShortcut?()
     }
 
     /// 트랙패드 두 손가락 가로 스와이프로 종이를 잡고 넘긴다
-    private func handleScroll(_ e: NSEvent) -> NSEvent? {
-        guard !morphing, e.window?.isKind(of: NSPanel.self) != true else { return e }
-        if !e.momentumPhase.isEmpty { return swipeActive ? nil : e }
+    /// 처리했으면 true (이벤트를 먹는다)
+    private func handleScroll(_ e: NSEvent) -> Bool {
+        guard !morphing, e.window?.isKind(of: NSPanel.self) != true else { return false }
+        if !e.momentumPhase.isEmpty { return swipeActive }
         var dx = e.scrollingDeltaX
         if !e.isDirectionInvertedFromDevice { dx = -dx }
 
         if e.phase.isEmpty {
             // 일반 마우스 휠의 가로 스크롤: 한 장씩
             if abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY), abs(dx) > 2 { flip(dx < 0 ? .forward : .backward) }
-            return e
+            return false
         }
         switch e.phase {
         case .began:
             swipeActive = false
         case .changed:
             if !swipeActive {
-                guard abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) * 1.2, abs(dx) > 0.5 else { return e }
+                guard abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) * 1.2, abs(dx) > 0.5 else { return false }
                 swipeActive = true
                 curl.swipe(.began, deltaX: dx)
             } else {
@@ -359,6 +371,6 @@ final class AppState: ObservableObject {
             swipeActive = false
         default: break
         }
-        return swipeActive ? nil : e
+        return swipeActive
     }
 }

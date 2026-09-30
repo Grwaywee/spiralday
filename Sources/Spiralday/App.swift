@@ -42,6 +42,8 @@ struct SpiraldayApp: App {
                     Button("주간 보기") { planner { $0.switchKind(.weekly) } }.keyboardShortcut("1", modifiers: .command)
                     Button("일간 보기") { planner { $0.switchKind(.daily) } }.keyboardShortcut("2", modifiers: .command)
                     Button("홈 (통계)") { planner { $0.switchKind(.home) } }.keyboardShortcut("0", modifiers: .command)
+                    Button("팔레트 접기 / 펼치기") { planner { _ in PaletteModel.shared.togglePinned() } }
+                        .keyboardShortcut("\\", modifiers: .command)
 
                     Divider()
                     Button("이전 장") { planner { $0.flip(.backward) } }.keyboardShortcut("[", modifiers: .command)
@@ -107,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.migrateDefaults()
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
             || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
-            || Self.args.contains("--sample-book-test") || Self.args.contains("--tour-test") {
+            || Self.args.contains("--sample-book-test") || Self.args.contains("--tour-test")
+            || Self.args.contains("--palette-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -204,6 +207,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let dir = URL(fileURLWithPath: Self.args[i + 1])
             Fonts.activate {
                 Task { @MainActor in exit(TourTest.run(to: dir)) }
+            }
+            return
+        }
+        // 팔레트 확인용: 네 자리 × 펼침 · 접힘을 종이 옆에 그려 PNG 로 남기고 끝낸다 (메모리에서만)
+        if let i = Self.args.firstIndex(of: "--palette-test") {
+            guard i + 1 < Self.args.count else {
+                print("사용법: Spiralday --palette-test <결과 폴더>")
+                exit(2)
+            }
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            let st = store
+            Fonts.activate {
+                Task { @MainActor in exit(PaletteTest.run(to: dir, store: st)) }
             }
             return
         }

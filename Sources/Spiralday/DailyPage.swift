@@ -140,7 +140,7 @@ struct DailyPage: View {
 
     // MARK: TASKS
     // 1.0.5: 할 일은 아무 줄에나 쓰고 (누른 줄에 그대로 남는다), 형광펜(분류)은 다 쓴 뒤에 그 할 일의 왼쪽 칸을 눌러 고른다.
-    // 오른쪽 팔레트의 펜은 타임테이블을 칠할 때만 쓴다.
+    // 팔레트의 펜은 타임테이블을 칠할 때만 쓴다.
 
     private func taskKey(_ id: UUID) -> String { AppState.taskKey(date, id) }
 
