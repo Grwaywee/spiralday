@@ -158,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startDrive(_ cfg: SyncQADriveLaunch.Config) {
         Fonts.register()
         let window = SyncQADriveWindow.make(store: store, state: state)
+        sync.plannerWindow = { window }
         state.installMonitors()
         let sy = sync, st = state
         Task { @MainActor in await sy.start(state: st) }
@@ -340,6 +341,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard windowController == nil else { windowController?.show(); return }
         let wc = MainWindowController(store: store, state: state)
         windowController = wc
+        // 실시간 쓰기(동기화를 켰을 때만): 조합 중인 글자 · "다른 기기에서 쓰는 중" 은 이 창의 글 칸에서
+        sync.plannerWindow = { [weak wc] in wc?.window }
         wc.show()
         state.installMonitors()
         TourController.shared.attach(store: store, state: state, window: wc.window)

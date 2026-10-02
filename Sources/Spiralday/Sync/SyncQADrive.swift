@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import Combine
 import SwiftUI
 import SpiraldayKit
 import SpiraldaySync
@@ -126,6 +127,9 @@ final class SyncQADrive {
     private let sync: SyncController
     private let keychainService: String
     private let window: () -> NSWindow?
+    /// watchStart 로 지켜보는 날의 변화 (받은 때 · 그날의 값)
+    private var watch: AnyCancellable?
+    private var watched: [[String: Any]] = []
 
     static func start(_ config: SyncQADriveLaunch.Config, store: PlannerStore, state: AppState, sync: SyncController,
                       window: @escaping () -> NSWindow?) {
@@ -299,7 +303,71 @@ final class SyncQADrive {
                     tv.interpretKeyEvents([e])
                 }
             }
-            return ["text": tv.string]
+            return ["text": tv.string, "at": Self.ms()]
+        case "compose":
+            // 입력기의 조합 한 단계 (marked text — 한글 ㅎ → 하 → 한). 조합을 끝내는 것은 commit
+            guard let tv = fieldEditor else { throw Failure("쓰는 칸에 포커스가 없어요") }
+            let t = try str("text")
+            tv.setMarkedText(t, selectedRange: NSRange(location: (t as NSString).length, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+            return ["text": tv.string, "marked": tv.hasMarkedText(), "at": Self.ms()]
+        case "commit":
+            guard let tv = fieldEditor else { throw Failure("쓰는 칸에 포커스가 없어요") }
+            tv.insertText(try str("text"), replacementRange: NSRange(location: NSNotFound, length: 0))
+            return ["text": tv.string, "marked": tv.hasMarkedText(), "at": Self.ms()]
+        case "paintDrag":
+            // 일간 타임테이블을 끌어 칠하기 (SlotPainter 의 끌기 걸음과 같은 계산). row 줄의 from 칸 → to 칸, 칸마다 stepMs
+            return try await paintDrag(row: try int("row"), from: try int("from"), to: try int("to"),
+                                       stepMs: (a["stepMs"] as? Int) ?? 80, tool: a["cat"] as? Int)
+        case "watchStart":
+            // 그 날이 바뀔 때마다 (받은 초안 · 레코드 · 내 편집) 받은 때와 값을 적는다 — 지연을 재려고
+            let k = Dates.key(try day())
+            watched = []
+            var last = store.data.days[k]
+            watch = store.$data.sink { [weak self] d in
+                let r = d.days[k]
+                guard r != last else { return }
+                last = r
+                self?.watched.append(Self.dayJSON(r, at: Self.ms()))
+            }
+            return nil
+        case "watchStop":
+            watch = nil
+            defer { watched = [] }
+            return watched
+        case "day":
+            return Self.dayJSON(store.data.days[Dates.key(try day())], at: Self.ms())
+        case "liveState":
+            let live = sync.live
+            var o: [String: Any] = [:]
+            if let p = live?.presence {
+                o["presence"] = ["relay": p.relay, "peers": p.peers, "live": p.live] as [String: Any]
+            } else {
+                o["presence"] = NSNull()
+            }
+            o["applied"] = live?.appliedCount ?? 0
+            o["edits"] = live?.editsSent ?? 0
+            o["composedEdits"] = live?.composedEdits ?? 0
+            o["hint"] = live?.hints.shown ?? NSNull()
+            if let p = live?.hints.visiblePanel {
+                o["hintPanel"] = ["x": p.frame.minX, "y": p.frame.minY, "w": p.frame.width, "h": p.frame.height,
+                                  "canBecomeKey": p.canBecomeKey] as [String: Any]
+            } else {
+                o["hintPanel"] = NSNull()
+            }
+            o["plannerIsKey"] = window()?.isKeyWindow ?? false
+            if let c = await sync.liveCountersForQA() {
+                o["counters"] = ["sent": c.sent, "received": c.received, "dropped": c.dropped, "deferred": c.deferred,
+                                 "adopted": c.adopted, "tooLarge": c.tooLarge] as [String: Any]
+            } else {
+                o["counters"] = NSNull()
+            }
+            o["settleHooked"] = store.settleBeforeCleanup != nil
+            o["saveHooked"] = store.beforeScheduledSave != nil
+            return o
+        case "snapshot":
+            // 화면 밖 플래너 창 + 그 위의 알림 패널을 PNG 로 (사람이 보는 모습 그대로)
+            return try snapshot(to: URL(fileURLWithPath: try str("path")))
         case "undo":
             // ⌘Z: 플래너 창의 되돌리기 (기록이 없으면 아무 일도 하지 않는다 — 메뉴의 되돌리기가 흐려진 것과 같다)
             // 메뉴의 되돌리기(⌘Z)처럼 undo: 를 지금 응답자부터 보낸다 (응답자 사슬에서 처음 받는 쪽이 자기 되돌리기 기록으로)
@@ -376,6 +444,76 @@ final class SyncQADrive {
         default:
             throw Failure("모르는 명령: \(op)")
         }
+    }
+
+    static func ms() -> Int { Int(Date().timeIntervalSince1970 * 1000) }
+
+    static func dayJSON(_ r: DayRecord?, at: Int) -> [String: Any] {
+        let r = r ?? DayRecord()
+        var painted: [String: Int] = [:]
+        for (i, v) in r.slots.enumerated() where v >= 0 { painted[String(i)] = v }
+        return ["at": at, "comment": r.comment, "tasks": r.tasks.map { ["id": $0.id.uuidString, "text": $0.text] },
+                "memos": r.memos, "slots": painted]
+    }
+
+    /// 일간 타임테이블을 끌어 칠하는 걸음을 그대로 (SlotPainter.drag 와 같은 계산: 끌기 시작의 칸을 적어 두고, 칸이 바뀔 때마다
+    /// 지금 저장소의 칸 위에 이번 범위만 칠해 editDay). 화면 밖 창에는 마우스 이벤트를 보낼 수 없어 끌기 걸음만 같은 길로 부른다
+    private func paintDrag(row: Int, from: Int, to: Int, stepMs: Int, tool: Int?) async throws -> [String: Any] {
+        guard state.kind == .daily, state.front == nil else { throw Failure("일간 페이지가 아니에요") }
+        state.endEditing()
+        if let tool { state.tool = tool }
+        let date = state.currentDate
+        let start = row * 6 + from
+        let before = store.day(date).slots
+        // 같은 색을 다시 칠하면 지우개 (SlotPainter 와 같다)
+        let paint = (state.tool < 0 || before[start] == state.tool) ? -1 : state.tool
+        var painted: ClosedRange<Int>?
+        var steps: [[String: Any]] = []
+        let dir = to >= from ? 1 : -1
+        var c = from
+        while true {
+            let s = row * 6 + c
+            let range = min(start, s)...max(start, s)
+            let current = store.day(date).slots
+            let next = DayRecord.repainted(current, before: before, previous: painted, range: range, value: paint)
+            painted = range
+            if next != current { store.editDay(date) { $0.slots = next } }
+            steps.append(["cell": s, "at": Self.ms()])
+            if c == to { break }
+            try? await Task.sleep(nanoseconds: UInt64(stepMs) * 1_000_000)
+            c += dir
+        }
+        return ["steps": steps, "slots": Self.dayJSON(store.data.days[Dates.key(date)], at: Self.ms())["slots"] ?? [:]]
+    }
+
+    private func snapshot(to url: URL) throws -> [String: Any] {
+        guard let w = window(), let view = w.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            throw Failure("창이 없어요")
+        }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let size = view.bounds.size
+        let img = NSImage(size: size)
+        img.addRepresentation(rep)
+        var hint: [String: Any]? = nil
+        if let p = sync.live?.hints.visiblePanel, let pv = p.contentView, let prep = pv.bitmapImageRepForCachingDisplay(in: pv.bounds) {
+            pv.cacheDisplay(in: pv.bounds, to: prep)
+            // 패널의 화면 자리 → 창 안 자리
+            let r = w.convertFromScreen(p.frame)
+            let out = NSImage(size: size)
+            out.lockFocus()
+            rep.draw(in: NSRect(origin: .zero, size: size))
+            prep.draw(in: r)
+            out.unlockFocus()
+            hint = ["x": r.minX, "y": size.height - r.maxY, "w": r.width, "h": r.height]
+            guard let tiff = out.tiffRepresentation, let b = NSBitmapImageRep(data: tiff), let png = b.representation(using: .png, properties: [:]) else {
+                throw Failure("PNG")
+            }
+            try png.write(to: url)
+        } else {
+            guard let png = rep.representation(using: .png, properties: [:]) else { throw Failure("PNG") }
+            try png.write(to: url)
+        }
+        return ["path": url.path, "hint": hint ?? NSNull()]
     }
 
     private func result(_ r: SyncActionResult) -> [String: Any] {

@@ -12,6 +12,9 @@ import Foundation
 // 넣기 (모두 MainActor 에서 바로 — 사이에 사용자의 편집이 끼어들지 않는다)
 //   applyLibrary(_:)                  책장 (책 더하기 · 정보 바꾸기 · 빼기). 펼친 책이 빠지면 다른 책을 편다
 //   applyActiveData(_:keepingEditOf:base:) 펼친 책의 내용. 쓰는 중인 칸은 화면의 글을 지킨다 (포커스만 있는 칸은 아니다). 바로 저장한다
+//   applyActiveChange(editingKey:_:)  펼친 책의 레코드 몇 개 (실시간 — 다른 기기에서 막 친 글자). 메모리에 바로, 저장은 평소 묶음으로
+//   settleBeforeCleanup · afterEditing 쓰기를 마친 뒤의 정리(빈 할 일 지우기)를 밖의 일이 끝난 뒤로 (Models.swift)
+//   beforeScheduledSave               묶어 둔 저장이 파일을 쓰기 직전에 (밖이 자기 기록을 먼저 쓰게, Models.swift)
 //   noteEditingField(_:)              쓰기 시작한 칸 (AppState.editingKey 가 바뀔 때 알린다) — 쓰는 중인지를 그 칸의 편집으로 가른다
 //   readBookRaw / writeBookRaw / removeBookFile   펼치지 않은 책 파일
 //
@@ -173,6 +176,42 @@ extension PlannerStore {
             }
         }
         if result.changed || result.keptEdit { saveNow() }
+        return result
+    }
+
+    /// 밖에서 온 작은 변경(하루 · 한 주 · 책 설정 몇 개 — 예: 다른 기기에서 막 친 글자 · 칠한 칸)을 펼친 책 메모리에 바로 넣는다.
+    /// change 는 지금 data 의 사본을 고친다 (같은 MainActor 차례 안에서 — 그 사이 사용자의 편집이 끼어들지 않는다).
+    /// - applyActiveData 와 같이 밖에서 온 변경이다: isApplyingExternalChange 동안 바꾸고 (되돌리기는 rebased 로 옮긴다),
+    ///   사용자의 편집으로 세지 않는다 (lastLocalEdit · 쓰는 칸의 고친 때는 그대로, 쓰는 칸의 기록은 새 글로 맞춘다).
+    /// - 파일은 바로 쓰지 않고 평소처럼 묶어서 저장한다 (scheduleSave — 0.6초 뒤 onSaved).
+    /// - 쓰는 칸을 따로 지키지 않는다: 넣는 쪽이 이미 쓰는 칸의 글을 화면 그대로 두었다. editingKey 를 주면 그 칸의 할 일 · 메모가
+    ///   없어졌는지만 알린다 (editedItemRemoved → 앱이 편집을 끝낸다).
+    /// - 저장소마다 따로인 값(prefs.lastKind · ddaysPerDay)은 이 저장소의 것을 두고, 줄이 없는 할 일에는 줄을 매긴다.
+    /// - 내용이 같으면 아무것도 하지 않는다. 펼친 책이 없거나 그 책 파일을 읽지 못했으면 change 를 부르지 않는다 (changed = false).
+    @discardableResult
+    public func applyActiveChange(editingKey: String? = nil, _ change: (inout PlannerData) -> Void) -> ExternalApplyResult {
+        var result = ExternalApplyResult()
+        guard let id = library.activeID, unreadableBooks[id] == nil else { return result }
+        var next = data
+        change(&next)
+        next.prefs.lastKind = data.prefs.lastKind
+        next.prefs.ddaysPerDay = data.prefs.ddaysPerDay
+        for (k, r) in next.days where !r.taskRowsReady { next.days[k]?.assignTaskRows() }
+        if let editingKey, PlannerData.editedText(editingKey, in: data) != nil, PlannerData.editedText(editingKey, in: next) == nil {
+            result.editedItemRemoved = true
+        }
+        guard next != data else { return result }
+        result.changed = true
+        isApplyingExternalChange = true
+        defer { isApplyingExternalChange = false }
+        data = next
+        bump()
+        // 밖에서 넣은 글은 사용자가 고친 것이 아니다: 쓰는 칸의 기록을 새 글로 맞춘다 (고친 때는 그대로)
+        if var f = fieldEdit {
+            f.text = PlannerData.editedText(f.key, in: data)
+            fieldEdit = f
+        }
+        scheduleSave()
         return result
     }
 

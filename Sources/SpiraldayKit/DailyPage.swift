@@ -203,7 +203,7 @@ public struct DailyPage: View {
             highlight: task.mark == .done ? cat?.color : nil,
             // Return: 바로 아랫줄이 비었으면 거기에 새 할 일 (같은 형광펜), 할 일이 있으면 그 할 일로
             onSubmit: { [store, state, date] in Self.submitTask(store, state, date, id) },
-            onEnd: { [store, state, date] in store.cleanup(date, keep: state.editingTaskID(on: date)) },
+            onEnd: { [store, state, date] in store.afterEditing { store.cleanup(date, keep: state.editingTaskID(on: date)) } },
             // ↑ ↓ : 윗줄 / 아랫줄로 (빈 줄이면 거기에 새 할 일)
             canMoveLine: { [store, state, date] down in
                 state.editingKey == AppState.taskKey(date, id) && Self.caretAtEdge(store, date, id, down: down)

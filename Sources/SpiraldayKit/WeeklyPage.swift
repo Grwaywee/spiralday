@@ -305,7 +305,7 @@ private struct WeekDayColumn: View {
                         // 형광펜은 끝낸(○) 일에만, 그 할 일의 형광펜 색으로 (형광펜이 없으면 긋지 않는다)
                         highlight: task.mark == .done ? cat?.color : nil,
                         onSubmit: { Self.submit(store, st, d, after: task.id) },
-                        onEnd: { store.cleanup(d, keep: st.editingTaskID(on: d)) })
+                        onEnd: { store.afterEditing { store.cleanup(d, keep: st.editingTaskID(on: d)) } })
                 .contextMenu {
                     // 편집 중에는 글상자 기본 메뉴(복사·붙여넣기)를 가리지 않는다
                     if st.editingKey != key { TaskMenu(date: d, task: task) }

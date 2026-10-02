@@ -612,4 +612,78 @@ final class ExternalChangesTests: XCTestCase {
         for i in 20...30 { old[i] = -1 }
         XCTAssertEqual(DayRecord.repainted(before, before: before, previous: 20...40, range: 20...30, value: -1), old)
     }
+
+    // MARK: 실시간 (applyActiveChange · afterEditing · beforeScheduledSave)
+
+    func testApplyActiveChangeIsAnOutsideChangeSavedLater() async throws {
+        let dir = tempFolder()
+        let s = PlannerStore(folder: dir)
+        let book = s.createBook(name: "책", start: d1, end: nil)
+        let task = PlanTask(text: "쓰던 할 일", row: 0)
+        s.editDay(d1) { $0.comment = "처음"; $0.tasks = [task] }
+        s.editPrefs { $0.lastKind = .weekly }
+        s.saveNow()
+        let edited = s.lastLocalEdit
+        var external: [Bool] = []
+        let watch = s.$data.dropFirst().sink { [weak s] _ in external.append(s?.isApplyingExternalChange ?? false) }
+        defer { watch.cancel() }
+        var saved: [UUID?] = []
+        s.onSaved = { b, _ in saved.append(b) }
+
+        let r = s.applyActiveChange(editingKey: "c|\(Dates.key(d1))") { d in
+            d.days[Dates.key(d1)]?.comment = "다른 기기의 글"
+            d.days[Dates.key(d2)] = { var r = DayRecord(); r.tasks = [PlanTask(text: "줄 없는 할 일")]; return r }()
+            d.prefs.lastKind = .daily                   // 기기마다 따로인 값은 이 저장소의 것
+        }
+        XCTAssertTrue(r.changed)
+        XCTAssertFalse(r.editedItemRemoved)
+        XCTAssertEqual(external, [true], "밖에서 온 변경으로")
+        XCTAssertEqual(s.lastLocalEdit, edited, "사용자의 편집으로 세지 않는다")
+        XCTAssertEqual(s.day(d1).comment, "다른 기기의 글")
+        XCTAssertEqual(s.data.prefs.lastKind, .weekly)
+        XCTAssertTrue(s.data.days[Dates.key(d2)]!.taskRowsReady, "줄이 없는 할 일에는 줄을 매긴다")
+        XCTAssertEqual(try readBook(dir, book).days[Dates.key(d1)]?.comment, "처음", "파일은 바로 쓰지 않는다")
+        XCTAssertTrue(saved.isEmpty)
+        try await Task.sleep(nanoseconds: 900_000_000)
+        XCTAssertEqual(try readBook(dir, book).days[Dates.key(d1)]?.comment, "다른 기기의 글", "평소 묶음 저장으로")
+        XCTAssertEqual(saved, [book])
+
+        // 같은 내용이면 아무것도 하지 않는다 · 쓰던 할 일이 없어지면 알린다
+        external = []
+        XCTAssertFalse(s.applyActiveChange { _ in }.changed)
+        XCTAssertEqual(external, [])
+        let gone = s.applyActiveChange(editingKey: AppState.taskKey(d1, task.id)) { d in d.days[Dates.key(d1)]?.tasks = [] }
+        XCTAssertTrue(gone.changed && gone.editedItemRemoved)
+    }
+
+    func testCleanupAndScheduledSaveGoThroughTheirGatesOnlyWhenSet() async throws {
+        let dir = tempFolder()
+        let s = PlannerStore(folder: dir)
+        let book = s.createBook(name: "책", start: d1, end: nil)
+        // 없으면 바로 (지금까지와 같다)
+        var ran = false
+        s.afterEditing { ran = true }
+        XCTAssertTrue(ran)
+        // 있으면 그 문을 지난 뒤에
+        var pending: [@MainActor () -> Void] = []
+        s.settleBeforeCleanup = { run in pending.append(run) }
+        ran = false
+        s.afterEditing { ran = true }
+        XCTAssertFalse(ran)
+        pending.removeFirst()()
+        XCTAssertTrue(ran)
+
+        var writes: [@MainActor () -> Void] = []
+        s.beforeScheduledSave = { write in writes.append(write) }
+        s.editDay(d1) { $0.comment = "묶음 저장" }
+        try await Task.sleep(nanoseconds: 800_000_000)
+        XCTAssertEqual(writes.count, 1, "묶어 둔 저장은 문을 지난다")
+        XCTAssertNil(try readBook(dir, book).days[Dates.key(d1)], "문이 열릴 때까지 쓰지 않는다")
+        writes.removeFirst()()
+        XCTAssertEqual(try readBook(dir, book).days[Dates.key(d1)]?.comment, "묶음 저장")
+        // saveNow 는 바로 (끝낼 때 · 책 바꾸기)
+        s.editDay(d1) { $0.comment = "바로" }
+        s.saveNow()
+        XCTAssertEqual(try readBook(dir, book).days[Dates.key(d1)]?.comment, "바로")
+    }
 }

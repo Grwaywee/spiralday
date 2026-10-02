@@ -13,7 +13,8 @@ import SpiraldaySync
 //
 //   켤 때          이 설치가 그룹에 들어간 적이 있을 때(UserDefaults 의 그룹 주소)만 키체인을 읽고 엔진을 만든다.
 //                  기본값은 꺼짐 — 켜기 전까지는 키체인도 네트워크도 건드리지 않는다
-//   저장할 때마다  PlannerStore.onSaved → engine.localChanged (책 · 책장), onDeleted → deletedBooks
+//   저장할 때마다  PlannerStore.onSaved → engine.localChanged (책 · 책장, 쓴 그 값 — 저장된 그림자), onDeleted → deletedBooks
+//   실시간 쓰기    글자 · 조합 단계 · 칠한 칸마다 liveEdit, 쓰는 칸 setEditing, 받은 초안은 열린 책 메모리에 바로 (SyncLive.swift)
 //   앱 수명        잠자기 → 저장 · suspend, 깨어남 · 네트워크가 돌아옴 · 앱이 앞으로 옴 → resume,
 //                  끝낼 때 → 저장 · suspend (남은 편집을 올린다, 오래 기다리지 않는다)
 //   받은 편집      펼친 책이 빠졌으면 안내 · 다른 책, 지금 장이 기간 밖이면 오늘로, 쓰던 칸이 바뀌었으면 그 칸의 ⌘Z 기록을 비운다
@@ -308,7 +309,10 @@ final class SyncController: ObservableObject {
     @Published private(set) var ready = false
     /// 동기화를 쓸 수 있는 실행인지 (데모 · 스냅샷 실행은 파일에 저장하지 않아 쓸 수 없다)
     @Published private(set) var available = true
-    @Published private(set) var inGroup = false
+    @Published private(set) var inGroup = false {
+        // 실시간 쓰기는 그룹에 있는 동안만 붙인다 (나오면 저장소에 건 것을 모두 걷는다)
+        didSet { if inGroup != oldValue { attachLive() } }
+    }
     @Published var flow: SyncFlow?
     /// 흐름을 시작하기 전의 단계 (시작 · 합류 · 복구 코드 입력)
     @Published var localStep: SyncLocalStep?
@@ -332,6 +336,10 @@ final class SyncController: ObservableObject {
     let store: PlannerStore
     weak var state: AppState?
     var platform: SyncPlatform { env.platform }
+    /// 플래너 종이가 있는 창 (실시간 쓰기: 조합 중인 글자 · "다른 기기에서 쓰는 중" 을 그 창의 글 칸에서만). 앱 · --sync-drive 가 넣는다
+    var plannerWindow: () -> NSWindow? = { nil }
+    /// 실시간 쓰기 (엔진이 있을 때만)
+    private(set) var live: SyncLiveBridge?
 
     private var engine: SyncEngine?
     private var host: PlannerSyncHost?
@@ -539,6 +547,8 @@ final class SyncController: ObservableObject {
         host.onActiveApplied = { [weak self] _ in self?.activeApplied() }
         host.onSettingsTextReplaced = { [weak self] values in self?.settingsTextReplaced(values) }
         let e = try env.makeEngine(host, want, env.credentials)
+        // 호스트의 쓰는 칸 안전망은 엔진이 지키는 동안만 (엔진보다 더 지키면 옛 글이 새 도장을 얻는다)
+        host.editingProtected = { [weak e] in e?.editingProtected }
         let (stream, cont) = AsyncStream<SyncEvent>.makeStream()
         listenerID = await e.addListener { cont.yield($0) }
         eventTask = Task { [weak self] in
@@ -559,13 +569,32 @@ final class SyncController: ObservableObject {
         engine = e
         engineURL = want
         inGroup = await e.inGroup
+        attachLive()
         status = SyncViewStatus(await e.status)
         if inGroup { startWatching() }
         return e
     }
 
+    /// 실시간 쓰기를 붙이거나 걷는다: 엔진이 있고 그룹에 있는 동안만 (꺼져 있으면 저장소 · 창에 아무것도 걸지 않는다)
+    private func attachLive() {
+        guard let engine, inGroup else {
+            live?.stop()
+            live = nil
+            host?.composing = { nil }
+            return
+        }
+        guard live == nil else { return }
+        let bridge = SyncLiveBridge(store: store, state: state, engine: engine, plannerWindow: { [weak self] in self?.plannerWindow() })
+        live = bridge
+        host?.composing = { [weak bridge] in bridge?.composing() }
+        bridge.start()
+    }
+
     private func detach(_ e: SyncEngine) async {
         stopWatching()
+        live?.stop()
+        live = nil
+        host?.composing = { nil }
         if let id = listenerID { await e.removeListener(id) }
         listenerID = nil
         eventTask?.cancel()
@@ -596,8 +625,8 @@ final class SyncController: ObservableObject {
     func willSleep() {
         guard let engine, inGroup else { return }
         asleep = true
-        store.saveNow()
         Task {
+            await saveAfterEngine(engine)
             await engine.suspend()
             // 올리는 동안 깨어났다: 엔진은 그 resume 을 보고 멈추지 않는다. resume 이 suspend 보다 먼저 닿았으면
             // suspend 가 멈췄으니 다시 켠다 (깨어 있는데 엔진이 멈춘 채 '동기화됨' 으로 남지 않게)
@@ -642,18 +671,28 @@ final class SyncController: ObservableObject {
     /// 앱을 끝내기 전: 저장하고 남은 편집을 올린다 (최대 timeout 초 — 못 올린 것은 다음에 켤 때 올린다). 끝나면 done
     func prepareToQuit(timeout: TimeInterval = 2.5, done: @escaping @MainActor () -> Void) {
         guard let engine, inGroup, !qaMode else { done(); return }
-        store.saveNow()
         var finished = false
-        let finish = { @MainActor in
+        var saved = false
+        let finish = { @MainActor [weak self] in
             guard !finished else { return }
             finished = true
+            if !saved { self?.store.saveNow() }   // 엔진이 늦어도 파일은 꼭
             done()
         }
         Task {
+            await saveAfterEngine(engine)
+            saved = true
             await engine.suspend()
             finish()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { finish() }
+    }
+
+    /// 파일을 바로 쓰기 전에 엔진 저장소부터 (storageBehind 면 flushLive) — 앱 파일이 엔진 저장소보다 앞선 채 꺼지면 다시 켤 때
+    /// 그 값(받은 초안 · 친 글)이 이 기기의 새 편집으로 올라가 다른 기기의 더 새 글을 덮는다 (Docs/SpiraldaySync.md §7.1)
+    private func saveAfterEngine(_ engine: SyncEngine) async {
+        if await engine.storageBehind { await engine.flushLive() }
+        store.saveNow()
     }
 
     func dispose() async {
@@ -666,7 +705,16 @@ final class SyncController: ObservableObject {
 
     private func saved(bookID: UUID?, library: Bool) {
         guard let engine, inGroup else { return }
-        if let bookID { engine.localChanged(bookId: bookID.uuidString) }
+        if let bookID {
+            // 방금 파일에 쓴 그 값 (저장된 그림자 — 엔진이 실시간으로 앞선 레코드가 있을 때만, 엔진 쪽에서 앱 형식 JSON 으로 만든다).
+            // onSaved 는 파일을 쓴 바로 그 차례에 오므로 지금 data 가 쓴 값이다 (펼치지 않은 책은 저장소가 알리지 않는다)
+            var saved: (@Sendable () -> JSONValue?)?
+            if bookID == store.library.activeID {
+                let written = store.data
+                saved = { PlannerSyncHost.savedJSON(written) }
+            }
+            engine.localChanged(bookId: bookID.uuidString, saved: saved)
+        }
         if library { engine.localChanged(library: true) }
         // 엔진은 상태가 바뀔 때만 알린다: "기다리는 기록 N개" 는 비교(0.4초) · 보내기(1.5초) 뒤에 다시 읽는다
         if status?.state != .idle { refreshStatus(after: 2.5) }
@@ -1417,6 +1465,14 @@ final class SyncController: ObservableObject {
 
     /// 화면 확인용 (서버에 묻지 않는다)
     private(set) var qaMode = false
+
+    #if DEBUG
+    /// --sync-drive: 실시간 쓰기 세기 (엔진이 없으면 nil)
+    func liveCountersForQA() async -> LiveCounters? {
+        guard let engine else { return nil }
+        return await engine.liveCounters
+    }
+    #endif
     var qaDevices: [SyncDeviceRow] = []
     var qaHistory: [SyncText.VersionRow] = []
     /// 스크린샷: 입력 칸에 미리 넣어 둘 값 ("code" · "link" · "restore" · "digits" · "check0" · "check1" · "checking" · "merge")

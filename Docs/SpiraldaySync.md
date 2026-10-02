@@ -125,6 +125,9 @@ try await sync.initialize()                               // 그룹에 들어 �
 | `writeBookRaw(_ id: UUID, _ raw: Data) throws` | 펼치지 않은 책 파일을 그대로 원자적으로 쓴다 (책장에 아직 없는 책도). 거절 `BookFileError`: `.bookIsOpen` · `.unreadable` · `.invalidContent` · `.fileError`. 호스트는 엔진의 값을 `decodeFile(PlannerData.self…)` → `encodeFile` 로 한 번 거쳐 넘긴다 — Mac 의 `JSONEncoder` 와 같은 바이트 (기본값인 칸 · `null` 은 빠지고 `/` 는 `\/`). 엔진의 정규 JSON(`jsonData()`)을 그대로 쓰면 읽을 수는 있어도 기기마다 바이트가 달라진다 |
 | `removeBookFile(_ id: UUID) throws` | 책장에서 뺀 책의 파일 (+ D-day 옮기기 백업) 을 지운다. 없으면 아무것도 안 함. 거절: `.bookIsOpen` · `.bookIsListed` · `.unreadable` · `.fileError` |
 | `isApplyingExternalChange: Bool` | `apply…` 가 `data` · `library` 를 바꾸는 동안 true (`$data` sink 안에서 읽는다) |
+| `applyActiveChange(editingKey:_:) -> ExternalApplyResult` | 실시간: 펼친 책의 레코드 몇 개를 메모리에 바로 (밖에서 온 변경 — 사용자의 편집으로 세지 않음, 쓰는 칸의 기록은 새 글로). 파일은 평소 묶음 저장. 쓰던 할 일 · 메모가 없어졌으면 `editedItemRemoved` |
+| `settleBeforeCleanup` · `afterEditing(_:)` | 쓰기를 마친 뒤의 정리(빈 할 일 · 빈 글씨 메모 지우기)를 밖의 일 뒤로 (nil 이면 바로 — 기본). 동기화는 `setEditingAndSettle` 뒤에 |
+| `beforeScheduledSave` | 묶어 둔 저장이 파일을 쓰기 직전에 거치는 곳 (nil 이면 바로 — 기본). 동기화는 `storageBehind` 면 `flushLive` 뒤에 |
 | `PlannerStore.encodeFile(_:)` · `decodeFile(_:from:)` | 앱 파일과 같은 JSON (`.iso8601`, `.sortedKeys`) |
 | `PlannerData.rebased(from:to:)` | 밖에서 온 변경(base → theirs)을 되돌리기 단계에 옮긴다 (칸마다) |
 | `PlanTask.carryTaskId(_ id: UUID) -> UUID` | → 미룸 사본 id = UUIDv5(원래 id, "carry") — `carryForward` 가 이미 쓴다. `CarryID.carryTaskId` 와 같은 값 |
@@ -359,7 +362,10 @@ Task { for await e in sync.liveEvents() { await MainActor.run { hints.handle(e) 
 // 뒤로 갈 때 · 창을 닫기 전 · 잠자기 전: store.saveNow(); await sync.sendPending() (또는 suspend())
 ```
 
-- IME: marked text(조합 중인 글자)도 저장소에 넣고 `liveEdit` 한다 — 상대 종이에 "ㅎ" → "하" → "한" 이 차례로 보인다. 조합 중인 칸은 쓰고 있는 칸이라 상대의 초안이 그 칸을 바꾸지 않는다 (조합이 깨지지 않는다).
+- IME: marked text(조합 중인 글자)도 엔진이 보는 값에 넣고 `liveEdit` 한다 — 상대 종이에 "ㅎ" → "하" → "한" 이 차례로 보인다. 조합 중인 칸은 쓰고 있는 칸이라 상대의 초안이 그 칸을 바꾸지 않는다 (조합이 깨지지 않는다).
+  저장소(바인딩)에 조합 중인 글을 넣어도 되는지는 글 칸에 따라 다르다: macOS 의 SwiftUI `TextField` 는 조합 중인 글을 바인딩에 넣으면 다음 화면 갱신(다른 칸이 바뀌어도)이 조합을 깬다.
+  그래서 Mac 앱은 저장소에 넣지 않고, 필드 편집기의 글이 바뀔 때마다(`NSText.didChangeNotification`) 그 칸의 레코드를 `liveEdit` 하고 호스트가 `readLive` · `readBook` · `updateBook` · `applyLive` 의
+  "지금 값"에만 조합 중인 글을 얹는다. 넣을 때 그 칸이 조합 중인 글 그대로면(엔진이 지킨 것) 저장소의 글로 되돌려 넣는다 — 저장소 · 화면은 조합을 모른다.
 - 타임테이블: 끄는 동안 칸이 바뀔 때마다 `liveEdit` (그 날 키 하나). 끌기는 **지금 칸 위에 끈 범위만** 칠한다 (끌기 시작의 스냅샷으로 줄 전체를 다시 쓰면 그 사이 받은 상대 칸을 새 도장으로 되돌린다).
 - 동기화가 꺼져 있으면 엔진이 없으므로 아무것도 부르지 않는다 (네트워크 0 · 화면 그대로).
 
@@ -402,10 +408,28 @@ presence 가 늘면(다른 기기가 막 켜짐) 밀린 것을 바로 보낸다.
   - 설정 → 동기화 (`SyncSettingsPane` · `SyncFlows` · `SyncHistory`), 팔레트의 설정 단추 귀퉁이 표시, 플래너 메뉴의 ‘지금 맞추기’ · ‘이 날(주)의 이전 버전…’ · ‘동기화 설정…’.
     Mac 은 QR 을 카메라로 찍지 않는다 — Windows PC 처럼 8자리 코드나 원래 기기의 ‘연결 글 복사’로 받은 글을 붙여 넣는다.
   - `Spiralday --sync-qa <폴더>` 가 설정 → 동기화의 모든 상태를 라이트 · 다크 PNG 로 (메모리에서만), `Tests/SpiraldayAppTests` 가 호스트 · 컨트롤러 · 말을 가짜 서버로 시험한다.
+  - 실시간 쓰기 (`Sync/SyncLive.swift` — 그룹에 있는 동안만 붙이고, 나오면 저장소 · 창에 건 것을 모두 걷는다. 꺼져 있으면 아무것도 보지 않고 그리지 않는다):
+    - `store.$data` 를 보고 바뀐 레코드(하루 · 한 주 · 책 설정 — 바뀌지 않은 날은 값을 나눠 써서 비교가 거의 공짜)만 `liveEdit`. 밖에서 넣은 것(`isApplyingExternalChange`) · 다른 책을 편 것은 빼고.
+      글자 · 칠한 칸 · 표시 · 할 일 더하기/지우기 · 미룸 · 메모 · 형광펜 이름 … 저장소를 바꾸는 모든 것이 이 한 곳으로 간다.
+    - 조합 중인 글자: 위 7.3 의 IME (저장소에 넣지 않고 엔진이 보는 값에만 — `PlannerSyncHost.composing`).
+    - `AppState.editingKey` → `setEditing` (칸 주소: `t|날|id` → tasks.text · `tn|` → notes.text · `c|` → comment · `m|날|0–2` → m0–m2, 3 넘으면 m+ · `mt|` 같게 · `wg|주` → goal · `motto` → mottoText).
+    - `PlannerSyncHost.readLive` · `applyLive`: 레코드 하나씩 앱 파일과 같은 인코더로, 받은 초안은 SpiraldayKit `PlannerStore.applyActiveChange` 로 메모리에 바로
+      (밖에서 온 변경 — 사용자의 편집으로 세지 않음, 파일은 0.6초 묶음 저장). 쓰던 칸(포커스만)의 글이 바뀌면 그 칸의 ⌘Z 기록을 비운다 (레코드로 받을 때와 같다).
+      `updateBook` 의 쓰는 칸 안전망(`keepingEditOf`)은 `engine.editingProtected` 가 false 가 아닐 때만.
+    - 쓰기를 마친 뒤의 정리(빈 할 일 · 빈 글씨 메모 지우기)는 `PlannerStore.settleBeforeCleanup` 으로 `setEditingAndSettle` 뒤에, 묶어 둔 저장은 `beforeScheduledSave` 로
+      `storageBehind` 면 `flushLive` 뒤에 (둘 다 최대 1.5초 — 엔진이 늦어도 정리 · 저장을 오래 미루지 않는다). 파일을 다 쓰면 `localChanged(bookId:saved:)` 에 그 값을.
+    - `.remoteTyping(editing: true)` → 쓰는 칸 오른쪽 위에 작은 회색 "다른 기기에서 쓰는 중" (마지막 이벤트부터 3초), `.held` 동안 "다른 기기의 글이 있어요".
+      플래너 창에 붙은 작은 패널(누를 수 없고 키 창이 되지 않는다 — 포커스 · 조합 · ⌘Z · 레이아웃을 건드리지 않는다), VoiceOver 에는 처음 보일 때 한 번.
+    - 받은 기기는 아무것도 올리지 않는다. 잠자기 · 끝내기는 엔진 저장소를 먼저 맞춘 뒤(`storageBehind` → `flushLive`) 파일을 쓰고 `suspend()` 한다
+      (끝내기는 최대 2.5초 — 엔진이 늦어도 파일은 꼭 쓴다).
+    - `Tests/SpiraldayAppTests/SyncLiveTests` 가 두 Mac(가짜 서버 · 중계)과 앱의 진짜 종이(`RootView`)로 시험한다: 글자 · 칠한 칸이 레코드 전에, 한글 조합 단계마다(조합 · 포커스 · ⌘Z 그대로),
+      쓰는 칸 지키기와 알림, 포커스만 있는 칸, 정리가 미뤄 둔 글을 기다림, 꺼져 있으면 아무것도 걸지 않음, 중계 없는 서버.
   - 디버그 빌드만: `Spiralday --sync-drive <폴더> [--sync-drive-keychain com.spiralday.mac.sync.qa.<이름>]` — 여러 기기 검증 스크립트가 이 Mac 앱을 모는 통로
     (`Sync/SyncQADrive.swift`). `<폴더>/in/*.json` 의 명령을 화면이 부르는 것과 같은 저장소 · 컨트롤러 함수로 실행하고 `<폴더>/out` 에 답한다.
     플래너 파일은 `<폴더>/data`, 비밀은 테스트용 키체인 서비스 이름, 설정 값은 `<폴더>` 안 — 앱의 데이터 폴더 · `com.spiralday.sync` 키체인 항목은 거절한다.
     플래너 종이는 화면 밖 창에 두고 앱을 앞으로 가져오지 않으며, 통계 · 업데이트 확인 · 처음 안내 · 둘러보기는 켜지 않는다. 서버는 운영 주소(또는 디버그의 `SPIRALDAY_SYNC_URL`).
+    실시간 쓰기용 명령: `compose` (조합 한 단계 — marked text) · `commit` · `type` · `paintDrag` (타임테이블 끌기 걸음) · `watchStart` / `watchStop` (그 날이 바뀐 때와 값 — 지연 재기) ·
+    `day` · `liveState` (presence · 세기 · 알림) · `snapshot` (화면 밖 종이 + 알림 패널을 PNG 로).
 
 ## TypeScript 엔진과 다른 점
 

@@ -541,7 +541,8 @@ public struct SlotPainter: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { v in drag(v.location, rec.slots) }
+                    // 지금 저장소의 칸 위에 (그린 뒤 밖에서 들어온 칸을 붓질 전 값으로 덮지 않게)
+                    .onChanged { v in drag(v.location, store.day(date).slots) }
                     .onEnded { v in dragEnded(v.location) }
             )
             .pointerCursor(state.tool == AppState.textTool ? .iBeam : .crosshair)
@@ -656,7 +657,7 @@ public struct SlotPainter: View {
                               set: { v in store.updateNote(date, n.id) { $0.text = v } })
         Group {
             if state.editingKey == key && !isSnapshot {
-                InlineField(text: binding, font: font, key: key, onEnd: { [store, date] in store.cleanupNotes(date) })
+                InlineField(text: binding, font: font, key: key, onEnd: { [store, date] in store.afterEditing { store.cleanupNotes(date) } })
                     .frame(width: w, height: rowH)
             } else {
                 Text(n.text)

@@ -618,6 +618,14 @@ public final class PlannerStore: ObservableObject {
     /// 이번 실행에서 library.json 이 없어서 책장을 새로 시작했는지 (처음 켬 · 데이터 폴더를 잃음).
     /// 그 전부터 알던 책이 책장에 없는 것을 "지운 것" 이 아니라 "잃은 것" 으로 봐야 할 때 쓴다. 메모리 전용이면 false.
     public private(set) var libraryCreated = false
+    /// 쓰기를 마친 뒤의 정리(빈 할 일 · 빈 글씨 메모 지우기 — afterEditing)를 언제 할지 정하는 곳. nil 이면 바로 한다 (기본).
+    /// 밖(동기화)이 쓰던 칸에 미뤄 둔 다른 곳의 글을 먼저 넣은 뒤 정리하게 할 때 쓴다 — 정리가 화면의 옛 값(빈 칸)을 보고 지우지 않게.
+    /// 받은 일(run)은 반드시 한 번, 메인 스레드에서 부른다
+    public var settleBeforeCleanup: ((_ run: @escaping @MainActor () -> Void) -> Void)?
+    /// 묶어 둔 저장(scheduleSave 의 0.6초 뒤)이 파일을 쓰기 직전에 거치는 곳. nil 이면 바로 쓴다 (기본).
+    /// 밖(동기화)이 자기 기록을 먼저 디스크에 두게 할 때 쓴다. 받은 일(write)은 반드시 한 번, 메인 스레드에서 부른다.
+    /// saveNow 를 바로 부르는 곳(끝낼 때 · 책 바꾸기 · 밖에서 넣기)은 거치지 않는다
+    public var beforeScheduledSave: ((_ write: @escaping @MainActor () -> Void) -> Void)?
 
     public var books: [BookInfo] { library.books }
     public var activeBook: BookInfo? { library.books.first { $0.id == library.activeID } }
@@ -1137,9 +1145,22 @@ public final class PlannerStore: ObservableObject {
         }
         guard folder != nil else { return }
         saveWork?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.saveNow() }
+        let w = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if let gate = self.beforeScheduledSave {
+                gate { [weak self] in self?.saveNow() }
+            } else {
+                self.saveNow()
+            }
+        }
         saveWork = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: w)
+    }
+
+    /// 쓰기를 마친 뒤의 정리(빈 할 일 · 빈 글씨 메모 지우기)를 settleBeforeCleanup 을 거쳐 한다 (없으면 바로).
+    /// run 안에서 지울 것을 그때 다시 고른다 (미뤄진 사이 다른 칸을 쓰기 시작했을 수 있다)
+    public func afterEditing(_ run: @escaping @MainActor () -> Void) {
+        if let gate = settleBeforeCleanup { gate(run) } else { run() }
     }
 
     /// 펼친 책과 책장을 저장한다 (임시 파일에 다 쓴 뒤 이름을 바꾸는 원자적 쓰기).
