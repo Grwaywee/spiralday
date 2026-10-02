@@ -1,0 +1,8 @@
+// TypeScript 엔진(Windows 앱)이 만든 값 — Swift 가 같은 것을 읽고 같은 것을 만드는지 본다.
+// 만든 방법: K = 00 01 … 1f, 레코드 키 d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02,
+// 앱의 하루 값을 ZeroClock("0123456789abcdef") 로 diffFlat → encryptRecord (fflate gzip · libsodium).
+// (메모를 줄마다 필드 m0 m1 m2 m+ 로 나눈 뒤 TypeScript 엔진으로 다시 만듦)
+enum TSFixtures {
+    static let recordCiphertext = "AZF4jmm2KiG6OW8Ud9ER4Ly8RHw8XGojxaq2cbI5eRbM__4cSZHR2W0nkQixtHdRNn4fuLBusqH9kJWclzJGOA0dfz7vdlF-MgR-gg8wf2c-YDXe4usu086W-aLjBiCcKw6RxwpAAjElj1LUubDWWvEYUi8R4J9_WlTWGZJtnnyRsD8_recYs21_cIQfsm8SafCz6S3CFtT8xm5X09maZvPyxmvvEC41V6O6fvvLzlebr1-E7UxsToOi7XVXx1vg6hklhV2e2kqnSUXahJiAq7erW_9GmY2SnTw7TNqp6MsSUNLC5-AaM0Cx9skcAz612r5cWz0AgGJAa5EfspttKuKowXQsUwfgcF3rWTvLhGelHg8nhkB-5Y8wcp8mfPxewPyZCRzhAPUQ9PjCJ13dOxcdAzu1lXIpfn1BuNWcWn6C06t3UeLd54WrHkGkWhd8jzQ9JgT8-o_350MYNuantMYbjwyIlRfiuXGercE"
+    static let recordPlain = "{\"k\":\"d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02\",\"s\":{\"c\":{\"tasks\":{\"AAAAAAAA-0000-4000-8000-000000000001\":{\"a\":\"00000000000000060123456789abcdef\",\"f\":{\"carriedFrom\":[null,\"00000000000000060123456789abcdef\"],\"cat\":[2,\"00000000000000060123456789abcdef\"],\"mark\":[1,\"00000000000000060123456789abcdef\"],\"row\":[0,\"00000000000000060123456789abcdef\"],\"text\":[\"회의 😀\",\"00000000000000060123456789abcdef\"]}}}},\"f\":{\"comment\":[\"비밀 일기 ✍️\",\"00000000000000010123456789abcdef\"],\"m0\":[\"메모\",\"00000000000000030123456789abcdef\"],\"s00\":[[3,3,3,3,3,3],\"00000000000000040123456789abcdef\"],\"theme\":[4,\"00000000000000020123456789abcdef\"],\"x:weird\":[{\"a\":[1.5,null]},\"00000000000000050123456789abcdef\"]}},\"v\":1}"
+}

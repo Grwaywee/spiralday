@@ -190,7 +190,7 @@ flowchart LR
 - **페이지 넘김** — 넘김이 시작되기 전에 앞뒤 페이지를 비트맵으로 미리 그려 두고, 원통형 말림 모델을 픽셀 셰이더로 계산합니다 (뒷면 비침, 그림자, 안티에일리어싱, 스프링 물리). 셰이더는 실행 중 한 번 컴파일되어 별도 Metal 툴체인이 필요 없습니다.
 - **흘려 쓰기** — CoreText 로 손글씨 줄바꿈을 계산해 인쇄된 줄에 맞춥니다. 할 일은 아래 줄이 비어 있는 동안만 이어 쓰고 막히면 글씨를 줄이며, MEMO 는 넘치면 줄 수를 늘리면서 간격과 글씨를 같은 비율로 줄입니다.
 
-코드는 두 타깃으로 나뉩니다. **`SpiraldayKit`** (라이브러리, macOS 14 · iOS 17) 에 종이 · 저장 · 페이지 그리기 · 넘김 엔진이 있고, **`Spiralday`** (macOS 앱) 는 그 위의 창 · 팔레트 · 설정 같은 앱 셸입니다.
+코드는 세 타깃으로 나뉩니다. **`SpiraldayKit`** (라이브러리, macOS 14 · iOS 17) 에 종이 · 저장 · 페이지 그리기 · 넘김 엔진이 있고, **`SpiraldaySync`** (라이브러리, macOS 14 · iOS 17) 는 기기 사이 동기화 엔진(종단간 암호화 · 계정 없음 · 충돌 없는 합치기, [Docs/SpiraldaySync.md](Docs/SpiraldaySync.md)), **`Spiralday`** (macOS 앱) 는 그 위의 창 · 팔레트 · 설정 같은 앱 셸입니다.
 
 | 폴더 / 파일 | 역할 |
 |---|---|
@@ -204,6 +204,7 @@ flowchart LR
 | `Components.swift` · `RuledText.swift` | 인라인 편집, 체크 표시, 타임테이블 레이어, 흘려 쓰기 |
 | `AppState.swift` · `Curl/` | 펼친 장 · 넘기기 · 단축키, Metal 페이지 넘김 엔진 |
 | `PDFExport.swift` · `SampleBook.swift` · `DataSafetyText.swift` | PDF 그리기, 예시 플래너, 읽지 못한 파일 알림 글 |
+| `Sources/SpiraldaySync/` | 동기화 엔진 (`SyncEngine` · 레코드 · 합치기 · 암호 · 서버 연결 · Keychain), `Sources/SpiraldaySyncTesting/` 은 테스트용 가짜 서버 · 메모리 앱 |
 | `Sources/Spiralday/` | |
 | `App.swift` · `WindowController.swift` · `RootView.swift` · `RingWindow.swift` | 앱, 창 = 종이, 창 밖 스프링 |
 | `Palette.swift` · `Settings.swift` · `Onboarding.swift` · `Tour.swift` · `PDFExportWindow.swift` | 도구 팔레트, 설정, 튜토리얼, 플래너 둘러보기, PDF 창 |
@@ -213,7 +214,7 @@ flowchart LR
 
 ```bash
 swift build
-swift test                                   # SpiraldayKit: 페이지 · 넘김 그리기, 저장 · 읽기 전용 읽기, 밖에서 넣기
+swift test                                   # SpiraldayKit: 페이지 · 넘김 그리기, 저장 · 읽기 전용 읽기, 밖에서 넣기 · SpiraldaySync: 벡터 · 합치기 · 엔진 + 가짜 서버
 .build/debug/Spiralday --demo                # 샘플 데이터 (실제 기록을 건드리지 않음)
 .build/debug/Spiralday --snapshot ./out      # 페이지 · 넘김 프레임 · 표지 · 첫 장 PNG (--front-qa 를 더하면 여러 경우와 번호 점검까지)
 .build/debug/Spiralday --pdf-test ./out      # PDF 레이아웃 4종 샘플
@@ -239,4 +240,5 @@ build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 �
 [MIT](LICENSE) © 2026 LeanAgileHungry Inc.
 
 - 손글씨 폰트 **Poor Story** — © YoonDesign Inc., [SIL Open Font License 1.1](Resources/Fonts/OFL-PoorStory.txt)
+- 동기화 암호 **libsodium** ([swift-sodium](https://github.com/jedisct1/swift-sodium)) — ISC License
 - 페이지 구성은 흔히 쓰는 10분 단위 종이 플래너 형식에서 영감을 받았으며, 특정 제품의 상표와 로고는 포함하지 않습니다.
