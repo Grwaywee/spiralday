@@ -588,6 +588,61 @@ final class ExternalChangesTests: XCTestCase {
         XCTAssertEqual(snapshot.rebased(from: base, to: base), snapshot)
     }
 
+    /// 같은 날 안에서도 칸마다: 다른 기기가 다른 할 일 · 다른 시간 줄 · 다른 메모 줄을 고쳐도 내 되돌리기 단계(할 일 A 의 글 · 칠한 줄 ·
+    /// 메모 첫 줄)는 남고, 다른 기기가 고친 항목 · 줄 · 더한 할 일 · 지운 할 일은 그 기기의 것으로 (실시간 초안이 초당 여러 번 와도 되돌리기를 잃지 않게)
+    func testRebasedIsPerItemRowAndLineWithinADay() {
+        let k = "2026-10-02"
+        let A = UUID(), B = UUID(), C = UUID(), D = UUID()
+        // 되돌리기 단계: 내가 할 일 A 를 고치고 07시 줄을 칠하고 메모 첫 줄을 쓰기 전
+        var snapshot = PlannerData()
+        var s = DayRecord()
+        s.tasks = [PlanTask(id: A, text: "장보기", row: 0), PlanTask(id: B, text: "회의", row: 1), PlanTask(id: C, text: "운동", row: 2)]
+        s.memos = ["", "둘째 줄", ""]
+        snapshot.days[k] = s
+        snapshot.prefs.categories[1].name = "옛 이름"
+        // 지금(base): 내가 고침
+        var base = snapshot
+        base.days[k]!.tasks[0].text = "장보기 — 우유"
+        for i in 6..<12 { base.days[k]!.slots[i] = 1 }
+        base.days[k]!.memos[0] = "내 메모"
+        base.prefs.categories[1].name = "내가 바꾼 이름"
+        // 다른 기기: 할 일 B 를 고치고, C 를 지우고, D 를 더하고, 08시 줄을 칠하고, 메모 셋째 줄 · 첫째 형광펜 이름을 바꿈
+        var theirs = base
+        theirs.days[k]!.tasks[1].text = "회의 준비"
+        theirs.days[k]!.tasks.remove(at: 2)
+        theirs.days[k]!.tasks.append(PlanTask(id: D, text: "새 할 일", row: 3))
+        for i in 12..<18 { theirs.days[k]!.slots[i] = 2 }
+        theirs.days[k]!.memos[2] = "다른 기기의 메모"
+        theirs.prefs.categories[0].name = "딥워크"
+
+        let undone = snapshot.rebased(from: base, to: theirs)
+        let r = undone.days[k]!
+        XCTAssertEqual(r.tasks.map(\.id), [A, B, D], "지운 C 는 지운 대로, 더한 D 는 앞 항목 뒤에")
+        XCTAssertEqual(r.tasks[0].text, "장보기", "내 할 일 A 의 되돌리기는 남는다")
+        XCTAssertEqual(r.tasks[1].text, "회의 준비", "다른 기기가 고친 할 일은 그 기기의 것")
+        XCTAssertEqual(r.tasks[2].text, "새 할 일")
+        XCTAssertEqual(Array(r.slots[6..<12]), Array(repeating: -1, count: 6), "내가 칠한 줄의 되돌리기는 남는다")
+        XCTAssertEqual(Array(r.slots[12..<18]), Array(repeating: 2, count: 6), "다른 기기가 칠한 줄은 그대로")
+        XCTAssertEqual(r.memos, ["", "둘째 줄", "다른 기기의 메모"])
+        XCTAssertEqual(undone.prefs.categories[0].name, "딥워크")
+        XCTAssertEqual(undone.prefs.categories[1].name, "옛 이름", "내가 바꾼 형광펜 이름의 되돌리기는 남는다")
+
+        // 같은 항목을 둘 다 고쳤으면 다른 기기의 것 (되돌리기가 다른 기기의 글을 지우지 않게)
+        var theirs2 = base
+        theirs2.days[k]!.tasks[0].text = "장보기 — 우유, 빵"
+        XCTAssertEqual(snapshot.rebased(from: base, to: theirs2).days[k]!.tasks[0].text, "장보기 — 우유, 빵")
+        // 내 단계에 없는(내가 그 뒤에 더한) 할 일을 다른 기기가 고쳤다 → 다른 기기의 것이 남는다
+        var base3 = snapshot
+        base3.days[k]!.tasks.append(PlanTask(id: D, text: "내가 더함", row: 3))
+        var theirs3 = base3
+        theirs3.days[k]!.tasks[3].text = "내가 더함 + 다른 기기"
+        XCTAssertEqual(snapshot.rebased(from: base3, to: theirs3).days[k]!.tasks.map(\.text), ["장보기", "회의", "운동", "내가 더함 + 다른 기기"])
+        // 고치지 않았으면 그 할 일은 되돌리면 사라진다 (내 편집)
+        var theirs4 = base3
+        theirs4.days[k]!.tasks[1].text = "회의!"
+        XCTAssertEqual(snapshot.rebased(from: base3, to: theirs4).days[k]!.tasks.map(\.text), ["장보기", "회의!", "운동"])
+    }
+
     // MARK: 끌어 칠하기
 
     func testRepaintedKeepsCellsChangedElsewhereDuringTheStroke() {

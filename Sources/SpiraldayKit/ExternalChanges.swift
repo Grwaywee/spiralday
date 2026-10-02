@@ -423,10 +423,11 @@ extension PlannerData {
     }
 
     /// base → theirs 로 바뀐 것(밖에서 온 변경)을 self(예: 그 전에 쌓아 둔 되돌리기 단계)에 옮긴 것.
-    /// 칸마다: 그 변경이 바꾼 칸은 theirs 의 값, 나머지 칸은 self 의 값.
-    /// 하루 기록은 할 일 · 칠한 칸 · COMMENT · 메모 · 메모 태그 · 컬러 · 타임테이블 메모 · D-day · DAY OFF 마다,
-    /// 한 주는 목표 · 돌아보기 · 별점마다, 책 설정은 형광펜 · 저장한 D-day · 기본 컬러 · 첫 장의 말마다 가른다.
-    /// (lastKind · ddaysPerDay 는 self 의 것.) 되돌리기가 밖에서 온 변경을 지우지 않게 할 때 쓴다.
+    /// 칸마다: 그 변경이 바꾼 칸은 theirs 의 값, 나머지 칸은 self 의 값. 칸은 동기화가 합치는 단위와 같다 —
+    /// 하루 기록은 할 일 · 타임테이블 메모 · D-day 를 항목(id)마다, 칠한 칸을 시간 줄(6칸)마다, 메모 · 메모 태그를 줄마다,
+    /// COMMENT · 컬러 · DAY OFF 를 따로. 한 주는 목표 · 돌아보기 · 별점마다, 책 설정은 형광펜 · 저장한 D-day 를 항목(id)마다,
+    /// 기본 컬러 · 첫 장의 말을 따로. (lastKind · ddaysPerDay 는 self 의 것.)
+    /// 되돌리기가 밖에서 온 변경을 지우지 않게 할 때 쓴다 — 다른 기기가 같은 날의 다른 할 일 · 다른 시간 줄을 고쳐도 내 되돌리기 단계는 남는다
     public func rebased(from base: PlannerData, to theirs: PlannerData) -> PlannerData {
         func pick<T: Equatable>(_ b: T, _ m: T, _ t: T) -> T { b == t ? m : t }
         var out = self
@@ -435,14 +436,14 @@ extension PlannerData {
             guard b != t else { continue }
             let bb = b ?? DayRecord(), tt = t ?? DayRecord()
             var r = days[k] ?? DayRecord()
-            r.tasks = pick(bb.tasks, r.tasks, tt.tasks)
-            r.slots = pick(bb.slots, r.slots, tt.slots)
+            r.tasks = Self.rebasedItems(bb.tasks, r.tasks, tt.tasks)
+            r.slots = Self.rebasedRows(bb.slots, r.slots, tt.slots, width: DayRecord.slotCount / 24)
             r.comment = pick(bb.comment, r.comment, tt.comment)
-            r.memos = pick(bb.memos, r.memos, tt.memos)
-            r.memoTags = pick(bb.memoTags, r.memoTags, tt.memoTags)
+            r.memos = Self.rebasedLines(bb.memos, r.memos, tt.memos)
+            r.memoTags = Self.rebasedLines(bb.memoTags, r.memoTags, tt.memoTags)
             r.theme = pick(bb.theme, r.theme, tt.theme)
-            r.notes = pick(bb.notes, r.notes, tt.notes)
-            r.ddays = pick(bb.ddays, r.ddays, tt.ddays)
+            r.notes = Self.rebasedItems(bb.notes, r.notes, tt.notes)
+            r.ddays = Self.rebasedItems(bb.ddays, r.ddays, tt.ddays)
             r.dayOff = pick(bb.dayOff, r.dayOff, tt.dayOff)
             out.days[k] = r.isEmpty ? nil : r
         }
@@ -456,10 +457,71 @@ extension PlannerData {
             w.stars = pick(bb.stars, w.stars, tt.stars)
             out.weeks[k] = t == nil && w == WeekRecord() ? nil : w
         }
-        out.prefs.categories = pick(base.prefs.categories, prefs.categories, theirs.prefs.categories)
-        out.prefs.ddays = pick(base.prefs.ddays, prefs.ddays, theirs.prefs.ddays)
+        out.prefs.categories = Self.rebasedItems(base.prefs.categories, prefs.categories, theirs.prefs.categories)
+        out.prefs.ddays = Self.rebasedItems(base.prefs.ddays, prefs.ddays, theirs.prefs.ddays)
         out.prefs.defaultTheme = pick(base.prefs.defaultTheme, prefs.defaultTheme, theirs.prefs.defaultTheme)
         out.prefs.motto = pick(base.prefs.motto, prefs.motto, theirs.prefs.motto)
+        return out
+    }
+
+    /// 항목 목록 (id 마다): base → theirs 에서 바뀐 항목(고침 · 더함 · 지움)은 theirs 의 것, 나머지는 mine 의 것 그대로.
+    /// 순서는 mine 의 순서, theirs 가 더한(또는 mine 에 없는데 theirs 가 고친) 항목은 theirs 에서 바로 앞에 있던 항목 뒤에
+    static func rebasedItems<T: Identifiable & Equatable>(_ base: [T], _ mine: [T], _ theirs: [T]) -> [T] where T.ID: Hashable {
+        if base == theirs { return mine }
+        if base == mine { return theirs }
+        func byID(_ a: [T]) -> [T.ID: T] { Dictionary(a.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }) }
+        let b = byID(base), t = byID(theirs)
+        var out: [T] = []
+        var placed = Set<T.ID>()
+        for x in mine where placed.insert(x.id).inserted {
+            let bx = b[x.id], tx = t[x.id]
+            if bx == tx {
+                out.append(x)                       // theirs 가 건드리지 않았다 (mine 이 더한 것 포함)
+            } else if let tx {
+                out.append(tx)                      // theirs 가 고쳤다 (더한 것)
+            }                                       // theirs 가 지웠다
+        }
+        for (i, y) in theirs.enumerated() where !placed.contains(y.id) {
+            placed.insert(y.id)
+            // mine 에 없다: theirs 가 건드리지 않았으면 mine 이 지운 것 그대로, 아니면 (더함 · 고침) theirs 의 것
+            if b[y.id] == y { continue }
+            var at = 0
+            for j in stride(from: i - 1, through: 0, by: -1) {
+                if let p = out.firstIndex(where: { $0.id == theirs[j].id }) {
+                    at = p + 1
+                    break
+                }
+            }
+            out.insert(y, at: at)
+        }
+        return out
+    }
+
+    /// 칠한 칸: 시간 줄(width 칸)마다 base → theirs 에서 바뀐 줄은 theirs, 나머지는 mine. 길이가 다르면 통째로
+    static func rebasedRows(_ base: [Int], _ mine: [Int], _ theirs: [Int], width: Int) -> [Int] {
+        if base == theirs { return mine }
+        guard width > 0, base.count == theirs.count, mine.count == theirs.count else { return theirs }
+        var out = mine
+        var i = 0
+        while i < theirs.count {
+            let r = i..<min(i + width, theirs.count)
+            if base[r] != theirs[r] { out.replaceSubrange(r, with: theirs[r]) }
+            i += width
+        }
+        return out
+    }
+
+    /// 메모 · 메모 태그: 줄마다 base → theirs 에서 바뀐 줄은 theirs, 나머지는 mine (없는 줄은 빈 줄로 본다)
+    static func rebasedLines(_ base: [String], _ mine: [String], _ theirs: [String]) -> [String] {
+        if base == theirs { return mine }
+        func at(_ a: [String], _ i: Int) -> String { i < a.count ? a[i] : "" }
+        let n = max(mine.count, theirs.count)
+        var out: [String] = []
+        out.reserveCapacity(n)
+        for i in 0..<n {
+            let bv = at(base, i), tv = at(theirs, i)
+            out.append(bv == tv ? at(mine, i) : tv)
+        }
         return out
     }
 }
