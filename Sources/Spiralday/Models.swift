@@ -454,6 +454,25 @@ extension Library {
     }
 }
 
+/// 있는데 읽지 못한 저장 파일 (책 파일 또는 library.json).
+/// 원본은 손대지 않고 같은 내용의 복사본("<파일>.unreadable-yyyyMMdd-HHmmss.json")을 옆에 남기며,
+/// 앱이 도는 동안 그 원본에는 아무것도 쓰지 않는다 (PlannerStore.saveNow · writeLibrary 가 건너뛴다).
+struct UnreadableFile: Equatable {
+    enum Kind: Equatable {
+        case library
+        case book(UUID)
+    }
+    var kind: Kind
+    /// 원본 (그대로 둔다)
+    var url: URL
+    /// 원본을 그대로 복사해 둔 파일. 복사하지 못했으면 (읽기 권한이 없을 때 등) nil — 원본은 그래도 그대로 둔다.
+    var copy: URL?
+    /// 책 이름 (library.json 이면 nil)
+    var name: String?
+    /// 왜 읽지 못했는지 (알림에 그대로 보인다)
+    var reason: String
+}
+
 @MainActor
 final class PlannerStore: ObservableObject {
     /// 지금 펼친 책의 내용
@@ -466,8 +485,15 @@ final class PlannerStore: ObservableObject {
     /// 저장 폴더 (메모리 전용이면 nil)
     let folder: URL?
     private var saveWork: DispatchWorkItem?
-    /// library.json 이 있는데 읽지 못했다 → 앱이 저절로 덮어쓰지 않는다 (예시 플래너를 꽂지 않는다)
-    private var libraryUnreadable = false
+    /// library.json 이 있는데 읽지 못했다 → 앱이 도는 동안 library.json 에 아무것도 쓰지 않는다 (예시 플래너도 꽂지 않는다).
+    /// 책장은 books 폴더의 읽을 수 있는 책 파일로 메모리에서만 다시 꾸민다 (recoveredLibrary).
+    private(set) var libraryUnreadable = false
+    /// 파일이 있는데 읽지 못한 책. 앱이 도는 동안 그 책 파일에는 쓰지 않고 (saveNow 가 건너뛴다) 펼치지도 않는다.
+    private(set) var unreadableBooks: [UUID: UnreadableFile] = [:]
+    /// 켤 때 읽지 못한 파일. 앱이 첫 창을 열기 전에 한 번 알린다 (DataSafetyAlert.presentLaunchNotices).
+    private(set) var launchNotices: [UnreadableFile] = []
+    /// 앱을 쓰다가 읽지 못하는 책을 펼치려 했을 때 (펼치지 않고 지금 책 그대로). AppDelegate 가 알림을 띄운다.
+    var onUnreadableBook: ((UnreadableFile) -> Void)?
     /// 메모리 전용일 때 펼치지 않은 책의 내용 (파일 대신)
     private var memoryBooks: [UUID: PlannerData] = [:]
 
@@ -477,9 +503,9 @@ final class PlannerStore: ObservableObject {
     var userBooks: [BookInfo] { library.books.filter { !$0.isSample } }
     var hasSampleBook: Bool { library.books.contains(where: \.isSample) }
 
-    /// 이 책 말고 펼칠 책: 사용자가 만든 책이 먼저, 없으면 예시 플래너
+    /// 이 책 말고 펼칠 책: 사용자가 만든 책이 먼저, 없으면 예시 플래너 (읽지 못한 책은 건너뛴다)
     func fallbackBook(excluding id: UUID?) -> BookInfo? {
-        let rest = library.books.filter { $0.id != id }
+        let rest = library.books.filter { $0.id != id && unreadableBooks[$0.id] == nil }
         return rest.first { !$0.isSample } ?? rest.first
     }
 
@@ -514,20 +540,161 @@ final class PlannerStore: ObservableObject {
         guard let dir else { return }
         try? FileManager.default.createDirectory(at: dir.appendingPathComponent("books", isDirectory: true),
                                                  withIntermediateDirectories: true)
-        let rawLibrary = try? Data(contentsOf: libraryURL!)
-        if let rawLibrary, let lib = try? Self.dec.decode(Library.self, from: rawLibrary) {
-            library = lib
-        } else {
-            libraryUnreadable = rawLibrary != nil
-            migrateLegacy()
-        }
+        loadLibrary()
         // 펼친 책이 없으면 사용자가 만든 첫 책을 편다. 예시 플래너만 있으면(첫 실행 도중) 펴지 않고
         // 튜토리얼에서 만든 책이 펼쳐지게 둔다.
         if activeBook == nil { library.activeID = userBooks.first?.id }
-        if let id = library.activeID { data = loadBook(id) }
+        openActiveBook(notifying: false)
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveNow() }
+        }
+    }
+
+    /// library.json 을 읽는다.
+    /// - 없으면: 처음 켠 것 (또는 한 권짜리 예전 파일 planner.json 에서 옮기기).
+    /// - 있는데 읽지 못하면 (깨졌거나, 이 버전이 모르는 형식이거나, 읽기 권한이 없으면): 원본은 그대로 두고 복사본을 남긴 뒤,
+    ///   앱이 도는 동안 library.json 에 쓰지 않는다. 책장은 books 폴더의 책 파일로 메모리에서만 다시 꾸민다.
+    ///   (예전에는 빈 책장으로 시작해서, 튜토리얼에서 책을 만들거나 저장할 때 library.json 을 덮어썼다.)
+    private func loadLibrary() {
+        guard let url = libraryURL else { return }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            migrateLegacy()
+            return
+        }
+        do {
+            library = try Self.dec.decode(Library.self, from: Data(contentsOf: url))
+        } catch {
+            libraryUnreadable = true
+            launchNotices.append(UnreadableFile(kind: .library, url: url, copy: Self.preserveUnreadable(url),
+                                                name: nil, reason: Self.reason(error)))
+            library = recoveredLibrary()
+        }
+    }
+
+    /// library.json 을 읽지 못했을 때 쓸 책장: books 폴더의 읽을 수 있는 책 파일(<id>.json)마다 한 권.
+    /// 이름 · 표지 · 기간은 알 수 없어서 "되찾은 플래너 n" · 가장 이른 기록 날부터 · 끝없이로 두고,
+    /// 가장 최근에 저장한 책을 펼친다. 메모리에만 두므로(library.json 에 쓰지 않는다) 다음에 켜도 같은 id 로 다시 꾸며지고,
+    /// 나중에 library.json 을 되살리면 책들이 그대로 맞물린다.
+    private func recoveredLibrary() -> Library {
+        guard let folder else { return Library() }
+        let fm = FileManager.default
+        let dir = folder.appendingPathComponent("books", isDirectory: true)
+        var found: [(book: BookInfo, saved: Date)] = []
+        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where name.hasSuffix(".json") {
+            guard let id = UUID(uuidString: String(name.dropLast(5))) else { continue }
+            let url = dir.appendingPathComponent(name)
+            guard let raw = try? Data(contentsOf: url), let d = try? Self.dec.decode(PlannerData.self, from: raw) else { continue }
+            let attrs = try? fm.attributesOfItem(atPath: url.path)
+            let made = attrs?[.creationDate] as? Date ?? Date()
+            let first = (Array(d.days.keys) + Array(d.weeks.keys)).compactMap(Dates.parse).min()
+            let book = BookInfo(id: id, name: "", start: Dates.day(min(first ?? made, Date())), created: made)
+            found.append((book, attrs?[.modificationDate] as? Date ?? .distantPast))
+        }
+        found.sort { ($0.book.start, $0.book.id.uuidString) < ($1.book.start, $1.book.id.uuidString) }
+        var books = found.map(\.book)
+        for i in books.indices {
+            books[i].name = books.count == 1 ? "되찾은 플래너" : "되찾은 플래너 \(i + 1)"
+            books[i].cover = ColorConcept.all[i % ColorConcept.all.count].id
+        }
+        let active = found.max { $0.saved < $1.saved }?.book.id
+        return Library(books: books, activeID: active, sampleSeeded: true)
+    }
+
+    /// 펼칠 책(library.activeID)을 연다. 읽지 못하면 그 책 파일은 그대로 두고 다른 책을 연다:
+    /// 사용자가 만든 책이 먼저, 없으면 예시 플래너 (deleteBook 과 같은 순서). 열 수 있는 책이 없으면 아무 책도 펼치지 않는다.
+    /// notifying: 앱을 쓰는 중이면 읽지 못한 책을 바로 알린다 (켤 때는 launchNotices 에 모아 두었다가 한 번에).
+    private func openActiveBook(notifying: Bool) {
+        var skipped: Set<UUID> = []
+        while let id = library.activeID {
+            if let d = loadBook(id) {
+                data = d
+                return
+            }
+            skipped.insert(id)
+            if let bad = unreadableBooks[id] {
+                if notifying { onUnreadableBook?(bad) } else { launchNotices.append(bad) }
+            }
+            let rest = library.books.filter { !skipped.contains($0.id) && unreadableBooks[$0.id] == nil }
+            library.activeID = (rest.first { !$0.isSample } ?? rest.first)?.id
+        }
+        data = PlannerData()
+    }
+
+    /// 켤 때 읽을 수 있는 책이 하나도 없어서 (펼치려던 책을 모두 읽지 못해서) 아무 책도 펼치지 못했으면,
+    /// 새 플래너를 한 권 만들어 편다. 아무 책도 펼치지 않은 채로 쓰면 적은 것이 어느 파일에도 저장되지 않기 때문이다.
+    /// 읽지 못한 책 파일은 그대로 둔다. 만든 책의 id 를 돌려준다 (할 일이 없으면 nil).
+    @discardableResult
+    func openFreshBookIfNothingReadable(today: Date = Date()) -> UUID? {
+        guard folder != nil, activeBook == nil, !unreadableBooks.isEmpty else { return nil }
+        let taken = Set(library.books.map(\.name))
+        let name = (["새 플래너"] + (2...99).map { "새 플래너 \($0)" }).first { !taken.contains($0) } ?? "새 플래너"
+        let cover = ColorConcept.all.map(\.id).first { c in !library.books.contains { $0.cover == c } } ?? 0
+        return createBook(name: name, start: today, end: nil, cover: cover)
+    }
+
+    /// 읽지 못한 파일의 복사본 이름: "<파일>.unreadable-yyyyMMdd-HHmmss.json"
+    static func unreadableCopyName(_ url: URL, at date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        return url.lastPathComponent + ".unreadable-" + f.string(from: date) + ".json"
+    }
+
+    /// 이 파일을 읽지 못했을 때 남긴 복사본들 (이름 순 = 오래된 것부터)
+    static func unreadableCopies(of url: URL) -> [URL] {
+        let dir = url.deletingLastPathComponent()
+        let prefix = url.lastPathComponent + ".unreadable-"
+        return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".json") }
+            .sorted()
+            .map { dir.appendingPathComponent($0) }
+    }
+
+    /// 읽지 못한 파일을 손대지 않고 옆에 그대로 복사해 둔다. 같은 내용의 복사본이 이미 있으면 그것을 돌려준다
+    /// (켤 때마다 복사본이 늘지 않게). 임시 이름으로 복사한 뒤 이름을 바꾸므로 반쯤 복사된 파일이 복사본 이름으로 남지 않고,
+    /// 있는 파일은 덮어쓰지 않는다. 복사하지 못하면 (읽기 권한이 없을 때 등) nil.
+    static func preserveUnreadable(_ url: URL, now: Date = Date()) -> URL? {
+        let fm = FileManager.default
+        if let raw = try? Data(contentsOf: url),
+           let same = unreadableCopies(of: url).first(where: { (try? Data(contentsOf: $0)) == raw }) {
+            return same
+        }
+        let dir = url.deletingLastPathComponent()
+        let base = String(unreadableCopyName(url, at: now).dropLast(5))
+        for n in 1...20 {
+            let dest = dir.appendingPathComponent(base + (n == 1 ? "" : "-\(n)") + ".json")
+            guard !fm.fileExists(atPath: dest.path) else { continue }
+            let tmp = dir.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+            do {
+                try fm.copyItem(at: url, to: tmp)
+            } catch {
+                try? fm.removeItem(at: tmp)
+                return nil
+            }
+            // moveItem 은 받을 이름에 파일이 있으면 실패한다 (덮어쓰지 않는다) → 다음 이름으로
+            if (try? fm.moveItem(at: tmp, to: dest)) != nil { return dest }
+            try? fm.removeItem(at: tmp)
+        }
+        return nil
+    }
+
+    /// 알림에 보일 까닭
+    static func reason(_ error: Error) -> String {
+        error is DecodingError
+            ? "내용이 깨졌거나 이 버전의 Spiralday 가 읽을 수 없는 형식이에요."
+            : "파일을 읽지 못했어요 (읽기 권한이 없거나 디스크에서 읽을 수 없어요)."
+    }
+
+    /// 새 파일을 원자적으로 만든다: 같은 폴더의 임시 파일에 다 쓴 뒤 이름을 바꾼다. 그 이름에 파일이 이미 있으면 실패한다 (덮어쓰지 않는다).
+    static func writeNewFile(_ raw: Data, to url: URL) throws {
+        let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        try raw.write(to: tmp)
+        do {
+            try FileManager.default.moveItem(at: tmp, to: url)
+        } catch {
+            try? FileManager.default.removeItem(at: tmp)
+            throw error
         }
     }
 
@@ -543,10 +710,26 @@ final class PlannerStore: ObservableObject {
     /// 펼친 책의 저장 파일
     var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
 
-    private func loadBook(_ id: UUID) -> PlannerData {
+    /// 책 내용을 읽는다. 파일이 아직 없으면 (막 만든 책) 빈 내용.
+    /// 파일이 있는데 읽지 못하면 nil: 원본은 손대지 않고 복사본을 남기며, 앱이 도는 동안 그 파일에 쓰지 않도록
+    /// unreadableBooks 에 적어 둔다. 다시 불렀을 때 읽히면 (파일을 고쳤으면) 그때부터는 보통 책처럼 쓴다.
+    private func loadBook(_ id: UUID) -> PlannerData? {
         if folder == nil { return memoryBooks[id] ?? PlannerData() }
-        guard let url = bookURL(id),
-              var d = Self.openBookFile(url, book: library.books.first { $0.id == id })?.data else { return PlannerData() }
+        guard let url = bookURL(id) else { return PlannerData() }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            unreadableBooks[id] = nil
+            return PlannerData()
+        }
+        let book = library.books.first { $0.id == id }
+        var d: PlannerData
+        do {
+            d = try Self.readBookFile(url, book: book).data
+        } catch {
+            let copy = Self.preserveUnreadable(url)
+            unreadableBooks[id] = UnreadableFile(kind: .book(id), url: url, copy: copy, name: book?.name, reason: Self.reason(error))
+            return nil
+        }
+        unreadableBooks[id] = nil
         // 1.0.4 까지의 기록: 할 일에 그때 보이던 줄을 매긴다 (다음 저장 때 파일에 적힌다)
         for (k, r) in d.days where !r.taskRowsReady { d.days[k]?.assignTaskRows() }
         return d
@@ -576,13 +759,19 @@ final class PlannerStore: ObservableObject {
     /// 원본을 옆에 백업으로 남기고 → 옮기고 → 그 파일에 저장한다. 이미 옮긴 파일이면 읽기만 한다.
     /// loadBook 과 `--dday-migrate-test` 가 같이 쓴다.
     static func openBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) -> (data: PlannerData, migration: DDayMigration?)? {
-        guard let raw = try? Data(contentsOf: url), var d = try? dec.decode(PlannerData.self, from: raw) else { return nil }
+        try? readBookFile(url, book: book, today: today)
+    }
+
+    /// openBookFile 과 같고, 읽지 못하면 그 까닭(읽기 오류 / DecodingError)을 던진다. 읽지 못한 파일에는 아무것도 쓰지 않는다.
+    static func readBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) throws -> (data: PlannerData, migration: DDayMigration?) {
+        let raw = try Data(contentsOf: url)
+        var d = try dec.decode(PlannerData.self, from: raw)
         guard !d.prefs.ddaysPerDay else { return (d, nil) }
         // 무엇이든 바꾸기 전에 원본을 남긴다. 남기지 못하면 이번에는 옮기지 않는다.
         let backup = ddayBackupURL(url)
         var created = false
         if !FileManager.default.fileExists(atPath: backup.path) {
-            guard (try? raw.write(to: backup, options: .withoutOverwriting)) != nil else { return (d, nil) }
+            guard (try? writeNewFile(raw, to: backup)) != nil else { return (d, nil) }
             created = true
         }
         var m = migrateDDaysPerDay(&d, today: today, book: book)
@@ -645,7 +834,7 @@ final class PlannerStore: ObservableObject {
         var fresh = PlannerData()
         // 이어받을 곳: 펼친 책. 예시 플래너면 내가 만든 첫 책 (없으면 기본값)
         var inherit: Prefs? = activeBook == nil ? nil : data.prefs
-        if activeBook?.isSample == true { inherit = userBooks.first.map { loadBook($0.id).prefs } }
+        if activeBook?.isSample == true { inherit = userBooks.first.flatMap { loadBook($0.id)?.prefs } }
         if let inherit {
             fresh.prefs.categories = inherit.categories
             fresh.prefs.defaultTheme = inherit.defaultTheme
@@ -675,19 +864,29 @@ final class PlannerStore: ObservableObject {
         writeLibrary()
     }
 
-    /// 다른 책을 펼친다
-    func activate(_ id: UUID) {
-        guard id != library.activeID, library.books.contains(where: { $0.id == id }) else { return }
+    /// 다른 책을 펼친다. 이미 펼친 책이면 그대로 true.
+    /// 그 책 파일을 읽지 못하면 펼치지 않고 (지금 책 그대로, 읽지 못한 파일은 손대지 않고) onUnreadableBook 으로 알린 뒤 false.
+    @discardableResult
+    func activate(_ id: UUID) -> Bool {
+        guard id != library.activeID else { return true }
+        guard library.books.contains(where: { $0.id == id }) else { return false }
+        // 지금 책을 저장하기 전에 먼저 읽어 본다 (읽지 못하면 아무것도 바꾸지 않는다)
+        guard let next = loadBook(id) else {
+            if let bad = unreadableBooks[id] { onUnreadableBook?(bad) }
+            return false
+        }
         saveNow()
         stashMemoryBook()
         library.activeID = id
-        data = loadBook(id)
+        data = next
         bump()
         writeLibrary()
+        return true
     }
 
     /// 책을 지운다 (파일도, D-day 옮기기 백업 사본도). 펼친 책이면 남은 책 가운데 사용자가 만든 첫 책을
     /// (없으면 예시 플래너를) 펼친다.
+    /// 읽지 못한 책도 사용자가 고르면 지운다. 그때 남긴 복사본(.unreadable-…)은 지우지 않는다.
     func deleteBook(_ id: UUID) {
         let next = fallbackBook(excluding: id)?.id
         library.books.removeAll { $0.id == id }
@@ -697,9 +896,10 @@ final class PlannerStore: ObservableObject {
             // "영구히 지워져요" 약속대로 1.0.3 옮기기 때 남긴 원본 사본도 지운다
             try? FileManager.default.removeItem(at: Self.ddayBackupURL(url))
         }
+        unreadableBooks[id] = nil
         if library.activeID == id {
             library.activeID = next
-            data = library.activeID.map(loadBook) ?? PlannerData()
+            openActiveBook(notifying: true)
         }
         bump()
         writeLibrary()
@@ -767,17 +967,21 @@ final class PlannerStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: w)
     }
 
+    /// 펼친 책과 책장을 저장한다 (임시 파일에 다 쓴 뒤 이름을 바꾸는 원자적 쓰기).
+    /// 읽지 못한 책 파일에는 쓰지 않는다 (그 책은 펼쳐지지 않지만, 혹시라도 펼친 책이면 건너뛴다).
     func saveNow() {
         saveWork?.cancel()
         guard folder != nil else { return }
-        if let url = activeBookURL, let raw = try? Self.enc.encode(data) {
+        if let id = library.activeID, unreadableBooks[id] == nil,
+           let url = bookURL(id), let raw = try? Self.enc.encode(data) {
             try? raw.write(to: url, options: .atomic)
         }
         writeLibrary()
     }
 
+    /// library.json 을 읽지 못한 실행에서는 쓰지 않는다 (원본을 그대로 둔다)
     private func writeLibrary() {
-        guard let url = libraryURL, let raw = try? Self.enc.encode(library) else { return }
+        guard !libraryUnreadable, let url = libraryURL, let raw = try? Self.enc.encode(library) else { return }
         try? raw.write(to: url, options: .atomic)
     }
 

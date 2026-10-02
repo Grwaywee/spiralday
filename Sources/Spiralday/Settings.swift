@@ -298,7 +298,7 @@ private struct SettingsBooksPane: View {
     }
 
     private func open(_ id: UUID) {
-        withAnimation(.snappy(duration: 0.2)) { store.activate(id) }
+        withAnimation(.snappy(duration: 0.2)) { _ = store.activate(id) }
     }
 
     private func deleteMessage(_ b: BookInfo) -> String {
@@ -696,7 +696,7 @@ private enum SettingsBookDefaults {
 }
 
 /// 받침에 따라 ‘을/를’, ‘으로/로’ 같은 조사를 고른다 (한글·숫자로 끝나지 않으면 둘 다 적는다)
-private enum SettingsJosa {
+enum SettingsJosa {
     /// 0–9 를 읽었을 때의 받침 (영 ㅇ, 일 ㄹ, 이, 삼 ㅁ, 사, 오, 육 ㄱ, 칠 ㄹ, 팔 ㄹ, 구)
     private static let digitBatchim: [Character: UInt32] = ["0": 21, "1": 8, "2": 0, "3": 16, "4": 0,
                                                             "5": 0, "6": 1, "7": 8, "8": 8, "9": 0]

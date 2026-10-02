@@ -213,7 +213,7 @@ final class PaletteModel: ObservableObject {
 
     /// 개발 · 점검 실행에서는 설정을 읽기만 하고 적지 않는다
     private static let volatileFlags = ["--demo", "--snapshot", "--tour-test", "--palette-test", "--sample-book-test",
-                                        "--pdf-test", "--icon", "--palette-edge"]
+                                        "--pdf-test", "--icon", "--palette-edge", "--load-safety-test"]
 
     /// `--palette-edge right|left|top|bottom`: 설정을 건드리지 않고 이번 실행만 그 자리에 (점검용)
     static var argumentEdge: PaletteEdge? {

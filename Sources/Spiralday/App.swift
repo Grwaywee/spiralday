@@ -87,6 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: MainWindowController?
     /// 원격 업데이트 (Sparkle). 데모·스냅샷 같은 개발 실행에서는 켜지 않는다.
     private var updater: SPUStandardUpdaterController?
+    /// 켤 때 읽을 수 있는 책이 하나도 없어서 새로 만들어 편 책 (알림에 적는다 → DataSafety.swift)
+    private var launchFreshBook: UUID?
 
     var canCheckForUpdates: Bool { updater != nil }
 
@@ -110,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
             || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
             || Self.args.contains("--sample-book-test") || Self.args.contains("--tour-test")
-            || Self.args.contains("--palette-test") {
+            || Self.args.contains("--palette-test") || Self.args.contains("--load-safety-test") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -119,6 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store = PlannerStore()
             // 책장을 읽고 옮기기까지 끝난 뒤, 설치 후 처음 한 번만 예시 플래너를 꽂아 둔다 (펼치지는 않는다)
             store.seedSampleBookIfNeeded()
+            // 펼치려던 책 파일을 모두 읽지 못했으면 (원본은 그대로 두고) 새 플래너를 펴서 적는 것이 저장되게 한다
+            launchFreshBook = store.openFreshBookIfNothingReadable()
         }
         state = AppState(kind: Self.args.contains("--weekly") ? .weekly
                             : Self.args.contains("--home") ? .home : store.data.prefs.lastKind)
@@ -140,6 +144,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             exit(DDayMigrateTest.run(input: URL(fileURLWithPath: Self.args[i + 1]),
                                      output: URL(fileURLWithPath: Self.args[i + 2])))
+        }
+        // 데이터 안전 확인용: 임시 폴더에서 깨진 책 · 책장 파일로 켜기 → 저장 → 다시 켜기를 흉내 내 원본이 그대로인지 본다
+        if let i = Self.args.firstIndex(of: "--load-safety-test") {
+            guard i + 1 < Self.args.count else {
+                print("사용법: Spiralday --load-safety-test <결과 폴더>")
+                exit(2)
+            }
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            Task { @MainActor in exit(await LoadSafetyTest.run(to: dir)) }
+            return
         }
         // 손글씨 폰트는 어떤 창보다 먼저 등록한다
         Fonts.register()
@@ -224,6 +238,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let demo = Self.args.contains("--demo")
+        // 읽지 못한 책 · 책장 파일: 어떤 창보다 먼저 한 번 알린다 (원본은 그대로 두고 복사본을 남겼다).
+        // 앱을 쓰다가 그 책을 펼치려 하면 펼치지 않고 그때마다 알린다.
+        DataSafetyAlert.presentLaunchNotices(store, freshBook: launchFreshBook)
+        let safetyStore = store
+        store.onUnreadableBook = { [weak safetyStore] note in
+            Task { @MainActor in
+                guard let safetyStore else { return }
+                DataSafetyAlert.presentRefused(note, store: safetyStore)
+            }
+        }
         // .app 으로 실행될 때만 (Info.plist 에 SUFeedURL 이 있을 때) 업데이트를 확인한다
         if !demo, Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
             updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)

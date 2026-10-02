@@ -9,3 +9,7 @@ DerivedData/
 /dist
 # 로컬 전용 배포 도구
 /release/
+
+# 비공개 저장소(spiralday-apps)에서 관리하는 Windows · Android · 웹 앱 — 이 공개 저장소에는 올리지 않는다
+/web/
+/.github/workflows/windows.yml

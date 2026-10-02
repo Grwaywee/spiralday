@@ -6,8 +6,8 @@
 set -e
 cd "$(dirname "$0")"
 # 새 버전을 낼 때: VERSION 을 올리고 BUILD 를 1 씩 늘린다 (Sparkle 은 BUILD 로 새 버전을 판단한다)
-VERSION="1.0.6"
-BUILD=7
+VERSION="1.0.7"
+BUILD=8
 
 # 빌드한 컴퓨터의 경로가 실행 파일에 남지 않게 소스 경로를 저장소 기준(.)으로 적는다
 FLAGS=(-c release -Xswiftc -file-prefix-map -Xswiftc "$PWD=.")

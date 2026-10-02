@@ -494,11 +494,9 @@ final class TourController: ObservableObject {
 
         // 예시 플래너가 있으면 그 책을 잠깐 펼쳐 꽉 찬 날 · 꽉 찬 주를 보여 준다
         var ctx: TourContext
-        if let sample = store.books.first(where: \.isSample) {
-            if store.library.activeID != sample.id {
-                store.activate(sample.id)
-                saved.switchedBook = true
-            }
+        // 예시 플래너 파일을 읽지 못하면 (activate 가 false) 지금 책으로 둘러본다
+        if let sample = store.books.first(where: \.isSample), store.activate(sample.id) {
+            saved.switchedBook = saved.bookID != sample.id
             ctx = TourContext(sample: sample)
         } else {
             // 지금 책: 보고 있던 날 · 주 (표지 · 첫 장 · 홈이면 오늘, 책 밖이면 가장 가까운 날)
@@ -659,7 +657,8 @@ final class TourController: ObservableObject {
         guard let s, let store else { return }
         var switched = false
         if s.switchedBook, let id = s.bookID, store.library.activeID != id, store.books.contains(where: { $0.id == id }) {
-            store.activate(id)
+            // 보던 책 파일을 그새 읽지 못하게 됐으면 (알림이 뜬다) 예시 플래너에 그대로 머문다
+            guard store.activate(id) else { return }
             switched = true
         }
         // 책을 바꿨으면 AppState 가 새 책의 장을 고른 다음(다음 런루프)에
