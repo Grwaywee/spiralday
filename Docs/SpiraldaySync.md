@@ -429,7 +429,8 @@ presence 가 늘면(다른 기기가 막 켜짐) 밀린 것을 바로 보낸다.
     플래너 파일은 `<폴더>/data`, 비밀은 테스트용 키체인 서비스 이름, 설정 값은 `<폴더>` 안 — 앱의 데이터 폴더 · `com.spiralday.sync` 키체인 항목은 거절한다.
     플래너 종이는 화면 밖 창에 두고 앱을 앞으로 가져오지 않으며, 통계 · 업데이트 확인 · 처음 안내 · 둘러보기는 켜지 않는다. 서버는 운영 주소(또는 디버그의 `SPIRALDAY_SYNC_URL`).
     실시간 쓰기용 명령: `compose` (조합 한 단계 — marked text) · `commit` · `type` · `paintDrag` (타임테이블 끌기 걸음) · `watchStart` / `watchStop` (그 날이 바뀐 때와 값 — 지연 재기) ·
-    `day` · `liveState` (presence · 세기 · 알림) · `snapshot` (화면 밖 종이 + 알림 패널을 PNG 로).
+    `day` · `liveState` (presence · 세기 · 알림) · `snapshot` (화면 밖 종이 + 알림 패널을 PNG 로) ·
+    `framesStart` / `framesStop` (화면 밖 종이를 `everyMs` 마다 JPEG 로 — 여러 기기 실시간 검증이 받은 글이 언제 보였는지 장면으로 남긴다. 메인 스레드에서 찍어 그동안 받은 초안을 넣는 일이 수십 ms 늦을 수 있다).
 
 ## TypeScript 엔진과 다른 점
 

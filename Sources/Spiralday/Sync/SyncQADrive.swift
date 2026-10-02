@@ -130,6 +130,9 @@ final class SyncQADrive {
     /// watchStart 로 지켜보는 날의 변화 (받은 때 · 그날의 값)
     private var watch: AnyCancellable?
     private var watched: [[String: Any]] = []
+    /// framesStart 로 찍는 플래너 창 장면 (찍은 때 · 파일)
+    private var frames: Task<Void, Never>?
+    private var framed: [[String: Any]] = []
 
     static func start(_ config: SyncQADriveLaunch.Config, store: PlannerStore, state: AppState, sync: SyncController,
                       window: @escaping () -> NSWindow?) {
@@ -368,6 +371,32 @@ final class SyncQADrive {
         case "snapshot":
             // 화면 밖 플래너 창 + 그 위의 알림 패널을 PNG 로 (사람이 보는 모습 그대로)
             return try snapshot(to: URL(fileURLWithPath: try str("path")))
+        case "framesStart":
+            // 화면 밖 플래너 창을 everyMs 마다 JPEG 로 찍는다 (다른 기기의 초안이 종이에 언제 보였는지 — 여러 기기 실시간 검증).
+            // 찍는 일은 메인 스레드에서 한 장에 수 ms — 그동안 받은 초안을 넣는 일이 그만큼 늦을 수 있다
+            let dir = URL(fileURLWithPath: try str("dir"), isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let every = max(30, (a["everyMs"] as? Int) ?? 100)
+            let prefix = (a["prefix"] as? String) ?? "frame"
+            frames?.cancel()
+            framed = []
+            frames = Task { @MainActor [weak self] in
+                var i = 0
+                while !Task.isCancelled {
+                    let at = Self.ms()
+                    let url = dir.appendingPathComponent(String(format: "%@-%04d.jpg", prefix, i))
+                    if let self, (try? self.frame(to: url)) != nil { self.framed.append(["i": i, "at": at, "file": url.path]) }
+                    i += 1
+                    let wait = at + every - Self.ms()
+                    if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait) * 1_000_000) }
+                }
+            }
+            return nil
+        case "framesStop":
+            frames?.cancel()
+            frames = nil
+            defer { framed = [] }
+            return framed
         case "undo":
             // ⌘Z: 플래너 창의 되돌리기 (기록이 없으면 아무 일도 하지 않는다 — 메뉴의 되돌리기가 흐려진 것과 같다)
             // 메뉴의 되돌리기(⌘Z)처럼 undo: 를 지금 응답자부터 보낸다 (응답자 사슬에서 처음 받는 쪽이 자기 되돌리기 기록으로)
@@ -484,6 +513,14 @@ final class SyncQADrive {
             c += dir
         }
         return ["steps": steps, "slots": Self.dayJSON(store.data.days[Dates.key(date)], at: Self.ms())["slots"] ?? [:]]
+    }
+
+    /// 플래너 창 한 장 (JPEG — framesStart)
+    private func frame(to url: URL) throws {
+        guard let view = window()?.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw Failure("창이 없어요") }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        guard let jpg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else { throw Failure("JPEG") }
+        try jpg.write(to: url)
     }
 
     private func snapshot(to url: URL) throws -> [String: Any] {
