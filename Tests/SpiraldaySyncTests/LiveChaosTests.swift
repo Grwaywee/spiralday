@@ -1,7 +1,7 @@
 // 실시간 쓰기 + 말 안 듣는 네트워크 (property): 초안이 늦게 · 두 번 · 순서가 바뀌어 · 아예 안 닿고, HTTP 도 늦게 · 두 번 · 안 닿거나
 // 응답만 사라지고, 기기가 앱 파일을 저장하기 전에 죽었다 다시 켜지고, 쓰고 있는 칸이 바뀌고, 시계가 흘러 대신 올리기가 일어나도
 // 끝나면 모든 기기의 플래너가 같고 보낼 것이 남지 않는다. 초안은 보통 레코드 사이사이에 섞인다.
-// (TypeScript 엔진의 sync/engine/test/live-chaos.test.ts 와 같은 시나리오. LIVE_CHAOS_RUNS=200 · LIVE_CHAOS_SEED=<씨앗>)
+// (TypeScript 엔진(Windows 앱)의 실시간 혼돈 시험과 같은 시나리오. LIVE_CHAOS_RUNS=200 · LIVE_CHAOS_SEED=<씨앗>)
 import XCTest
 @testable import SpiraldaySync
 import SpiraldaySyncTesting

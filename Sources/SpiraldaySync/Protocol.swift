@@ -178,7 +178,7 @@ public enum ServerPush: Sendable, Equatable {
     case removed
     /// 그룹이 지워졌다 (곧 4404 로 닫힌다)
     case deleted
-    /// presence (live 소켓에만, docs/sync-live.md §3.1): 이 기기를 뺀 같은 그룹 기기 중 연결이 열린 기기 수 · 그중 초안을 받는 기기 수.
+    /// presence (live 소켓에만, Docs/SpiraldaySync.md §7.5): 이 기기를 뺀 같은 그룹 기기 중 연결이 열린 기기 수 · 그중 초안을 받는 기기 수.
     /// 이것을 받은 연결만 "중계 있음" 이다
     case presence(peers: Int, live: Int)
     /// 다른 기기의 봉인한 초안 (§3.3). from 은 서버가 붙인 보낸 기기 id. 키가 문자열이 아니면 빈 글 (받는 쪽 검사가 버린다)
@@ -210,6 +210,9 @@ public enum WSClose {
     public static let replaced = 4000
     public static let deviceRemoved = 4401
     public static let groupDeleted = 4404
+    /// (클라이언트 쪽) 연결이 열리기 전에 서버가 업그레이드를 받지 않았다 — HTTP 로 답했는데 101 이 아니거나(인증 · 한도 · 서버 오류는 빼고),
+    /// 101 인데 하위 프로토콜이 맞지 않았다. 엔진은 live 하위 프로토콜을 내민 연결이 이렇게 끝나면 내밀지 않고 다시 연결한다
+    public static let handshakeRejected = 1002
 }
 
 // MARK: - 응답 읽기

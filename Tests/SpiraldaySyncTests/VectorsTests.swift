@@ -63,7 +63,7 @@ final class VectorsTests: XCTestCase {
         XCTAssertEqual(CarryID.carryTaskId("3F2504E0-4F89-11D3-9A0C-0305E82C3301"), "0D594A5F-8FD8-50CA-803B-6260FFD0478F")
     }
 
-    // MARK: - 실시간 초안 (docs/sync-live.md §4.5 · sync-protocol.md §6.9) — TypeScript 엔진과 같은 바이트
+    // MARK: - 실시간 초안 (Docs/SpiraldaySync.md §7.6) — TypeScript 엔진과 같은 바이트
 
     let FROM = "CCCCCCCCCCCCCCCCCCCCCC"
     let KEY = "d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02"

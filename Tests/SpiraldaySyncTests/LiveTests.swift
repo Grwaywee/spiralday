@@ -1,6 +1,6 @@
-// 실시간 쓰기 (docs/sync-live.md): 초안 보내기 · 받기 · presence · 재생 거르기 · 보호 칸 · 저장된 그림자 · 대신 올리기 ·
-// 자기 쓰기 다시 받지 않기 · 상황별 보내기 지연. 진짜 엔진 + 가짜 서버(초안 중계 · presence 흉내). TypeScript 엔진의
-// sync/engine/test/live.test.ts 와 같은 시나리오.
+// 실시간 쓰기 (Docs/SpiraldaySync.md §7): 초안 보내기 · 받기 · presence · 재생 거르기 · 보호 칸 · 저장된 그림자 · 대신 올리기 ·
+// 자기 쓰기 다시 받지 않기 · 상황별 보내기 지연. 진짜 엔진 + 가짜 서버(초안 중계 · presence 흉내). TypeScript 엔진(Windows 앱)의
+// 실시간 시험과 같은 시나리오.
 import XCTest
 @testable import SpiraldaySync
 import SpiraldaySyncTesting

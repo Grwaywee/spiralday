@@ -230,7 +230,7 @@ public enum CRDT {
 
     /// frag(받았지만 아직 서버에서 확인되지 않은 초안 조각)에서 by(서버 버전 · 내가 올린 상태)가 이미 덮는 것을 지운다 (frag 를 바꾼다).
     /// 덮음 = by 와 합쳐도 by 가 바뀌지 않음: 필드는 by 의 도장 ≥ 조각의 도장, 항목 필드는 그것 또는 by 의 항목 d ≥ 도장(버려짐),
-    /// 항목 a · d 는 by 의 것 ≥. by 에 x 가 있으면 모두 덮는다. 다 지워지면 빈 조각 (isEmptyDelta). docs/sync-live.md §8.4
+    /// 항목 a · d 는 by 의 것 ≥. by 에 x 가 있으면 모두 덮는다. 다 지워지면 빈 조각 (isEmptyDelta). Docs/SpiraldaySync.md §7.7 (확인 대기)
     public static func dropCovered(_ frag: inout RecState, by: RecState) {
         if by.x != nil {
             frag = RecState()

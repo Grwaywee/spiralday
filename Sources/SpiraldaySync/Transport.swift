@@ -42,21 +42,27 @@ public struct SocketHandlers: Sendable {
     }
 }
 
+/// 열린 WebSocket 하나. 서버가 보낸 글은 모두 onMessage 로 넘긴다 — "ping" 의 답 "pong" 도 (ServerPush.unknown):
+/// 엔진은 ping 뒤 아무것도 오지 않으면 죽은 연결로 보고 다시 연결한다
 public protocol SocketHandle: Sendable {
-    /// "ping" (연결 유지) · "head" (지금 head 를 묻는다)
+    /// "ping" (연결 유지 · 살아 있음 확인) · "head" (지금 head 를 묻는다)
     func send(_ text: String)
-    /// 봉인한 초안 하나 (docs/sync-live.md §3.2 — {"draft","q"}). 보내지 못했으면 false (닫힘 · 보내기 대기가 Draft 의
-    /// bufferLimit 을 넘음) → 엔진은 그 조각을 다음 틱에 다음 조각과 합쳐 다시 보낸다
+    /// 봉인한 초안 하나 (Docs/SpiraldaySync.md §7.5 — {"draft","q"}). 보내지 못했으면 false (닫힘 · 보내기 대기가
+    /// WSProtocol.draftBufferLimit 을 넘음) → 엔진은 그 조각을 다음 틱에 다음 조각과 합쳐 다시 보낸다
     func sendDraft(_ draft: String, q: String) -> Bool
+    /// 지금 초안을 보낼 수 있는지 (열려 있고 보내기 대기가 한도 아래). 엔진은 봉인하기 전에 묻는다 — 찬 연결에 봉인을 버리지 않게
+    var canSendDraft: Bool { get }
     func close()
 }
 
 extension SocketHandle {
     /// 초안을 모르는 연결 (예전 구현): 보내지 않는다
     public func sendDraft(_ draft: String, q: String) -> Bool { false }
+    /// 모르면 보내 본다 (sendDraft 가 답한다)
+    public var canSendDraft: Bool { true }
 }
 
-/// WebSocket 하위 프로토콜 (docs/sync-protocol.md §4 · sync-live.md §2). 서버가 고르는 값은 늘 spiralday.v1
+/// WebSocket 하위 프로토콜 (Docs/SpiraldaySync.md §7.5). 서버가 고르는 값은 늘 spiralday.v1
 public enum WSProtocol {
     public static let v1 = "spiralday.v1"
     /// 실시간 쓰기 기능 협상: 이 값을 아는 서버는 이 연결을 live 소켓으로 받는다 (presence · 초안 중계). 옛 서버는 무시한다
@@ -307,9 +313,10 @@ public final class HTTPTransport: SyncTransport {
         openSocket(a, handlers: handlers, live: false)
     }
 
-    /// live: 하위 프로토콜 목록 "spiralday.v1, spiralday.live.1" 을 함께 보낸다 (docs/sync-live.md §2). 새 서버는 spiralday.v1 을 골라
-    /// 돌려주고 {"head"} 다음에 {"peers"} 를 보낸다. 옛 서버는 Bearer 연결에 하위 프로토콜을 돌려주지 않지만 연결은 그대로 열린다
-    /// ({"peers"} 가 오지 않음 = 중계 없음)
+    /// live: 하위 프로토콜 목록 "spiralday.v1, spiralday.live.1" 을 함께 보낸다 (Docs/SpiraldaySync.md §7.5). 새 서버는 spiralday.v1 을
+    /// 골라 돌려주고 {"head"} 다음에 {"peers"} 를 보낸다. 옛 서버는 Bearer 연결에 하위 프로토콜을 돌려주지 않지만 연결은 그대로 열린다
+    /// ({"peers"} 가 오지 않음 = 중계 없음 — 로컬 workerd 의 옛 서버 코드로 확인, 운영 엣지 뒤에서는 확인하지 않았다). 그래도 서버 앞의
+    /// 무엇이 이 목록 때문에 업그레이드를 거절하면 엔진이 live 없이 다시 연결한다 (WSClose.handshakeRejected)
     public func openSocket(_ a: Auth, handlers: SocketHandlers, live: Bool) -> SocketHandle {
         var s = baseURL.absoluteString
         if s.hasPrefix("https") { s = "wss" + s.dropFirst(5) } else if s.hasPrefix("http") { s = "ws" + s.dropFirst(4) }
@@ -358,11 +365,13 @@ final class URLSessionSocket: NSObject, SocketHandle, URLSessionWebSocketDelegat
             guard let self else { return }
             switch result {
             case let .success(.string(text)):
-                if text != "pong" { self.handlers.onMessage(ServerPush.parse(text)) }
+                // "pong" 도 넘긴다 (ServerPush.unknown — 엔진이 살아 있음을 안다)
+                self.handlers.onMessage(ServerPush.parse(text))
                 self.receive()
             case .success:
                 self.receive()
             case .failure:
+                if let r = self.handshakeRejection(task) { return self.finish(code: WSClose.handshakeRejected, reason: r) }
                 let code = task.closeCode.rawValue
                 self.finish(code: code == 0 ? 1006 : code, reason: task.closeReason.flatMap { String(data: $0, encoding: .utf8) } ?? "")
             }
@@ -387,6 +396,8 @@ final class URLSessionSocket: NSObject, SocketHandle, URLSessionWebSocketDelegat
 
     /// 아직 보내지 못한 글자 (URLSessionWebSocketTask 에는 bufferedAmount 가 없어 직접 센다)
     private var buffered = 0
+
+    var canSendDraft: Bool { lock.withLock { !closed && buffered < WSProtocol.draftBufferLimit } }
 
     func sendDraft(_ draft: String, q: String) -> Bool {
         let frame = JSONValue.object(["draft": .string(draft), "q": .string(q)]).canonical
@@ -414,9 +425,29 @@ final class URLSessionSocket: NSObject, SocketHandle, URLSessionWebSocketDelegat
         s?.finishTasksAndInvalidate()
     }
 
+    /// 연결이 열렸다. 고른 하위 프로토콜은 보지 않는다: 새 서버는 spiralday.v1 을, 옛 서버는 Bearer 연결에 아무것도 돌려주지 않는다
+    /// (둘 다 연결은 그대로 — 실시간 중계가 있는지는 그 연결에서 {"peers"} 를 받았는지로만 안다). 내밀지 않은 값을 고르면
+    /// URLSession 이 열지 않는다 (→ handshakeRejection)
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        if lock.withLock({ closed }) { return }
+        let skip = lock.withLock { () -> Bool in
+            if closed { return true }
+            opened = true
+            return false
+        }
+        if skip { return }
         handlers.onOpen()
+    }
+
+    private var opened = false
+
+    /// 열리기 전에 끝난 연결이 서버의 거절인지 (HTTP 로 답했다): 101 인데 실패(하위 프로토콜이 맞지 않음) · 400 · 426 처럼
+    /// 업그레이드 자체를 받지 않은 것. 인증(401 · 403 · 404) · 한도(408 · 429) · 서버 오류(5xx)는 하위 프로토콜 탓이 아니다 → nil
+    private func handshakeRejection(_ task: URLSessionTask) -> String? {
+        if lock.withLock({ opened }) { return nil }
+        guard let http = task.response as? HTTPURLResponse else { return nil }
+        let s = http.statusCode
+        if [401, 403, 404, 408, 429].contains(s) || s >= 500 { return nil }
+        return "handshake \(s)"
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
@@ -424,7 +455,8 @@ final class URLSessionSocket: NSObject, SocketHandle, URLSessionWebSocketDelegat
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        // 업그레이드 거절 (401 등) · 네트워크 → 1006
+        // 업그레이드 거절: 하위 프로토콜 탓일 수 있는 것 → handshakeRejected, 그 밖 (401 등) · 네트워크 → 1006
+        if let r = handshakeRejection(task) { return finish(code: WSClose.handshakeRejected, reason: r) }
         let code = (task as? URLSessionWebSocketTask)?.closeCode.rawValue ?? 0
         finish(code: code == 0 ? 1006 : code, reason: error?.localizedDescription ?? "")
     }

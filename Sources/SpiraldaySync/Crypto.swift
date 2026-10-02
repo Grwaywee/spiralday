@@ -112,8 +112,13 @@ public enum SyncCrypto {
         return out
     }
 
-    /// 봉인: 0x01 ‖ nonce ‖ AEAD. nonce 는 테스트 벡터를 만들 때만 넘긴다 (실제로는 늘 난수)
-    public static func seal(key: [UInt8], plain: [UInt8], ad: [UInt8], nonce: [UInt8]? = nil) -> [UInt8] {
+    /// 봉인: 0x01 ‖ 난수 nonce ‖ AEAD
+    public static func seal(key: [UInt8], plain: [UInt8], ad: [UInt8]) -> [UInt8] {
+        seal(key: key, plain: plain, ad: ad, nonce: nil)
+    }
+
+    /// (테스트 벡터) nonce 를 정해 봉인 — 공개하지 않는다: 같은 키로 nonce 를 다시 쓰면 XChaCha20-Poly1305 의 비밀이 깨진다. nil = 난수
+    static func seal(key: [UInt8], plain: [UInt8], ad: [UInt8], nonce: [UInt8]?) -> [UInt8] {
         prepare()
         precondition(key.count == keyBytes)
         let npub = nonce ?? randomBytes(nonceBytes)
@@ -170,7 +175,7 @@ public enum SyncCrypto {
 
 // MARK: - 그룹 키
 
-/// 실시간 초안 (docs/sync-live.md §4 — 모든 엔진이 같은 바이트)
+/// 실시간 초안 (Docs/SpiraldaySync.md §7.6 — 모든 엔진이 같은 바이트)
 public enum Draft {
     /// 초안 평문은 이 단위로 공백(0x20)을 채운다 (서버가 크기로 글자 수를 세지 못하게)
     public static let pad = 256
@@ -210,10 +215,14 @@ public final class GroupKeys: Sendable {
         liveKey = SyncCrypto.kdf(key, id: 5, ctx: SyncCrypto.ctxGroup)
     }
 
-    /// 초안 봉인 (docs/sync-live.md §4): payload {v: 1, k: 레코드 키, s: 조각} 의 정규 JSON 을 공백으로 256바이트의 배수까지 채워
-    /// K_live 로, AD = "spiralday/draft/v1:gid:from:q". 채운 평문이 23,552바이트를 넘으면 nil (보내지 않는다).
-    /// nonce 는 테스트 벡터를 만들 때만 넘긴다 (실제로는 늘 난수)
-    public func sealDraft(key recordKey: String, state: RecState, gid: String, from: String, q: Stamp, nonce: [UInt8]? = nil) -> String? {
+    /// 초안 봉인 (Docs/SpiraldaySync.md §7.6): payload {v: 1, k: 레코드 키, s: 조각} 의 정규 JSON 을 공백으로 256바이트의 배수까지 채워
+    /// K_live 로, AD = "spiralday/draft/v1:gid:from:q". 채운 평문이 23,552바이트를 넘으면 nil (보내지 않는다). nonce 는 늘 난수
+    public func sealDraft(key recordKey: String, state: RecState, gid: String, from: String, q: Stamp) -> String? {
+        sealDraft(key: recordKey, state: state, gid: gid, from: from, q: q, nonce: nil)
+    }
+
+    /// (테스트 벡터) nonce 를 정해 봉인 — 공개하지 않는다 (nonce 를 다시 쓰면 비밀이 깨진다). nil = 난수
+    func sealDraft(key recordKey: String, state: RecState, gid: String, from: String, q: Stamp, nonce: [UInt8]?) -> String? {
         let payload: JSONValue = ["v": JSONValue(Draft.version), "k": .string(recordKey), "s": CRDT.toJSON(state)]
         let json = payload.canonicalBytes
         let size = max(Draft.pad, (json.count + Draft.pad - 1) / Draft.pad * Draft.pad)
@@ -297,7 +306,12 @@ public final class GroupKeys: Sendable {
     }
 
     /// 기기 이름 (서버에는 "e1." + 암호문). AD 에 그 기기의 id 를 묶는다 (서버가 이름을 바꿔치기하면 풀리지 않는다)
-    public func encryptName(_ name: String, deviceId: String, nonce: [UInt8]? = nil) -> String {
+    public func encryptName(_ name: String, deviceId: String) -> String {
+        encryptName(name, deviceId: deviceId, nonce: nil)
+    }
+
+    /// (테스트 벡터) nonce 를 정해서 — 공개하지 않는다. nil = 난수
+    func encryptName(_ name: String, deviceId: String, nonce: [UInt8]?) -> String {
         // 서버 한도 256자: 이름은 120바이트까지 (JS 처럼 UTF-16 단위로 뒤에서 뗀다)
         var units = Array(name.trimmingCharacters(in: JS.whitespace).utf16)
         while String(decoding: units, as: UTF16.self).utf8.count > 120 { units.removeLast() }
@@ -361,7 +375,10 @@ public struct PairingSecret: Sendable {
         return String(repeating: "0", count: 4 - s.count) + s
     }
 
-    public func wrap(_ keys: GroupKeys, gid: String, nonce: [UInt8]? = nil) -> String {
+    public func wrap(_ keys: GroupKeys, gid: String) -> String { wrap(keys, gid: gid, nonce: nil) }
+
+    /// (테스트 벡터) nonce 를 정해서 — 공개하지 않는다. nil = 난수
+    func wrap(_ keys: GroupKeys, gid: String, nonce: [UInt8]?) -> String {
         Base64URL.encode(SyncCrypto.seal(key: wrapKey, plain: keys.key, ad: Pairing.ad(gid), nonce: nonce))
     }
 
@@ -431,7 +448,10 @@ public struct RecoverySecret: Sendable {
             wrapKey: SyncCrypto.kdf(seed, id: 2, ctx: SyncCrypto.ctxRecovery))
     }
 
-    public func wrap(_ keys: GroupKeys, gid: String, nonce: [UInt8]? = nil) -> String {
+    public func wrap(_ keys: GroupKeys, gid: String) -> String { wrap(keys, gid: gid, nonce: nil) }
+
+    /// (테스트 벡터) nonce 를 정해서 — 공개하지 않는다. nil = 난수
+    func wrap(_ keys: GroupKeys, gid: String, nonce: [UInt8]?) -> String {
         Base64URL.encode(SyncCrypto.seal(key: wrapKey, plain: keys.key, ad: Self.ad(gid), nonce: nonce))
     }
 

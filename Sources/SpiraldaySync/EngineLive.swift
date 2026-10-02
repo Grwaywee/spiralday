@@ -1,4 +1,4 @@
-// 실시간 쓰기 (live drafts, docs/sync-live.md): 글자 하나 · 칠한 칸 하나 단위로 다른 기기에 바로.
+// 실시간 쓰기 (live drafts, Docs/SpiraldaySync.md §7): 글자 하나 · 칠한 칸 하나 단위로 다른 기기에 바로.
 //
 //   앱 입력마다 liveEdit(keys) → (50 ms 앞·뒤 묶음) 그 레코드만 앱 메모리 값으로 비교 → 바뀐 조각에 HLC 도장 → 상태에 합침(보낼 것)
 //   → 듣는 기기가 있으면 봉인한 초안 {"draft","q"} 을 WebSocket 으로. 서버는 저장하지 않고 같은 그룹의 다른 기기에만 건넨다.
@@ -10,13 +10,15 @@ import Foundation
 
 /// 초안으로 오가는 레코드 종류
 let LIVE_KINDS: Set<RecordKind> = [.day, .week, .prefs]
-/// 클라이언트 버킷 (서버 25/초 · 40, 128 Ki자/초 · 256 Ki 보다 늘 작게 — docs/sync-live.md §5)
+/// 클라이언트 버킷 (서버 25/초 · 40, 128 Ki자/초 · 256 Ki 보다 늘 작게 — Docs/SpiraldaySync.md §7.6)
 let LIVE_MSG_RATE = 20.0
 let LIVE_MSG_BURST = 20.0
 let LIVE_CHAR_RATE = 96.0 * 1024
 let LIVE_CHAR_BURST = 192.0 * 1024
 /// 초안 하나의 remote-typing 주소 최대 수
 let LIVE_MAX_ADDRESSES = 64
+/// 보내기 대기가 찬 연결에 다시 보내 보는 간격의 상한 (ms)
+let LIVE_SEND_BACKOFF_MAX = 2000
 
 extension SyncEngine {
     // MARK: - 잠금
@@ -45,13 +47,14 @@ extension SyncEngine {
         if flushLock.waiters.isEmpty { flushLock.held = false } else { flushLock.waiters.removeFirst().resume() }
     }
 
-    // MARK: - 앱이 부르는 것 (docs/sync-live.md §6)
+    // MARK: - 앱이 부르는 것 (Docs/SpiraldaySync.md §7.1)
 
     /// 앱의 메모리 값이 방금 바뀌었다 (키 입력 · IME 조합 한 단계 · 칠하기 한 칸 · 표시 바꾸기 …). 메인 스레드에서 기다리지 않고 부른다.
     /// keys = 바뀐 레코드 키 — 열린 책의 RecordKeys.day · week · prefs (다른 종류는 무시). 엔진은 그 레코드만 host.readLive 로 읽어
     /// 그림자와 비교 → 바뀐 조각에 도장 → 상태에 합침(보낼 것) → 듣는 기기가 있으면 봉인한 초안으로 보낸다.
     /// 첫 입력은 바로, 그 뒤는 liveThrottleMs(50 ms) 묶음 (마지막 값은 꼭). 그룹 밖 · 멈춤 · 처음 가져오기 전이면 아무것도 하지 않는다 (네트워크 0).
-    /// 이 부름이 곧 "사용자가 치는 중" 이다: 쓰고 있는 칸(setEditing)은 마지막 liveEdit 부터 editingGraceMs 동안만 지킨다
+    /// 이 부름이 곧 "사용자가 치는 중" 이다: 쓰고 있는 칸(setEditing)은 **그 칸의 레코드를 바꾼** 마지막 liveEdit 부터 editingGraceMs 동안만
+    /// 지킨다 (칸마다 — 다른 칸에서 치다 옮겨 온 칸은 그 칸에서 칠 때까지 지키지 않는다)
     public nonisolated func liveEdit(_ keys: [String]) {
         let ks = keys.compactMap { k -> String? in
             guard let n = normalizeKey(k), let pk = RecordKeys.parse(n), LIVE_KINDS.contains(pk.kind) else { return nil }
@@ -61,9 +64,10 @@ extension SyncEngine {
     }
 
     /// 사용자가 쓰고 있는 칸 (캐럿이 있는 곳, 없으면 nil). 메인 스레드에서 기다리지 않고 부른다.
-    /// 사용자가 그 칸에 쓰는 중인 동안(마지막 liveEdit 부터 editingGraceMs) 그 칸은 들어오는 변경(초안 · 레코드)으로 덮지 않고, 그림자도
-    /// 앱 값으로 둔다 (그래서 다시 올리지 않는다 — 핑퐁 없음). 포커스만 있는 칸(그동안 치지 않음)은 지키지 않는다: 다른 기기의 더 새 글이
-    /// 바로 들어간다. 다른 칸 · nil 로 바뀌거나 지키는 시간이 끝나면 미뤄 둔 레코드를 다시 맞춘다 (상대의 마지막 입력이 더 나중이면 상대 글).
+    /// 사용자가 그 칸에 쓰는 중인 동안(그 칸에서의 마지막 liveEdit 부터 editingGraceMs) 그 칸은 들어오는 변경(초안 · 레코드)으로 덮지 않고,
+    /// 그림자도 앱 값으로 둔다 (그래서 다시 올리지 않는다 — 핑퐁 없음). 포커스만 있는 칸(그 칸에서 치지 않았거나 그 뒤 editingGraceMs 가 지남)은
+    /// 지키지 않는다: 다른 기기의 더 새 글이 바로 들어간다. 다른 칸 · nil 로 바뀌거나 지키는 시간이 끝나면 미뤄 둔 레코드를 다시 맞춘다
+    /// (상대의 마지막 입력이 더 나중이면 상대 글).
     /// 쓰기를 마친 뒤 정리(빈 할 일 지우기 등)를 하는 앱은 setEditingAndSettle(nil) 을 기다린 뒤 정리한다 — 미뤄 둔 상대 글을 보고 정리하게
     public nonisolated func setEditing(_ at: FieldAddress?) {
         if liveBox.setEditing(normalizeAddress(at)) { Task { await self.drainLive() } }
@@ -76,14 +80,15 @@ extension SyncEngine {
         _ = liveBox.setEditing(normalizeAddress(at))
         await drainLive()
         while releasing > 0 { await withCheckedContinuation { releaseWaiters.append($0) } }
+        // 묶어 둔 넣기(liveApplyMs)를 기다리는 받은 초안도 지금 — 정리가 아직 넣지 않은 상대 글(빈 할 일에 막 쓴 글)을 보지 못하고 지우지 않게
+        await applyLiveNow()
     }
 
-    /// 쓰고 있는 칸(setEditing)을 지금 지키는지 (마지막 liveEdit 부터 editingGraceMs 가 지나지 않았다). 쓰고 있는 칸이 없으면 nil.
+    /// 쓰고 있는 칸(setEditing)을 지금 지키는지 (그 칸에서의 마지막 liveEdit 부터 editingGraceMs 가 지나지 않았다). 쓰고 있는 칸이 없으면 nil.
     /// 앱이 엔진 밖에서 칸을 지키는 안전망은 이 값을 따라야 한다 — 엔진보다 더 지키면 옛 글이 새 도장을 얻어 더 새 글을 덮는다
     public nonisolated var editingProtected: Bool? {
-        let c = liveBox.current
-        guard c.editing != nil else { return nil }
-        return nowFn() - c.typedAt < editingGraceMs
+        guard liveBox.currentEditing != nil else { return nil }
+        return liveBox.protected(now: nowFn(), grace: editingGraceMs) != nil
     }
 
     /// 실시간 편집을 지금 바로: 남은 liveEdit 를 처리하고, 못 보낸 초안을 보내고, 동기화 저장소에 쓴다 (앱이 파일을 쓰기 전 · 닫기 전 · 테스트)
@@ -91,12 +96,12 @@ extension SyncEngine {
         guard initialized else { return }
         await drainLive()
         if !liveKeys.isEmpty { await liveTick() } else { sendUnsent() }
-        do { try await flush() } catch { log(.warn, "실시간 편집을 저장하지 못함", error) }
+        do { try await flush(durable: false) } catch { log(.warn, "실시간 편집을 저장하지 못함", error) }
     }
 
     /// 동기화 저장소가 메모리보다 뒤처져 있는지 (아직 비교하지 않은 liveEdit · 쓰지 않았거나 쓰는 중인 상태). 그렇다면 앱은 책 파일을
     /// 쓰기 전에 flushLive() 를 기다린다 — 파일이 엔진 저장소보다 앞선 채 꺼지면 다시 켤 때 그 값(받은 초안 · 친 글)을 이 기기의 새
-    /// 도장으로 올려 다른 기기의 더 새 글을 덮는다 (docs/sync-live.md §8.6). false 면 기다릴 것 없이 바로 쓴다
+    /// 도장으로 올려 다른 기기의 더 새 글을 덮는다 (Docs/SpiraldaySync.md §7.7). false 면 기다릴 것 없이 바로 쓴다
     public var storageBehind: Bool {
         initialized && (!liveKeys.isEmpty || liveBox.hasKeys || !touched.isEmpty || writing > 0 || liveFlushTask != nil
             || !liveApplyQueue.isEmpty || liveApplyTask != nil)
@@ -172,6 +177,7 @@ extension SyncEngine {
         pushUncovered = false
         editingSeen = nil
         heldAt = nil
+        liveSendBackoff = 0
         liveBox.reset()
         syncLiveActive()
     }
@@ -273,7 +279,7 @@ extension SyncEngine {
         sendUnsent()
     }
 
-    // MARK: - 초안 보내기 (§7)
+    // MARK: - 초안 보내기 (Docs/SpiraldaySync.md §7.5)
 
     /// 이 기기의 편집 조각: 듣는 기기가 있으면 초안으로, 아니면 "초안으로 가지 않은 변경" (FAST 로 보낸다)
     func draftOrUncovered(_ key: String, _ kind: RecordKind, _ delta: RecState, real: Bool) {
@@ -291,7 +297,9 @@ extension SyncEngine {
     }
 
     /// 안 보낸 조각을 봉인해 보낸다 (레코드 하나 = 프레임 하나). 버킷 · 보내기 대기가 허락하지 않으면 남겨 두고 다음 틱에
-    /// 그 뒤 조각과 합쳐 다시 (새 항목의 a 를 건너뛰고 글자 조각만 가는 일이 없게). 너무 크면 버린다 (레코드가 가져간다)
+    /// 그 뒤 조각과 합쳐 다시 (새 항목의 a 를 건너뛰고 글자 조각만 가는 일이 없게). 너무 크면 버린다 (레코드가 가져간다).
+    /// 버킷 · 보내기 대기는 봉인하기 전에 본다 (찬 연결에 봉인 · 도장을 버리지 않게). 보내기 대기가 찬 채로 이어지면(반쯤 열린 셀룰러
+    /// 연결 — 보내기 완료가 오지 않는다) 다시 보내 보는 간격을 50 ms → 100 → … 2초로 늘린다
     func sendUnsent() {
         if liveUnsent.isEmpty { return }
         guard listening(), let sock = socket, let keys, let creds else {
@@ -300,10 +308,16 @@ extension SyncEngine {
             return
         }
         refillBucket()
+        var bufferFull = false
         for key in liveUnsentOrder {
             guard let st = liveUnsent[key] else { continue }
             if bucket.msgs < 1 {
                 counters.deferred += 1
+                break
+            }
+            if !sock.canSendDraft {
+                counters.deferred += 1
+                bufferFull = true
                 break
             }
             let q = hlc.next()
@@ -316,22 +330,35 @@ extension SyncEngine {
                 continue
             }
             let cost = Double(c.utf8.count + q.utf8.count + 16)
-            if bucket.chars < cost || !sock.sendDraft(c, q: q) {
+            if bucket.chars < cost {
                 counters.deferred += 1
+                break
+            }
+            if !sock.sendDraft(c, q: q) {
+                counters.deferred += 1
+                bufferFull = true
                 break
             }
             bucket.msgs -= 1
             bucket.chars -= cost
             removeUnsent(key)
             counters.sent += 1
+            liveSendBackoff = 0
         }
-        if !liveUnsent.isEmpty, auto, liveSendTimer == nil {
-            let ms = liveThrottleMs
-            liveSendTimer = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
-                if Task.isCancelled { return }
-                await self?.liveSendFired()
-            }
+        if liveUnsent.isEmpty {
+            liveSendBackoff = 0
+            return
+        }
+        guard auto, liveSendTimer == nil else { return }
+        var ms = liveThrottleMs
+        if bufferFull {
+            liveSendBackoff = min(LIVE_SEND_BACKOFF_MAX, max(liveThrottleMs, liveSendBackoff * 2))
+            ms = liveSendBackoff
+        }
+        liveSendTimer = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+            if Task.isCancelled { return }
+            await self?.liveSendFired()
         }
     }
 
@@ -353,12 +380,21 @@ extension SyncEngine {
         bucket.chars = min(LIVE_CHAR_BURST, bucket.chars + dt * LIVE_CHAR_RATE)
     }
 
-    /// 실시간으로 바뀐 상태를 곧 저장소에 (앱이 죽어도 엔진에 남게 — 오프라인 대기열). 첫 변경은 바로, 그 뒤는 liveFlushMs 간격으로
-    /// (마지막 것은 꼭). 앱 파일(0.6초 묶음 저장)이 엔진 저장소보다 앞서지 않게 — 앞선 채 꺼지면 다시 켤 때 그 파일 값(받은 초안 · 친 글)을
-    /// 이 기기의 새 도장으로 올려, 그 사이 다른 기기의 더 새 글을 덮는다. docs/sync-live.md §8.6
-    func scheduleLiveFlush() {
-        guard initialized, running, liveFlushTask == nil else { return }
-        let wait = auto ? lastLiveFlushAt + liveFlushMs - now() : 0
+    /// 실시간으로 바뀐 상태를 곧 저장소에 (앱이 죽어도 엔진에 남게 — 오프라인 대기열). 첫 변경은 바로, 그 뒤는 간격을 두고
+    /// (마지막 것은 꼭): 이 기기의 편집은 liveFlushMs, 받기만 한 변경(받은 조각 · 재생 거르기 표 · 저장된 그림자)은 liveReceiveFlushMs —
+    /// 받은 것은 보낸 기기의 레코드가 다시 가져오므로 늦게 써도 잃지 않는다. 저전력 모드면 3배. 실시간 묶음은 fsync 하지 않는다.
+    /// 앱 파일(0.6초 묶음 저장)이 엔진 저장소보다 앞서면 안 된다 — 앞선 채 꺼지면 다시 켤 때 그 파일 값(받은 초안 · 친 글)을 이 기기의
+    /// 새 도장으로 올려 그 사이 다른 기기의 더 새 글을 덮는다. 간격을 늘리는 앱은 파일을 쓰기 전에 storageBehind → flushLive() 를 꼭 기다린다
+    /// (Docs/SpiraldaySync.md §7.7)
+    func scheduleLiveFlush(received: Bool = false) {
+        guard initialized, running else { return }
+        let gap = (received ? liveReceiveFlushMs : liveFlushMs) * (lowPower() ? 3 : 1)
+        let t = now()
+        let due = auto ? max(t, lastLiveFlushAt + gap) : t
+        if liveFlushTask != nil, liveFlushDue <= due { return }
+        liveFlushTask?.cancel()
+        liveFlushDue = due
+        let wait = due - t
         liveFlushTask = Task { [weak self] in
             if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait) * 1_000_000) }
             if Task.isCancelled { return }
@@ -367,14 +403,16 @@ extension SyncEngine {
     }
 
     func liveFlushFired() async {
+        liveFlushTask = nil
+        liveFlushDue = Int.max
         lastLiveFlushAt = now()
         // 바퀴(locked)를 기다리지 않는다 (느린 네트워크 바퀴 뒤에 서지 않게). 쓰기는 부른 순서대로 간다 (flushLock)
-        do { try await flush() } catch { log(.warn, "실시간 편집을 저장하지 못함", error) }
-        liveFlushTask = nil
-        if !touched.isEmpty || metaTouched { scheduleLiveFlush() }
+        do { try await flush(durable: false) } catch { log(.warn, "실시간 편집을 저장하지 못함", error) }
+        // 쓰는 동안 바뀌었는데 예약이 없다: 받기만 한 것으로 (이 기기의 편집은 그때 afterLive 가 그 간격으로 예약했다)
+        if liveFlushTask == nil, !touched.isEmpty || metaTouched { scheduleLiveFlush(received: true) }
     }
 
-    // MARK: - presence (§3.1)
+    // MARK: - presence
 
     func setPresence(_ next: LivePresence?) {
         let prev = presenceV
@@ -392,7 +430,7 @@ extension SyncEngine {
         }
     }
 
-    // MARK: - 보내기 시점 (§11)
+    // MARK: - 보내기 시점 (Docs/SpiraldaySync.md §7.4)
 
     /// 이 기기의 변경을 상태에 합쳤다 → 상황별 지연 뒤에 보낸다
     func requestPush() {
@@ -451,9 +489,9 @@ extension SyncEngine {
         if moved { metaTouched = true }
     }
 
-    // MARK: - 초안 받기 (§4.4 · §8)
+    // MARK: - 초안 받기 (Docs/SpiraldaySync.md §7.6 · §7.7)
 
-    /// {draft, q, from}: §4.4 의 검사 (하나라도 틀리면 조용히 버린다 — 레코드 경로가 남는다)
+    /// {draft, q, from}: 받는 쪽 검사 (Docs/SpiraldaySync.md §7.6 — 하나라도 틀리면 조용히 버린다, 레코드 경로가 남는다)
     func onDraft(draft: String, q: String, from: String) {
         func drop(_ why: String) {
             counters.dropped += 1
@@ -464,7 +502,7 @@ extension SyncEngine {
         if from == creds.deviceId { return drop("self") }
         // 재생 거르기: 기기마다 마지막으로 받아들인 q (저장된다) 보다 커야 한다. q 의 시각을 이 기기의 벽시계와 견주지 않는다 —
         // 시계가 다른 기기(듀얼부트의 현지시각 RTC 등)의 초안을 모두 버리게 된다. 처음 보는 기기의 옛 초안은 옛 도장이라
-        // 상태를 되돌리지 못한다 (LWW). docs/sync-live.md §4.4
+        // 상태를 되돌리지 못한다 (LWW). Docs/SpiraldaySync.md §7.6
         if let seen = meta.liveSeen[from], !JS.less(seen, q) { return drop("replay") }
         let d: (key: String, state: RecState)
         do {
@@ -484,7 +522,7 @@ extension SyncEngine {
             for (id, _) in drop { meta.liveSeen[id] = nil }
         }
         metaTouched = true
-        scheduleLiveFlush()
+        scheduleLiveFlush(received: true)
     }
 
     /// 받은 초안 = 다른 기기의 진짜 편집: 보낸 기기의 도장 그대로 상태에 합친다. dirty · ver 는 건드리지 않는다
@@ -508,22 +546,39 @@ extension SyncEngine {
         let t = now()
         for p in fragPaths(s) { e.liveTimes[p] = t }
         touch(e)
-        scheduleLiveFlush()
+        scheduleLiveFlush(received: true)
         armAdopt(known: true)
         let at = addressesOf(key, s)
-        let editing = liveBox.current.editing.map { ed in at.contains { overlaps(ed, $0) } } ?? false
+        let editing = liveBox.currentEditing.map { ed in at.contains { overlaps(ed, $0) } } ?? false
         emitLive(.remoteTyping(from: from, at: at, editing: editing))
         enqueueLiveApply(key)
     }
 
+    /// 넣을 레코드로 적고 넣기를 예약한다: 첫 초안은 바로, 그 뒤는 liveApplyMs 간격으로 (저전력 모드면 2배) — 그 사이에 온 초안은
+    /// 상태에 이미 합쳐져 다음 넣기에 함께 간다 (초당 20번 오는 초안마다 메인 스레드가 JSON 왕복 · 종이 다시 그리기를 하지 않게)
     func enqueueLiveApply(_ key: String) {
         if !liveApplyQueue.contains(key) { liveApplyQueue.append(key) }
         guard liveApplyTask == nil else { return }
-        liveApplyTask = Task { [weak self] in await self?.drainLiveApply() }
+        let gap = liveApplyMs * (lowPower() ? 2 : 1)
+        let wait = auto ? lastLiveApplyAt + gap - now() : 0
+        liveApplyTask = Task { [weak self] in
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait) * 1_000_000) }
+            if Task.isCancelled { return }
+            await self?.drainLiveApply()
+        }
+    }
+
+    /// 묶어 두고 기다리는 넣기를 지금 (쓰기를 마친 뒤의 정리 앞)
+    func applyLiveNow() async {
+        guard !liveApplyQueue.isEmpty else { return }
+        liveApplyTask?.cancel()
+        liveApplyTask = nil
+        await drainLiveApply()
     }
 
     /// 받은 초안을 앱에 넣는다 (레코드마다 한 번 — 그 사이 더 온 초안은 함께)
     func drainLiveApply() async {
+        lastLiveApplyAt = now()
         while !liveApplyQueue.isEmpty {
             let key = liveApplyQueue.removeFirst()
             // 다 끝낸 엔진은 앱에 넣지 않는다 (넣을 것은 apply 로 저장소에 남아 다음 실행이 넣는다)
@@ -547,8 +602,8 @@ extension SyncEngine {
             if ok, let out = job.output() {
                 commitApplied(e, out, live: true)
                 touch(e)
-                // 앱 메모리가 앞섰다 (저장된 그림자 · pend) → 앱 파일보다 먼저 엔진 저장소에
-                scheduleLiveFlush()
+                // 앱 메모리가 앞섰다 (저장된 그림자 · pend) → 앱 파일보다 먼저 엔진 저장소에 (이 기기의 편집을 함께 받아들였으면 그 간격으로)
+                scheduleLiveFlush(received: out.delta == nil)
                 if out.rescan { kick(scan: .some([bookId]), delay: 50) }
                 emitLive(.applied(bookId: bookId))
                 return
@@ -594,7 +649,7 @@ extension SyncEngine {
         touch(e)
     }
 
-    // MARK: - 확인 대기 · 대신 올리기 (§8.4)
+    // MARK: - 확인 대기 · 대신 올리기 (Docs/SpiraldaySync.md §7.7)
 
     /// 확인 대기가 있는 동안 5초마다: 대신 올릴 때가 된 레코드가 있으면 받기 → (확인되지 않았으면) 대신 올리기
     func armAdopt(known: Bool = false) {
@@ -671,7 +726,7 @@ extension SyncEngine {
         return CRDT.merge(r, f)
     }
 
-    // MARK: - 쓰고 있는 칸 (§9)
+    // MARK: - 쓰고 있는 칸 (Docs/SpiraldaySync.md §7.7)
 
     /// 미뤄 둔(held) 레코드를 상태의 승자로 다시 맞춘다: 마지막 내 글을 받아들이고 (더 나중이면 내 글), 다르면 앱에 넣는다
     func releaseHeld(_ key: String) async {
@@ -701,11 +756,21 @@ extension SyncEngine {
         noteHeld()
     }
 
+    /// 미뤄 둔 레코드 (쓰던 칸 · 멈춘 동안 다시 맞추지 못한 것)
+    func heldKeys() -> [String] { recs.values.filter { $0.d.held }.map(\.key).sorted() }
+
+    /// 미뤄 둔 레코드를 모두 다시 맞춘다 (지키는 칸이 있으면 그 레코드는 빼고)
+    func releaseAllHeld() async {
+        let p = protectedAddress()
+        for key in heldKeys() where key != p?.key { await releaseHeld(key) }
+    }
+
     /// 지키는 시간이 끝날 때 미뤄 둔 칸을 다시 맞춘다 (그 사이에 또 치면 다시 잰다)
     func armHeldRelease() {
         guard auto, running else { return }
         heldTimer?.cancel()
-        let wait = max(0, liveBox.current.typedAt + editingGraceMs - now()) + 20
+        let t = now()
+        let wait = max(0, (liveBox.protectedUntil(now: t, grace: editingGraceMs) ?? t) - t) + 20
         heldTimer = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(wait) * 1_000_000)
             if Task.isCancelled { return }
@@ -715,14 +780,24 @@ extension SyncEngine {
 
     func heldTimerFired() async {
         heldTimer = nil
-        guard let h = heldAt else { return }
-        if protectedAddress() != nil { return armHeldRelease() }
-        await releaseHeld(h.key)
+        await releaseAllHeld()
+        // 아직 지키는 칸의 레코드가 미뤄져 있다 (그 사이에 또 쳤다) → 지키는 시간이 끝날 때 다시 (다시 맞추지 못한 것 — 책이 닫힘 ·
+        // 멈춤 — 은 칸이 바뀔 때 · 다시 켤 때 맞춘다: 여기서 되풀이하지 않는다)
+        if let p = protectedAddress(), recs[p.key]?.d.held == true { armHeldRelease() }
+    }
+
+    /// 다시 돌기 시작할 때 (start · resume): 멈춘 동안(앱이 뒤로 감 · 잠자기) 지키는 시간을 잴 타이머가 없었다 → 미뤄 둔 칸을 다시 맞춘다
+    /// (지키는 시간이 끝났으면 바로). 쓰던 칸이 아직 미뤄져 있으면 held 를 다시 알린다 — 앱은 뒤로 가며 힌트를 지웠다.
+    /// 그대로 두면 돌아와 같은 칸에 친 글자가 옛 글과 함께 새 도장을 얻어 그 사이 다른 기기의 글을 덮는다
+    func resumeHeld() {
+        guard recs.values.contains(where: { $0.d.held }) else { return }
+        if let h = heldAt { emitLive(.held(h)) }
+        armHeldRelease()
     }
 
     /// held 이벤트: 쓰고 있는 칸의 레코드가 미뤄져 있는지가 바뀌면
     func noteHeld() {
-        let ed = liveBox.current.editing
+        let ed = liveBox.currentEditing
         let at: FieldAddress? = ed.flatMap { recs[$0.key]?.d.held == true ? $0 : nil }
         if at == heldAt { return }
         heldAt = at
@@ -735,7 +810,7 @@ extension SyncEngine {
         emitLive(.held(at))
     }
 
-    // MARK: - 저장 알림 (§7.4)
+    // MARK: - 저장 알림 (Docs/SpiraldaySync.md §7.7)
 
     /// 앱이 파일에 다 쓴 값 → 앞서 있던 레코드의 저장된 그림자를 앞으로 (같아지면 앞섬 끝)
     func noteSaved(_ bookId: String, _ saved: @Sendable () -> JSONValue?) {
@@ -748,7 +823,7 @@ extension SyncEngine {
             e.d.saved = e.d.shadow == flat ? nil : .value(flat)
             touch(e)
         }
-        scheduleLiveFlush()
+        scheduleLiveFlush(received: true)
     }
 }
 

@@ -34,8 +34,13 @@ extension SyncEngine {
         guard initialized, creds != nil, running else { return }
         lifeSeq += 1
         let seq = lifeSeq
+        // 뒤로 간다 = 사용자가 치는 중이 아니다: 쓰던 칸 지키기를 끝낸다 (다음 입력이 다시 지킨다)
+        liveBox.endTyping()
         // 실시간으로 친 · 받은 것을 먼저 (남은 liveEdit 비교 · 못 보낸 초안 · 저장소)
         await flushLive()
+        // 쓰던 칸에 미뤄 둔 다른 기기의 글을 지금 넣는다 — 멈춘 동안은 지키는 시간을 잴 타이머가 없다. 그대로 두면 돌아와 같은 칸에
+        // 바로 이어 친 글자가 옛 글과 함께 새 도장을 얻어 그 글을 모든 기기에서 덮는다
+        await releaseAllHeld()
         scanTimer?.cancel()
         scanTimer = nil
         let hints = takeHints() ?? .all
@@ -52,6 +57,7 @@ extension SyncEngine {
         // suspend 가 마무리하는 중이었다: 연결 · 주기 확인을 되살리고 한 바퀴 (밀린 비교도 모두)
         if socketOn { connectSocket() }
         if auto, pollTimer == nil { schedulePoll() }
+        resumeHeld()
         kick(scan: .all, pull: true, push: true, delay: 0)
     }
 

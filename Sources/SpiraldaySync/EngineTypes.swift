@@ -37,7 +37,7 @@ public protocol SyncHost: Sendable {
     func readSharedSettings() async -> JSONValue?
     func updateSharedSettings(_ transform: @Sendable (_ cur: JSONValue) -> JSONValue) async throws
 
-    // MARK: 실시간 쓰기 (선택 — docs/sync-live.md §8.3 · §10)
+    // MARK: 실시간 쓰기 (선택 — Docs/SpiraldaySync.md §7.2)
 
     /// (선택, 실시간 쓰기) 열린 책의 레코드 값들을 **지금 메모리 값**으로 (저장 전 편집 · IME 조합 중인 글자 포함). 엔진은 liveEdit 마다
     /// (50 ms 묶음) 이것을 부른다 — 메인 스레드에서 레코드 몇 개만 JSON 으로 바꾸면 된다 (책 전체가 아니다).
@@ -63,9 +63,9 @@ extension SyncHost {
     public func applyLive(bookId: String, keys: [String], _ transform: @Sendable ([String: JSONValue]) -> [String: JSONValue]) async -> Bool { false }
 }
 
-// MARK: - 실시간 쓰기 (docs/sync-live.md)
+// MARK: - 실시간 쓰기 (Docs/SpiraldaySync.md §7)
 
-/// 레코드 안의 칸 하나 (레코드와 같은 주소 — docs/sync-engine.md §2). "쓰고 있는 칸" · "다른 기기에서 쓰는 중" 에 쓴다.
+/// 레코드 안의 칸 하나 (레코드 상태와 같은 주소 — Docs/SpiraldaySync.md §7.1 아래의 칸 주소). "쓰고 있는 칸" · "다른 기기에서 쓰는 중" 에 쓴다.
 /// 예: FieldAddress(key: RecordKeys.day(책, "2026-10-02"), field: "comment") · FieldAddress(key:, coll: .tasks, item: id, field: "text")
 public struct FieldAddress: Sendable, Hashable, CustomStringConvertible {
     /// 항목 모음
@@ -102,7 +102,7 @@ public struct FieldAddress: Sendable, Hashable, CustomStringConvertible {
     }
 }
 
-/// 지금 연결의 presence (서버가 알려 준 것, docs/sync-live.md §3.1)
+/// 지금 연결의 presence (서버가 알려 준 것, Docs/SpiraldaySync.md §7.5)
 public struct LivePresence: Sendable, Equatable {
     /// 이 연결에서 서버가 초안을 중계한다 ({"peers"} 를 받았다)
     public let relay: Bool
@@ -133,7 +133,7 @@ public enum SyncLiveEvent: Sendable, Equatable {
     case applied(bookId: String)
 }
 
-/// 실시간 쓰기 세기 (앱 로그 · 모니터링, docs/sync-live.md §11.5)
+/// 실시간 쓰기 세기 (앱 로그 · 모니터링, Docs/SpiraldaySync.md §7.1)
 public struct LiveCounters: Sendable, Equatable {
     /// 보낸 초안
     public var sent = 0
@@ -151,7 +151,7 @@ public struct LiveCounters: Sendable, Equatable {
     public init() {}
 }
 
-/// 보내기 상황 (docs/sync-live.md §11.1)
+/// 보내기 상황 (Docs/SpiraldaySync.md §7.4)
 public enum PushMode: String, Sendable, CaseIterable {
     /// 온라인 기기가 모두 초안을 받는데 초안으로 가지 않은 변경 (책 정보 · 책장 …) — 첫 변경 + 400 ms
     case fast
@@ -345,18 +345,35 @@ public struct SyncEngineOptions: Sendable {
     public var live: Bool
     /// liveEdit 묶음 (ms, 기본 50): 첫 입력은 바로, 그 뒤는 이 간격으로 (마지막 값은 꼭)
     public var liveThrottleMs: Int
-    /// 실시간으로 받아들인 · 받은 편집을 동기화 저장소에 쓰는 최소 간격 (ms, 기본 100): 첫 변경은 바로, 그 뒤는 이 간격으로.
-    /// 앱 파일 저장(0.6초 묶음)보다 늘 먼저 — 앱은 파일을 쓰기 전에 storageBehind 면 flushLive() 를 기다리면 확실하다
+    /// 이 기기에서 실시간으로 받아들인 편집(친 글자 · 칠한 칸)을 동기화 저장소에 쓰는 최소 간격 (ms, 기본 100): 첫 변경은 바로,
+    /// 그 뒤는 이 간격으로 (마지막 것은 꼭). 실시간 묶음은 fsync 하지 않는다 (앱이 죽어도 남는다 — 전원이 꺼질 때만 잃을 수 있다).
+    /// 기본값은 앱 파일 저장(0.6초 묶음)보다 늘 먼저다. 책 파일을 쓰기 직전에 늘 storageBehind → flushLive() 를 기다리는 앱은
+    /// 파일이 엔진 저장소를 앞서지 않으므로 1000 처럼 늘려도 된다 (저장 장치 · 배터리 — Docs/SpiraldaySync.md §7.7)
     public var liveFlushMs: Int
+    /// 다른 기기의 초안을 받기만 한 변경(받은 조각 · 재생 거르기 표)을 저장소에 쓰는 최소 간격 (ms, 기본 = liveFlushMs).
+    /// 받은 것은 보낸 기기의 레코드가 다시 가져오므로 늦게 써도 잃지 않는다 — 다만 앱 파일이 엔진 저장소를 앞서면 안 되므로,
+    /// 늘리는 것은 책 파일을 쓰기 직전에 storageBehind → flushLive() 를 기다리는 앱만 (Apple 앱: 1000)
+    public var liveReceiveFlushMs: Int
+    /// 받은 초안을 앱에 넣는 최소 간격 (ms, 기본 100 — 화면 갱신 10Hz): 첫 초안은 바로, 그 사이에 온 초안은 다음 넣기에 함께
+    /// (다른 기기가 초당 20번 보내도 메인 스레드의 JSON 왕복 · 종이 다시 그리기는 초당 10번까지)
+    public var liveApplyMs: Int
+    /// 저전력 모드인지 (기본: ProcessInfo.isLowPowerModeEnabled). 켜져 있으면 저장 간격(liveFlushMs · liveReceiveFlushMs)을 3배,
+    /// 넣기 간격(liveApplyMs)을 2배로 넓힌다
+    public var lowPower: @Sendable () -> Bool
     /// 받은 초안이 레코드로 확인되지 않으면 받은 기기가 대신 올리기까지 (ms, 기본 30000)
     public var liveAdoptMs: Int
-    /// 쓰고 있는 칸(setEditing)을 지키는 시간 (ms, 기본 5000): 마지막 입력(liveEdit)부터 이만큼 지나면 포커스만 있는 칸으로 보고
-    /// 다른 기기의 더 새 글을 넣는다 (옛 글이 새 도장을 얻어 더 새 글을 덮지 않게 — SpiraldayKit editingGrace 와 같다)
+    /// 쓰고 있는 칸(setEditing)을 지키는 시간 (ms, 기본 5000): **그 칸에서의** 마지막 입력(liveEdit)부터 이만큼 지나면 포커스만 있는 칸으로
+    /// 보고 다른 기기의 더 새 글을 넣는다 (옛 글이 새 도장을 얻어 더 새 글을 덮지 않게 — SpiraldayKit editingGrace 와 같다).
+    /// 다른 칸에서 치다 옮겨 온 칸은 한 글자도 치기 전까지 지키지 않는다
     public var editingGraceMs: Int
     /// WebSocket 이 없을 때 서버 확인 간격 (ms)
     public var pollMs: Int
     /// WebSocket 이 있을 때 안전 확인 간격 (ms)
     public var safetyPollMs: Int
+    /// WebSocket 살아 있음 확인: 이 간격(ms, 기본 30000)마다 "ping" 을 보내고, pongTimeoutMs(기본 10000) 안에 아무것도 오지 않으면
+    /// (반쯤 열린 셀룰러 연결 등) 닫고 다시 연결한다 — 죽은 연결이 presence 를 들고 있지 않게
+    public var pingMs: Int
+    public var pongTimeoutMs: Int
     /// 동시에 보내는 레코드 수 (batch 를 모르는 서버)
     public var concurrency: Int
     /// 한 번 비교에서 이만큼 넘는 날이 한꺼번에 사라지면 지우지 않고 되살린다
@@ -366,13 +383,15 @@ public struct SyncEngineOptions: Sendable {
     public var log: @Sendable (SyncLogLevel, String) -> Void
 
     /// - Parameters:
-    ///   - pushDelayMs: 이것만 주면 (예전 호출) 모든 보내기 상황에 이 값. 주지 않으면 상황별 기본값 (docs/sync-live.md §11.1)
+    ///   - pushDelayMs: 이것만 주면 (예전 호출) 모든 보내기 상황에 이 값. 주지 않으면 상황별 기본값 (Docs/SpiraldaySync.md §7.4)
     ///   - pushDelays: 상황별 보내기 지연을 따로 (주면 pushDelayMs 보다 앞선다)
     public init(host: any SyncHost, transport: any SyncTransport, storage: any SyncStorage, credentials: (any CredentialStore)? = nil,
                 platform: SyncPlatform, auto: Bool = true, socket: Bool? = nil, now: @escaping @Sendable () -> Int = { Int(Date().timeIntervalSince1970 * 1000) },
                 scanDelayMs: Int = 150, pushDelayMs: Int? = nil, pushDelays: PushDelays? = nil, headPullDelayMs: Int = 0, minPullIntervalMs: Int = 150,
-                live: Bool = true, liveThrottleMs: Int = 50, liveFlushMs: Int = 100, liveAdoptMs: Int = 30_000, editingGraceMs: Int = 5000,
-                pollMs: Int = 30_000, safetyPollMs: Int = 5 * 60_000,
+                live: Bool = true, liveThrottleMs: Int = 50, liveFlushMs: Int = 100, liveReceiveFlushMs: Int? = nil, liveApplyMs: Int = 100,
+                lowPower: @escaping @Sendable () -> Bool = { ProcessInfo.processInfo.isLowPowerModeEnabled },
+                liveAdoptMs: Int = 30_000, editingGraceMs: Int = 5000,
+                pollMs: Int = 30_000, safetyPollMs: Int = 5 * 60_000, pingMs: Int = 30_000, pongTimeoutMs: Int = 10_000,
                 concurrency: Int = 4, massDeleteDays: Int = 20, log: @escaping @Sendable (SyncLogLevel, String) -> Void = { _, _ in }) {
         self.host = host
         self.transport = transport
@@ -405,10 +424,15 @@ public struct SyncEngineOptions: Sendable {
         self.live = live
         self.liveThrottleMs = liveThrottleMs
         self.liveFlushMs = liveFlushMs
+        self.liveReceiveFlushMs = liveReceiveFlushMs ?? liveFlushMs
+        self.liveApplyMs = liveApplyMs
+        self.lowPower = lowPower
         self.liveAdoptMs = liveAdoptMs
         self.editingGraceMs = editingGraceMs
         self.pollMs = pollMs
         self.safetyPollMs = safetyPollMs
+        self.pingMs = pingMs
+        self.pongTimeoutMs = pongTimeoutMs
         self.concurrency = concurrency
         self.massDeleteDays = massDeleteDays
         self.log = log

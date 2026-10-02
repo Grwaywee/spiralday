@@ -136,8 +136,9 @@ extension SyncEngine {
 
     func touch(_ e: RecEntry) { touched.insert(e.key) }
 
-    /// 바뀐 것을 동기화 저장소에. 쓰기는 부른 순서대로 하나씩 (flushLock) — 실시간 길과 바퀴가 함께 불러도 옛 값이 새 값을 덮지 않게
-    func flush() async throws {
+    /// 바뀐 것을 동기화 저장소에. 쓰기는 부른 순서대로 하나씩 (flushLock) — 실시간 길과 바퀴가 함께 불러도 옛 값이 새 값을 덮지 않게.
+    /// durable = false: 실시간 묶음 (fsync 하지 않는다 — 앱이 죽어도 남고, 전원이 꺼질 때만 잃을 수 있다. 잃어도 레코드 · 대신 올리기가 가져온다)
+    func flush(durable: Bool = true) async throws {
         guard initialized else { return }
         writing += 1
         await acquireFlush()
@@ -159,7 +160,7 @@ extension SyncEngine {
         touched = []
         let m = metaTouched ? meta.json : nil
         metaTouched = false
-        try await storage.write(StorageBatch(meta: m, put: put))
+        try await storage.write(StorageBatch(meta: m, put: put, durable: durable))
     }
 
     // MARK: - 비교 (앱 → 상태)

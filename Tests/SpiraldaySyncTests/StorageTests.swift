@@ -140,12 +140,23 @@ final class KeychainTests: XCTestCase {
     }
 }
 
+/// 메모리에만 두는 설정 값 (UserDefaults(suiteName:) 는 지워도 ~/Library/Preferences 에 빈 plist 를 남긴다 — 시험마다 쌓인다).
+/// SyncServerConfig 가 쓰는 것만 덮는다
+final class MemoryDefaults: UserDefaults, @unchecked Sendable {
+    private var values: [String: Any] = [:]
+
+    convenience init() { self.init(suiteName: nil)! }
+
+    override func object(forKey key: String) -> Any? { values[key] }
+    override func string(forKey key: String) -> String? { values[key] as? String }
+    override func set(_ value: Any?, forKey key: String) { values[key] = value }
+    override func removeObject(forKey key: String) { values[key] = nil }
+}
+
 final class ServerConfigTests: XCTestCase {
     func testResolveOrderAndValidation() {
-        // 이 테스트의 설정 값 묶음 (끝나면 지운다 — ~/Library/Preferences 에 파일을 남기지 않게)
-        let suite = "spiralday-sync-test-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: suite)!
-        defer { d.removePersistentDomain(forName: suite) }
+        // 이 테스트의 설정 값 (메모리 — 디스크에 아무것도 남기지 않는다)
+        let d = MemoryDefaults()
         XCTAssertEqual(SyncServerConfig.resolve(bundle: Bundle(for: Self.self), defaults: d, environment: [:]).url.absoluteString, "https://sync.spiralday.com")
         XCTAssertEqual(SyncServerConfig.resolve(bundle: Bundle(for: Self.self), defaults: d, environment: [:]).source, .production)
         let env = ["SPIRALDAY_SYNC_URL": "http://127.0.0.1:8080/"]

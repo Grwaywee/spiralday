@@ -18,10 +18,13 @@ public struct StorageBatch: Sendable {
     public var meta: JSONValue?
     public var put: [(String, JSONValue)]
     public var del: [String]
-    public init(meta: JSONValue? = nil, put: [(String, JSONValue)] = [], del: [String] = []) {
+    /// 디스크까지 꼭 내려 쓸지 (fsync). 실시간 묶음(초당 여러 번)은 false — 앱이 죽어도 남고, 전원이 꺼질 때만 잃을 수 있다
+    public var durable: Bool
+    public init(meta: JSONValue? = nil, put: [(String, JSONValue)] = [], del: [String] = [], durable: Bool = true) {
         self.meta = meta
         self.put = put
         self.del = del
+        self.durable = durable
     }
 }
 
@@ -59,7 +62,7 @@ public actor MemorySyncStorage: SyncStorage {
 }
 
 /// 폴더 하나에 둔다: state.json (전체 사본) + journal.jsonl (그 뒤의 쓰기 묶음, 한 줄에 하나).
-/// 쓰기는 일지 끝에 한 줄 덧붙이고 fsync 한다 (큰 책장에서도 쓰기 한 번이 작다).
+/// 쓰기는 일지 끝에 한 줄 덧붙이고 fsync 한다 (큰 책장에서도 쓰기 한 번이 작다). 실시간 묶음(durable = false)은 fsync 하지 않는다.
 /// 일지가 사본보다 커지면 사본을 새로 쓰고(임시 파일 → 이름 바꾸기) 일지를 비운다.
 /// 읽을 때는 사본 뒤에 일지를 차례로 덮는다 (마지막 줄이 쓰다 끊겼으면 그 줄만 버린다).
 /// 사본과 일지 줄에는 세대 번호(g)가 있어, 사본을 새로 쓴 뒤 일지를 비우기 전에 꺼져도 옛 줄을 다시 덮지 않는다.
@@ -157,7 +160,7 @@ public actor FileSyncStorage: SyncStorage {
         defer { try? h.close() }
         try h.seekToEnd()
         try h.write(contentsOf: data)
-        try h.synchronize()
+        if b.durable { try h.synchronize() }
         journalBytes += data.count
     }
 

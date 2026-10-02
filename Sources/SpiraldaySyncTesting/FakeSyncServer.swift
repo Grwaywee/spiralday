@@ -120,7 +120,7 @@ struct HttpErr: Error {
     var headers: [String: String] = [:]
 }
 
-/// 실시간 초안 중계 한도 (docs/sync-live.md §5 — 진짜 서버와 같은 값, 기기마다)
+/// 실시간 초안 중계 한도 (Docs/SpiraldaySync.md §7.6 — 진짜 서버와 같은 값, 기기마다)
 public struct FakeLiveLimits: Sendable {
     public var frameChars = 32_768
     public var msgPerSec = 25.0
@@ -250,6 +250,9 @@ public final class FakeSyncServer: @unchecked Sendable {
     private var _liveDrops = FakeLiveDrops()
     private var _relayed = 0
     private var _relayFilter: (@Sendable (FakeRelay) -> Bool)?
+    private var _rejectLiveOffer = false
+    /// 연 WebSocket 수 · 그때 live 하위 프로토콜을 내밀었는지 (기기마다, 연 순서대로)
+    private var socketOffers: [String: [Bool]] = [:]
     /// 기기마다: 보낸 초안 프레임 수 · 속도 버킷
     private var draftFrames: [String: Int] = [:]
     private var liveBuckets: [String: (msgs: Double, chars: Double, at: Int)] = [:]
@@ -265,11 +268,29 @@ public final class FakeSyncServer: @unchecked Sendable {
 
     func now() -> Int { nowFn() }
 
-    /// 실시간 초안 중계 · presence (docs/sync-live.md §3). false = 옛 서버 흉내: 하위 프로토콜 "spiralday.live.1" 을 모른다
+    /// 실시간 초안 중계 · presence (Docs/SpiraldaySync.md §7.5). false = 옛 서버 흉내: 하위 프로토콜 "spiralday.live.1" 을 모른다
     /// ({"peers"} 를 보내지 않고 초안을 무시한다). 바꾸면 다음 연결부터
     public var live: Bool {
         get { lock.withLock { _live } }
         set { lock.withLock { _live = newValue } }
+    }
+
+    /// (테스트) 서버 앞의 무엇이 live 하위 프로토콜을 내민 업그레이드를 받지 않는다 (HTTP 400 — 클라이언트에는 열리기 전 닫힘
+    /// WSClose.handshakeRejected). 바꾸면 다음 연결부터
+    public var rejectLiveOffer: Bool {
+        get { lock.withLock { _rejectLiveOffer } }
+        set { lock.withLock { _rejectLiveOffer = newValue } }
+    }
+
+    /// 이 기기가 연 WebSocket 마다 live 하위 프로토콜을 내밀었는지 (연 순서대로 — 열리지 않은 것 포함)
+    public func socketOffers(deviceId: String) -> [Bool] { lock.withLock { socketOffers[deviceId] ?? [] } }
+
+    /// 이 기기의 열린 WebSocket 을 반쯤 열린 연결로 만든다 (닫힘을 알리지 않고, 아무것도 오가지 않는다 — "pong" 도 없다.
+    /// 서버는 그 소켓을 열린 것으로 센다 — presence 그대로). 보낸 초안은 보내기 대기에 쌓인다
+    public func stallSockets(deviceId: String) {
+        lock.withLock {
+            for g in groups.values { for sk in g.sockets where sk.deviceId == deviceId { sk.stall() } }
+        }
     }
 
     public var liveLimits: FakeLiveLimits {
@@ -1021,10 +1042,16 @@ public final class FakeSyncServer: @unchecked Sendable {
                     sock.serverClose(1006, "upgrade_failed")
                     return
                 }
+                let offered = (req.value(forHTTPHeaderField: "Sec-WebSocket-Protocol") ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let offeredLive = offered.contains(WSProtocol.live)
+                self.socketOffers[dev.id, default: []].append(offeredLive)
+                if offeredLive, self._rejectLiveOffer {
+                    sock.serverClose(WSClose.handshakeRejected, "handshake 400")
+                    return
+                }
                 sock.deviceId = dev.id
                 sock.server = self
-                let offered = (req.value(forHTTPHeaderField: "Sec-WebSocket-Protocol") ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                sock.live = self._live && offered.contains(WSProtocol.live)
+                sock.live = self._live && offeredLive
                 g.sockets.append(sock)
                 sock.group = g
                 sock.serverOpen()
@@ -1162,20 +1189,39 @@ final class FakeSocket: SocketHandle, @unchecked Sendable {
     var presence: (Int, Int)?
     /// 보내기 대기 흉내 (bytes)
     var buffered = 0
+    /// 반쯤 열린 연결 (stall): 아무것도 오가지 않고 닫힘도 알리지 않는다
+    private var stalled = false
 
     init(handlers: SocketHandlers) { self.handlers = handlers }
 
     var isOpen: Bool { lock.withLock { state == 1 } }
 
+    func stall() { lock.withLock { stalled = true } }
+
     func send(_ text: String) {
-        guard lock.withLock({ state == 1 }) else { return }
+        guard lock.withLock({ state == 1 && !stalled }) else { return }
         if text == "ping" { serverSend("pong") }
         if text == "head", let g = group, let s = server { serverSend(#"{"head":\#(s.headOf(g))}"#) }
     }
 
+    var canSendDraft: Bool { lock.withLock { state == 1 && buffered < WSProtocol.draftBufferLimit } }
+
     func sendDraft(_ draft: String, q: String) -> Bool {
-        guard lock.withLock({ state == 1 }), buffered <= WSProtocol.draftBufferLimit, let s = server else { return false }
-        s.socketMessage(self, JSONValue.object(["draft": .string(draft), "q": .string(q)]).canonical)
+        let frame = JSONValue.object(["draft": .string(draft), "q": .string(q)]).canonical
+        let n = frame.utf8.count
+        // 0 = 보내지 못함 · 1 = 대기에 쌓임 (반쯤 열린 연결 — 보내기 완료가 오지 않는다) · 2 = 서버로
+        let go: Int = lock.withLock {
+            guard state == 1, buffered + n <= WSProtocol.draftBufferLimit else { return 0 }
+            if stalled {
+                buffered += n
+                return 1
+            }
+            return 2
+        }
+        if go == 0 { return false }
+        if go == 1 { return true }
+        guard let s = server else { return false }
+        s.socketMessage(self, frame)
         return true
     }
 
@@ -1198,8 +1244,8 @@ final class FakeSocket: SocketHandle, @unchecked Sendable {
     func serverSend(_ data: String) {
         guard lock.withLock({ state == 1 }) else { return }
         queue.async {
-            guard self.lock.withLock({ self.state == 1 }) else { return }
-            if data == "pong" { return }
+            guard self.lock.withLock({ self.state == 1 && !self.stalled }) else { return }
+            // "pong" 도 넘긴다 (HTTPTransport 의 WebSocket 과 같게 — 엔진이 살아 있음을 안다)
             self.handlers.onMessage(ServerPush.parse(data))
         }
     }
