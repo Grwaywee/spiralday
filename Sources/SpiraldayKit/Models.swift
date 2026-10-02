@@ -135,6 +135,23 @@ public struct DayRecord: Codable, Equatable, Sendable {
 
     /// 저장할 것이 하나도 없는지. D-day 만 붙인 날, DAY OFF 만 고른 날도 비어 있지 않다 (지우지 않고 저장한다).
     public var isEmpty: Bool { !hasRecord && ddays.isEmpty && !dayOff }
+
+    /// 끌어 칠하기의 한 걸음: 지금 칸(current) 위에 이번 범위(range)만 value 로 칠하고, 지난 걸음에 칠했지만 이번 범위 밖인 칸
+    /// (previous)만 붓질 전 값(before)으로 되돌린다. range 가 nil 이면 칠한 칸을 모두 되돌린다 (붓질 취소).
+    /// 붓질하는 사이에 밖에서 바뀐 다른 칸은 그대로 둔다 — 붓질 전 사본으로 하루를 통째로 다시 쓰지 않는다.
+    public static func repainted(_ current: [Int], before: [Int], previous: ClosedRange<Int>?, range: ClosedRange<Int>?,
+                                 value: Int) -> [Int] {
+        var next = current
+        if let previous {
+            for i in previous where i >= 0 && i < next.count && i < before.count && !(range?.contains(i) ?? false) {
+                next[i] = before[i]
+            }
+        }
+        if let range {
+            for i in range where i >= 0 && i < next.count { next[i] = value }
+        }
+        return next
+    }
 }
 
 // MARK: - 할 일 줄 (1.0.5)
@@ -584,6 +601,11 @@ public final class PlannerStore: ObservableObject {
     /// applyLibrary / applyActiveData 가 data · library 를 바꾸는 동안 true.
     /// `$data` · `$library` 를 보는 쪽(되돌리기 기록 등)이 사용자의 편집과 밖에서 온 변경을 가를 때 쓴다 (sink 안에서 읽는다).
     public internal(set) var isApplyingExternalChange = false
+    /// 사용자가 이 저장소의 내용을 마지막으로 고친 때 (scheduleSave — 밖에서 넣은 것은 세지 않는다)
+    public private(set) var lastLocalEdit: Date?
+    /// 쓰는 칸 지키기 (applyActiveData): 마지막으로 고친 뒤 이 시간 안이면 쓰는 칸의 화면 글을 지킨다 (쓰는 중인 글 · 커서 · 한글 조합).
+    /// 그보다 오래 고치지 않은 칸(포커스만 있음)은 밖에서 들어온 더 새 글을 받는다
+    public var editingGrace: TimeInterval = 5
     /// 이번 실행에서 library.json 이 없어서 책장을 새로 시작했는지 (처음 켬 · 데이터 폴더를 잃음).
     /// 그 전부터 알던 책이 책장에 없는 것을 "지운 것" 이 아니라 "잃은 것" 으로 봐야 할 때 쓴다. 메모리 전용이면 false.
     public private(set) var libraryCreated = false
@@ -1091,6 +1113,7 @@ public final class PlannerStore: ObservableObject {
 
     public func scheduleSave() {
         version &+= 1
+        if !isApplyingExternalChange { lastLocalEdit = Date() }
         guard folder != nil else { return }
         saveWork?.cancel()
         let w = DispatchWorkItem { [weak self] in self?.saveNow() }

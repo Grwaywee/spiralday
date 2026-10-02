@@ -508,6 +508,8 @@ public struct SlotPainter: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
     @State private var snapshot: [Int]? = nil
+    /// 지난 걸음에 칠한 범위 (이번 범위 밖으로 줄어든 칸만 붓질 전 값으로 되돌린다)
+    @State private var painted: ClosedRange<Int>? = nil
     @State private var anchor = 0
     @State private var paint = -1
     /// 글씨/밥 도구로 끌고 있는 범위
@@ -702,16 +704,20 @@ public struct SlotPainter: View {
         if snapshot == nil {
             state.endEditing()
             snapshot = current
+            painted = nil
             anchor = s
             paint = (state.tool < 0 || current[s] == state.tool) ? -1 : state.tool
         }
-        guard var next = snapshot else { return }
-        for i in min(anchor, s)...max(anchor, s) { next[i] = paint }
+        guard let before = snapshot else { return }
+        // 지금 칸 위에 이번 범위만 (붓질하는 사이 밖에서 바뀐 다른 칸은 그대로)
+        let range = min(anchor, s)...max(anchor, s)
+        let next = DayRecord.repainted(current, before: before, previous: painted, range: range, value: paint)
+        painted = range
         if next != current { store.editDay(date) { $0.slots = next } }
     }
 
     private func dragEnded(_ p: CGPoint) {
-        defer { snapshot = nil; pending = nil }
+        defer { snapshot = nil; painted = nil; pending = nil }
         let s = slot(at: p)
         let range = min(anchor, s)...max(anchor, s)
         switch state.tool {

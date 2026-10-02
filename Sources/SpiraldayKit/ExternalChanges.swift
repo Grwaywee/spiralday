@@ -1,7 +1,7 @@
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 밖에서 바뀐 내용을 PlannerStore 에 넣기 (다른 기기와 합친 내용, 가져오기 도구 등)
+// 밖에서 바뀐 내용을 PlannerStore 에 넣기 (가져오기 도구 등 이 저장소 밖에서 만든 내용)
 //
 // 알림 (Models.swift 의 PlannerStore)
 //   onSaved(bookID, libraryChanged)   이 저장소가 파일을 쓴 뒤 — 무엇이 바뀌었는지 (밖에서 그것을 읽어 비교한다)
@@ -11,7 +11,7 @@ import Foundation
 //
 // 넣기 (모두 MainActor 에서 바로 — 사이에 사용자의 편집이 끼어들지 않는다)
 //   applyLibrary(_:)                  책장 (책 더하기 · 정보 바꾸기 · 빼기). 펼친 책이 빠지면 다른 책을 편다
-//   applyActiveData(_:keepingEditOf:) 펼친 책의 내용. 쓰고 있는 칸은 화면의 글을 지킨다. 바로 저장한다
+//   applyActiveData(_:keepingEditOf:base:) 펼친 책의 내용. 쓰는 중인 칸은 화면의 글을 지킨다 (포커스만 있는 칸은 아니다). 바로 저장한다
 //   readBookRaw / writeBookRaw / removeBookFile   펼치지 않은 책 파일
 //
 // 데이터 안전 규칙은 앱과 같다: 읽지 못한 파일(unreadableBooks · libraryUnreadable)은 읽거나 쓰거나 지우지 않고,
@@ -26,7 +26,7 @@ public struct ExternalApplyResult: Equatable, Sendable {
     public var closedBook: UUID?
     /// applyLibrary: 다른 책을 폈다 (빠진 책 대신, 또는 아무 책도 펴지 않았을 때 들어온 내가 만든 첫 책)
     public var openedBook: UUID?
-    /// applyActiveData: 쓰고 있는 칸이 넣으려던 값과 달라서 화면의 글을 지켰다 (다음 비교에서 새 편집으로 보인다)
+    /// applyActiveData: 쓰는 중인 칸이 넣으려던 값과 달라서 화면의 글을 지켰다 (다음 비교에서 새 편집으로 보인다)
     public var keptEdit = false
     /// applyActiveData: 쓰고 있던 할 일 · 타임테이블 메모가 없어졌다 (다른 곳에서 지움) — 앱이 편집을 끝낸다
     public var editedItemRemoved = false
@@ -81,13 +81,13 @@ extension PlannerStore {
     // MARK: 책장
 
     /// 밖에서 합친 책장을 넣는다 (책 더하기 · 책 정보 바꾸기 · 책 빼기). 바뀐 것이 있으면 library.json 에 쓰고 onSaved(nil, true).
-    /// - 펼친 책(activeID)은 이 기기의 것이라 그대로 둔다. merged.activeID 는 보지 않는다.
+    /// - 펼친 책(activeID)은 이 저장소의 것이라 그대로 둔다. merged.activeID 는 보지 않는다.
     /// - 펼친 책이 빠졌으면: 그 책의 내용은 저장하지 않고(파일은 removeBookFile 로 따로 지운다) deleteBook 과 같은 순서로
     ///   다른 책을 편다 (내가 만든 책이 먼저, 없으면 예시 플래너, 읽지 못한 책은 건너뛴다).
     /// - 아무 책도 펴지 않았는데(처음 켬) 내가 만든 책이 들어오면 그 첫 책을 편다 (켤 때 init 과 같은 규칙).
     /// - 예시 플래너를 꽂았다는 표시(sampleSeeded)는 지우지 않는다. 같은 id 의 책이 둘이면 앞의 것만.
     /// - library.json 을 읽지 못한 실행(libraryUnreadable)에서는 아무것도 하지 않는다 (원본을 그대로 둔다).
-    /// 책 날짜(start · end)는 받은 그대로 둔다 (시간대가 다른 기기의 값을 이 기기 기준으로 다시 맞추지 않는다).
+    /// 책 날짜(start · end)는 받은 그대로 둔다 (시간대가 다른 곳에서 만든 값을 이 저장소의 시간대로 다시 맞추지 않는다).
     @discardableResult
     public func applyLibrary(_ merged: Library) -> ExternalApplyResult {
         var result = ExternalApplyResult()
@@ -130,25 +130,29 @@ extension PlannerStore {
     // MARK: 펼친 책
 
     /// 밖에서 합친 펼친 책의 내용을 넣고 바로 저장한다 (onSaved(펼친 책, true)).
-    /// 부르는 쪽은 지금 `data` 로 합친 결과를 같은 MainActor 차례 안에서 바로 넘긴다 (그 사이에 사용자의 편집이 끼어들지 않게).
+    /// 보통은 지금 `data` 로 합친 결과를 같은 MainActor 차례 안에서 바로 넘긴다 (그 사이에 사용자의 편집이 끼어들지 않게).
+    /// - base: merged 를 만든 바탕 (밖에서 그때 읽은 data). 주지 않으면 지금 data 로 만든 것으로 본다.
     /// - editingKey (AppState.editingKey): 쓰고 있는 칸(할 일 · 타임테이블 메모 · COMMENT · 메모 · 메모 태그 · 주간 목표 · 첫 장의 말)은
-    ///   화면의 글(지금 data 의 값)을 그대로 둔다 — 글자 · 커서 · 한글 조합이 흔들리지 않는다. 그 칸은 다음 비교에서 새 편집으로 보인다.
+    ///   지금 쓰는 중이면 — base 를 줬으면 base 뒤로 고쳤을 때, 주지 않았으면 editingGrace 안에 고쳤을 때 — 화면의 글을 그대로 둔다
+    ///   (글자 · 커서 · 한글 조합이 흔들리지 않는다. 그 칸은 다음 비교에서 새 편집으로 보인다).
+    ///   포커스만 있고 쓰지 않은 칸은 merged 의 값을 넣는다 (다른 곳의 더 새 글을 화면의 옛 글로 덮어 되돌리지 않게).
     ///   쓰던 할 일 · 메모가 없어졌으면(다른 곳에서 지움) 되살리지 않고 editedItemRemoved 로 알린다 → 앱이 편집을 끝낸다.
-    /// - 기기마다 따로인 값(prefs.lastKind · prefs.ddaysPerDay)은 이 기기의 것을 둔다.
+    /// - 저장소마다 따로인 값(prefs.lastKind · prefs.ddaysPerDay)은 이 저장소의 것을 둔다.
     /// - 줄이 없는 할 일에는 책을 열 때처럼 줄을 매긴다.
     /// - 내용이 같으면 data · version 은 그대로다. 저장 · 알림도 없다 — 다만 쓰는 칸을 지켰으면(keptEdit) 그 칸이
     ///   다시 비교되도록 저장하고 알린다.
     /// - 펼친 책이 없거나 그 책 파일을 읽지 못했으면(unreadableBooks) 아무것도 하지 않는다.
     /// 되돌리기 기록은 isApplyingExternalChange 로 이 변경을 가르고 PlannerData.rebased(from:to:) 로 쌓인 단계에 옮겨 둔다.
     @discardableResult
-    public func applyActiveData(_ merged: PlannerData, keepingEditOf editingKey: String? = nil) -> ExternalApplyResult {
+    public func applyActiveData(_ merged: PlannerData, keepingEditOf editingKey: String? = nil, base: PlannerData? = nil) -> ExternalApplyResult {
         var result = ExternalApplyResult()
         guard let id = library.activeID, unreadableBooks[id] == nil else { return result }
         var next = merged
         next.prefs.lastKind = data.prefs.lastKind
         next.prefs.ddaysPerDay = data.prefs.ddaysPerDay
         if let editingKey {
-            let kept = PlannerData.keepingEditedField(editingKey, mine: data, merged: next)
+            let typing = lastLocalEdit.map { Date().timeIntervalSince($0) < editingGrace } ?? false
+            let kept = PlannerData.keepingEditedField(editingKey, mine: data, merged: next, base: base ?? (typing ? nil : data))
             next = kept.data
             result.keptEdit = kept.kept
             result.editedItemRemoved = kept.removed
@@ -261,11 +265,37 @@ extension PlannerStore {
 // MARK: - 쓰고 있는 칸 지키기 · 되돌리기 기록 옮기기
 
 extension PlannerData {
+    /// editingKey 가 가리키는 칸의 글 (할 일 · 메모가 없거나 모르는 키면 nil)
+    public static func editedText(_ editingKey: String, in d: PlannerData) -> String? {
+        if editingKey == FrontPage.mottoKey { return d.prefs.motto }
+        let parts = editingKey.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2, Dates.parse(parts[1]) != nil else { return nil }
+        let k = parts[1]
+        let index = parts.count >= 3 ? Int(parts[2]) : nil
+        let itemID = parts.count >= 3 ? UUID(uuidString: parts[2]) : nil
+        switch parts[0] {
+        case "t": return itemID.flatMap { id in d.days[k]?.tasks.first { $0.id == id }?.text }
+        case "tn": return itemID.flatMap { id in d.days[k]?.notes.first { $0.id == id }?.text }
+        case "c": return d.days[k]?.comment ?? ""
+        case "m", "mt":
+            guard let i = index, (0..<16).contains(i) else { return nil }
+            let lines = (parts[0] == "m" ? d.days[k]?.memos : d.days[k]?.memoTags) ?? []
+            return i < lines.count ? lines[i] : ""
+        case "wg": return d.weeks[k]?.goal ?? ""
+        default: return nil
+        }
+    }
+
     /// editingKey(AppState.editingKey — "t|날|할 일 id", "tn|날|메모 id", "c|날", "m|날|n", "mt|날|n", "wg|주 시작", "motto")
     /// 의 칸을 mine 의 값으로 merged 에 되돌린다. 할 일 · 메모가 merged 에 없으면 되살리지 않는다 (removed).
     /// kept = 되돌린 값이 merged 와 달랐다.
-    public static func keepingEditedField(_ editingKey: String, mine: PlannerData, merged: PlannerData)
+    /// base (merged 를 만든 바탕)를 주면, 그 칸을 base 뒤로 고쳤을 때만 되돌린다 — 포커스만 있던 칸이 다른 곳의 더 새 글을 덮지 않게.
+    public static func keepingEditedField(_ editingKey: String, mine: PlannerData, merged: PlannerData, base: PlannerData? = nil)
         -> (data: PlannerData, kept: Bool, removed: Bool) {
+        if let base, let typed = editedText(editingKey, in: mine), editedText(editingKey, in: base) == typed {
+            // base 뒤로 쓰지 않았다: merged 그대로. 쓰던 할 일 · 메모가 merged 에서 없어졌는지만 알린다
+            return (merged, false, editedText(editingKey, in: merged) == nil)
+        }
         var out = merged
         let parts = editingKey.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
         if editingKey == FrontPage.mottoKey {

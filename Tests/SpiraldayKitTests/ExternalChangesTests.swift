@@ -203,25 +203,45 @@ final class ExternalChangesTests: XCTestCase {
         let store = PlannerStore(inMemory: true)
         store.useBook(BookInfo(name: "A", start: d1), data: PlannerData())
         let task = store.addTask(d1, row: 0)
-        store.taskText(d1, id: task).wrappedValue = "쓰는 중인 글"
+        store.taskText(d1, id: task).wrappedValue = "쓰는 중"
         let other = store.addTask(d1, row: 1)
         store.taskText(d1, id: other).wrappedValue = "다른 할 일"
+        // 밖에서 이 data 를 읽어 합치는 사이에 사용자가 더 썼다
+        let base = store.data
+        store.taskText(d1, id: task).wrappedValue = "쓰는 중인 글"
 
-        // 다른 곳에서: 쓰는 할 일의 글과 다른 할 일의 글을 바꿨다
-        var merged = store.data
+        // 다른 곳에서: 쓰는 할 일의 글과 다른 할 일의 글을 바꿨다 (base 로 합친 것)
+        var merged = base
         let k = Dates.key(d1)
         let ti = try XCTUnwrap(merged.days[k]?.tasks.firstIndex { $0.id == task })
         let oi = try XCTUnwrap(merged.days[k]?.tasks.firstIndex { $0.id == other })
         merged.days[k]!.tasks[ti].text = "다른 기기의 글"
         merged.days[k]!.tasks[oi].text = "다른 할 일 (고침)"
         merged.days[k]!.comment = "코멘트"
-        let r = store.applyActiveData(merged, keepingEditOf: AppState.taskKey(d1, task))
+        let r = store.applyActiveData(merged, keepingEditOf: AppState.taskKey(d1, task), base: base)
         XCTAssertTrue(r.changed)
         XCTAssertTrue(r.keptEdit)
         XCTAssertFalse(r.editedItemRemoved)
-        XCTAssertEqual(store.day(d1).tasks.first { $0.id == task }?.text, "쓰는 중인 글")
+        XCTAssertEqual(store.day(d1).tasks.first { $0.id == task }?.text, "쓰는 중인 글", "base 뒤로 쓴 글은 지킨다")
         XCTAssertEqual(store.day(d1).tasks.first { $0.id == other }?.text, "다른 할 일 (고침)")
         XCTAssertEqual(store.day(d1).comment, "코멘트")
+
+        // base 없이 (지금 data 로 합침): 방금 썼으면(editingGrace 안) 쓰는 중으로 보고 화면의 글을 지킨다
+        store.taskText(d1, id: task).wrappedValue = "방금 쓴 글"
+        var concurrent = store.data
+        concurrent.days[k]!.tasks[ti].text = "다른 기기가 같이 쓴 글"
+        let r5 = store.applyActiveData(concurrent, keepingEditOf: AppState.taskKey(d1, task))
+        XCTAssertTrue(r5.keptEdit)
+        XCTAssertEqual(store.day(d1).tasks.first { $0.id == task }?.text, "방금 쓴 글")
+        // 포커스만 있고 한동안 쓰지 않았다: 다른 곳의 더 새 글이 들어간다 — 화면의 옛 글로 덮어 되돌리지 않는다
+        store.editingGrace = 0
+        var newer = store.data
+        newer.days[k]!.tasks[ti].text = "다른 기기의 더 새 글"
+        let r4 = store.applyActiveData(newer, keepingEditOf: AppState.taskKey(d1, task))
+        XCTAssertTrue(r4.changed)
+        XCTAssertFalse(r4.keptEdit)
+        XCTAssertEqual(store.day(d1).tasks.first { $0.id == task }?.text, "다른 기기의 더 새 글")
+        XCTAssertNotNil(store.lastLocalEdit)
 
         // 쓰는 칸만 달랐으면: 내용은 그대로지만 그 칸이 다시 비교되도록 저장하고 알린다
         let dir = tempFolder()
@@ -229,17 +249,20 @@ final class ExternalChangesTests: XCTestCase {
         _ = filed.createBook(name: "B", start: d1, end: nil)
         filed.dayField(d1, \.comment).wrappedValue = "쓰는 중"
         filed.saveNow()
+        let filedBase = filed.data
+        filed.dayField(d1, \.comment).wrappedValue = "쓰는 중 더"
+        filed.saveNow()
         var notified = 0
         filed.onSaved = { _, _ in notified += 1 }
-        var onlyEdited = filed.data
+        var onlyEdited = filedBase
         onlyEdited.days[k]?.comment = "다른 기기의 글"
         let v = filed.version
-        let r3 = filed.applyActiveData(onlyEdited, keepingEditOf: "c|\(k)")
+        let r3 = filed.applyActiveData(onlyEdited, keepingEditOf: "c|\(k)", base: filedBase)
         XCTAssertFalse(r3.changed)
         XCTAssertTrue(r3.keptEdit)
         XCTAssertEqual(filed.version, v)
         XCTAssertEqual(notified, 1)
-        XCTAssertEqual(filed.day(d1).comment, "쓰는 중")
+        XCTAssertEqual(filed.day(d1).comment, "쓰는 중 더")
 
         // 쓰던 할 일이 다른 곳에서 지워졌다: 되살리지 않고 알린다
         var gone = store.data
@@ -283,6 +306,19 @@ final class ExternalChangesTests: XCTestCase {
         XCTAssertEqual(keep("wg|2026-09-28").data.weeks["2026-09-28"], WeekRecord(goal: "내 목표", review: "남의 돌아보기", stars: 5))
         XCTAssertEqual(keep(FrontPage.mottoKey).data.prefs.motto, "내 다짐")
         XCTAssertTrue(keep(FrontPage.mottoKey).kept)
+        // base 를 주면: base 뒤로 쓴 칸만 지킨다 (포커스만 있던 칸은 합친 값)
+        XCTAssertFalse(PlannerData.keepingEditedField("c|\(k)", mine: mine, merged: merged, base: mine).kept)
+        XCTAssertEqual(PlannerData.keepingEditedField("c|\(k)", mine: mine, merged: merged, base: mine).data, merged)
+        XCTAssertTrue(PlannerData.keepingEditedField("c|\(k)", mine: mine, merged: merged, base: merged).kept)
+        XCTAssertTrue(PlannerData.keepingEditedField(FrontPage.mottoKey, mine: mine, merged: merged, base: PlannerData()).kept)
+        var noNote = merged
+        noNote.days[k]?.notes = []
+        let gone = PlannerData.keepingEditedField("tn|\(k)|\(note.id.uuidString)", mine: mine, merged: noNote, base: mine)
+        XCTAssertTrue(gone.removed, "쓰지 않았어도 지워진 메모는 알린다")
+        XCTAssertFalse(gone.kept)
+        XCTAssertEqual(PlannerData.editedText("m|\(k)|3", in: mine), "넷째 줄")
+        XCTAssertEqual(PlannerData.editedText("wg|2026-09-28", in: mine), "내 목표")
+        XCTAssertNil(PlannerData.editedText("t|\(k)|\(UUID().uuidString)", in: mine))
         // 같은 값 · 모르는 키 · 잘못된 키는 그대로
         XCTAssertFalse(PlannerData.keepingEditedField("c|\(k)", mine: merged, merged: merged).kept)
         XCTAssertEqual(keep("x|\(k)").data, merged)
@@ -494,5 +530,30 @@ final class ExternalChangesTests: XCTestCase {
         XCTAssertEqual(undone.weeks["2026-09-28"]?.goal, "목표")
         // 바뀐 것이 없으면 그대로
         XCTAssertEqual(snapshot.rebased(from: base, to: base), snapshot)
+    }
+
+    // MARK: 끌어 칠하기
+
+    func testRepaintedKeepsCellsChangedElsewhereDuringTheStroke() {
+        var before = Array(repeating: -1, count: DayRecord.slotCount)
+        before[0] = 1
+        // 붓질: 10–12 칠함 → (그 사이 밖에서 50 을 칠함) → 10–14 로 늘림 → 10–11 로 줄임
+        var cur = DayRecord.repainted(before, before: before, previous: nil, range: 10...12, value: 3)
+        XCTAssertEqual(Array(cur[10...12]), [3, 3, 3])
+        cur[50] = 2
+        cur = DayRecord.repainted(cur, before: before, previous: 10...12, range: 10...14, value: 3)
+        XCTAssertEqual(Array(cur[10...14]), [3, 3, 3, 3, 3])
+        cur = DayRecord.repainted(cur, before: before, previous: 10...14, range: 10...11, value: 3)
+        XCTAssertEqual(Array(cur[10...14]), [3, 3, -1, -1, -1], "줄어든 칸은 붓질 전 값으로")
+        XCTAssertEqual(cur[50], 2, "붓질 사이 밖에서 바뀐 칸은 그대로")
+        XCTAssertEqual(cur[0], 1)
+        // 취소: 칠한 칸만 되돌린다
+        cur = DayRecord.repainted(cur, before: before, previous: 10...11, range: nil, value: 3)
+        XCTAssertEqual(Array(cur[10...11]), [-1, -1])
+        XCTAssertEqual(cur[50], 2)
+        // 밖에서 바뀐 것이 없으면 예전 방식(붓질 전 사본 + 범위)과 같다
+        var old = before
+        for i in 20...30 { old[i] = -1 }
+        XCTAssertEqual(DayRecord.repainted(before, before: before, previous: 20...40, range: 20...30, value: -1), old)
     }
 }
