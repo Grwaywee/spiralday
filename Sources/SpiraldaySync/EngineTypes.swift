@@ -36,6 +36,22 @@ public protocol SyncHost: Sendable {
     var supportsSharedSettings: Bool { get }
     func readSharedSettings() async -> JSONValue?
     func updateSharedSettings(_ transform: @Sendable (_ cur: JSONValue) -> JSONValue) async throws
+
+    // MARK: 실시간 쓰기 (선택 — docs/sync-live.md §8.3 · §10)
+
+    /// (선택, 실시간 쓰기) 열린 책의 레코드 값들을 **지금 메모리 값**으로 (저장 전 편집 · IME 조합 중인 글자 포함). 엔진은 liveEdit 마다
+    /// (50 ms 묶음) 이것을 부른다 — 메인 스레드에서 레코드 몇 개만 JSON 으로 바꾸면 된다 (책 전체가 아니다).
+    /// keys = 레코드 키 ('d/<BOOK>/<yyyy-MM-dd>' · 'w/<BOOK>/<월요일>' · 'p/<BOOK>'). 돌려주는 값: 키 → 앱 JSON
+    /// (하루 = PlannerData.days[날짜] · 한 주 = weeks[월요일] · 설정 = prefs, 앱 파일과 같은 인코더로. 없는 날 · 주는 .null).
+    /// 그 책이 열려 있지 않거나 지금 읽을 수 없으면 nil → 엔진은 readBook(id:) 로 읽는다 (구현하지 않은 호스트도 그렇다)
+    func readLive(bookId: String, keys: [String]) async -> [String: JSONValue]?
+    /// (선택, 실시간 쓰기) 다른 기기의 초안을 열린 책에 **지금 바로** 넣기. transform(그 레코드들의 지금 메모리 값, readLive 와 같은 모양) 의
+    /// 결과를 같은 MainActor 차례 안에서 그대로 메모리에 둔다 (값 .null = 그 날 · 주를 없앤다). 파일 저장은 보통처럼 미룬다 (바로 쓰지 않는다 —
+    /// 엔진이 받은 것을 먼저 저장한다. 다 쓴 뒤 localChanged(bookId:saved:) 로 알린다). 이 변경은 liveEdit 로 다시 알리지 않는다.
+    /// 쓰고 있는 칸은 엔진이 이미 지켜서 넘긴다 (호스트가 따로 지키면 엔진보다 더 지키면 안 된다 — editingProtected 를 따른다).
+    /// 그 책이 열려 있지 않거나 지금 넣을 수 없으면 transform 을 부르지 않고 false → 엔진은 다음 바퀴의 updateBook 으로 넣는다.
+    /// transform 을 부른 뒤에는 꼭 넣고 true (넣지 못하면 updateBook 처럼 던지는 대신 false 로 — 엔진은 넣지 않은 것으로 본다)
+    func applyLive(bookId: String, keys: [String], _ transform: @Sendable (_ cur: [String: JSONValue]) -> [String: JSONValue]) async -> Bool
 }
 
 extension SyncHost {
@@ -43,6 +59,144 @@ extension SyncHost {
     public var supportsSharedSettings: Bool { false }
     public func readSharedSettings() async -> JSONValue? { nil }
     public func updateSharedSettings(_ transform: @Sendable (JSONValue) -> JSONValue) async throws {}
+    public func readLive(bookId: String, keys: [String]) async -> [String: JSONValue]? { nil }
+    public func applyLive(bookId: String, keys: [String], _ transform: @Sendable ([String: JSONValue]) -> [String: JSONValue]) async -> Bool { false }
+}
+
+// MARK: - 실시간 쓰기 (docs/sync-live.md)
+
+/// 레코드 안의 칸 하나 (레코드와 같은 주소 — docs/sync-engine.md §2). "쓰고 있는 칸" · "다른 기기에서 쓰는 중" 에 쓴다.
+/// 예: FieldAddress(key: RecordKeys.day(책, "2026-10-02"), field: "comment") · FieldAddress(key:, coll: .tasks, item: id, field: "text")
+public struct FieldAddress: Sendable, Hashable, CustomStringConvertible {
+    /// 항목 모음
+    public enum ItemCollection: String, Sendable, Hashable, CaseIterable {
+        case tasks, notes, ddays, categories
+    }
+
+    /// 레코드 키: 'd/<BOOK>/<yyyy-MM-dd>' · 'w/<BOOK>/<월요일>' · 'p/<BOOK>'
+    public var key: String
+    /// 단일 필드 ('comment' · 'm0' … · 'mt+' · 's07' · 'goal' · 'review' · 'mottoText' …) 또는 항목의 필드 ('text' · 'title' · 'name' …)
+    public var field: String?
+    /// 모음 (항목일 때)
+    public var coll: ItemCollection?
+    /// 항목 id: 대문자 UUID (형광펜은 10진 정수 문자열)
+    public var item: String?
+
+    /// 단일 필드
+    public init(key: String, field: String) {
+        self.key = key
+        self.field = field
+    }
+
+    /// 모음 항목 (field 가 nil 이면 항목 전체)
+    public init(key: String, coll: ItemCollection, item: String, field: String? = nil) {
+        self.key = key
+        self.coll = coll
+        self.item = item
+        self.field = field
+    }
+
+    public var description: String {
+        if let coll, let item { return "\(key) \(coll.rawValue).\(item)" + (field.map { ".\($0)" } ?? "") }
+        return "\(key) \(field ?? "")"
+    }
+}
+
+/// 지금 연결의 presence (서버가 알려 준 것, docs/sync-live.md §3.1)
+public struct LivePresence: Sendable, Equatable {
+    /// 이 연결에서 서버가 초안을 중계한다 ({"peers"} 를 받았다)
+    public let relay: Bool
+    /// 연결이 열린 다른 기기 수
+    public let peers: Int
+    /// 그중 초안을 받는 기기 수
+    public let live: Int
+
+    public init(relay: Bool, peers: Int, live: Int) {
+        self.relay = relay
+        self.peers = peers
+        self.live = live
+    }
+}
+
+/// 실시간 쓰기 이벤트 (SyncEvent 와 따로 — 초당 여러 번 올 수 있다). addLiveListener · liveEvents() 로 받는다
+public enum SyncLiveEvent: Sendable, Equatable {
+    /// presence 가 바뀌었다 (연결 없음 · 서버가 알려 주지 않음 = nil)
+    case presence(LivePresence?)
+    /// 다른 기기(from = 그 기기 id, 기기 목록으로 이름을 풀 수 있다)의 초안을 받았다. at = 초안이 바꾼 곳,
+    /// editing = 그중 하나가 내가 쓰고 있는 칸 (setEditing) → 그 칸 옆에 "다른 기기에서 쓰는 중" (마지막 이벤트부터 3초).
+    /// 사용자가 그 칸에 쓰는 중이면 그 칸의 글은 그대로 두었고 (held), 포커스만 있으면 상대 글을 넣었다
+    case remoteTyping(from: String, at: [FieldAddress], editing: Bool)
+    /// 쓰고 있는 칸(setEditing)에 다른 기기의 더 새 글이 있는데 사용자가 그 칸에 쓰는 중이라 앱 글을 그대로 두었다 (그 칸) ·
+    /// 그 일이 끝났다 (nil: 쓰기를 마쳤거나 editingGraceMs 동안 치지 않아 상태의 승자를 넣었다) → 그동안 "다른 기기의 글이 있어요"
+    case held(FieldAddress?)
+    /// 다른 기기의 초안을 열린 책에 바로 넣었다 (host.applyLive 로 — 메모리는 이미 바뀌었다. 가볍게 다룰 것: 상태 표시는 그대로)
+    case applied(bookId: String)
+}
+
+/// 실시간 쓰기 세기 (앱 로그 · 모니터링, docs/sync-live.md §11.5)
+public struct LiveCounters: Sendable, Equatable {
+    /// 보낸 초안
+    public var sent = 0
+    /// 보내지 못하고 미룬 틱 (버킷 · 보내기 대기)
+    public var deferred = 0
+    /// 너무 커서 보내지 않은 조각 (레코드로 간다)
+    public var tooLarge = 0
+    /// 받아들인 초안
+    public var received = 0
+    /// 버린 초안: 재생 · 풀리지 않음 · 모양 · 그룹 밖
+    public var dropped = 0
+    /// 확인되지 않아 대신 올린 레코드
+    public var adopted = 0
+
+    public init() {}
+}
+
+/// 보내기 상황 (docs/sync-live.md §11.1)
+public enum PushMode: String, Sendable, CaseIterable {
+    /// 온라인 기기가 모두 초안을 받는데 초안으로 가지 않은 변경 (책 정보 · 책장 …) — 첫 변경 + 400 ms
+    case fast
+    /// 온라인 기기가 모두 초안을 받는다 — 첫 변경 + 2 s (보이는 지연은 초안이 맡는다)
+    case covered
+    /// 초안을 받지 않는 기기(옛 앱)가 온라인 — 마지막 변경 + 1 s, 첫 변경부터 최대 2 s
+    case oldPeer = "old-peer"
+    /// presence 를 모른다 (옛 서버 · WebSocket 이 막힘 · LIVE=off) — 마지막 변경 + 1.5 s, 최대 4 s (예전 비용 수준)
+    case unknown
+    /// 온라인 기기가 없다 — 마지막 변경 + 2 s, 최대 5 s (창을 닫을 때는 sendPending 으로 바로)
+    case alone
+
+    /// presence → 보내기 상황 (COVERED 인데 초안으로 가지 않은 변경이 있으면 엔진이 fast 로 바꾼다)
+    public static func of(_ p: LivePresence?) -> PushMode {
+        guard let p, p.relay else { return .unknown }
+        if p.peers == 0 { return .alone }
+        return p.live >= p.peers ? .covered : .oldPeer
+    }
+}
+
+/// 상황별 보내기 지연 (ms)
+public struct PushDelays: Sendable, Equatable {
+    public var pushDelayMs = 400
+    public var coveredPushDelayMs = 2000
+    public var oldPeerPushDelayMs = 1000
+    public var oldPeerMaxWaitMs = 2000
+    public var unknownPushDelayMs = 1500
+    public var unknownMaxWaitMs = 4000
+    public var alonePushDelayMs = 2000
+    public var aloneMaxWaitMs = 5000
+
+    public init() {}
+
+    /// 밀린 변경을 보낼 때 (ms 시각). fast · covered = 첫 변경부터 정한 지연 (뒤 변경으로 밀리지 않는다),
+    /// oldPeer · unknown · alone = 마지막 변경 + 지연, 첫 변경부터 최대 maxWait (계속 치는 동안 요청 수를 줄인다)
+    public func dueAt(_ mode: PushMode, firstAt: Int, lastAt: Int) -> Int {
+        func debounce(_ delay: Int, _ maxWait: Int) -> Int { min(lastAt + delay, firstAt + max(maxWait, delay)) }
+        switch mode {
+        case .fast: return firstAt + pushDelayMs
+        case .covered: return firstAt + coveredPushDelayMs
+        case .oldPeer: return debounce(oldPeerPushDelayMs, oldPeerMaxWaitMs)
+        case .unknown: return debounce(unknownPushDelayMs, unknownMaxWaitMs)
+        case .alone: return debounce(alonePushDelayMs, aloneMaxWaitMs)
+        }
+    }
 }
 
 // MARK: - 상태 · 이벤트
@@ -77,6 +231,8 @@ public struct SyncStatus: Sendable, Equatable {
     public let deviceId: String?
     /// WebSocket 연결 중인지
     public let live: Bool
+    /// 지금 연결의 presence (연결 없음 · 서버가 알려 주지 않음 = nil)
+    public let presence: LivePresence?
 }
 
 public enum SyncWarning: String, Sendable {
@@ -172,10 +328,31 @@ public struct SyncEngineOptions: Sendable {
     public var now: @Sendable () -> Int
     /// 저절로 돌기 (타이머 · WebSocket). 테스트는 false 로 두고 직접 부른다
     public var auto: Bool
-    /// 저장 알림 뒤 비교까지 (ms)
+    /// WebSocket 을 열지 (기본 = auto). auto 없이 초안을 시험할 때 true
+    public var socket: Bool
+    /// 저장 알림 뒤 비교까지 (ms, 기본 150)
     public var scanDelayMs: Int
-    /// 비교 뒤 보내기까지 (ms)
-    public var pushDelayMs: Int
+    /// 보내기 — FAST (ms, 기본 400): 온라인 기기가 모두 초안을 받는데(COVERED) 초안으로 가지 않은 변경 (책 정보 · 책장 …), 첫 변경부터.
+    /// 상황별 지연은 pushDelays (이 값만 준 예전 호출은 모든 상황에 이 값을 쓴다)
+    public var pushDelayMs: Int { pushDelays.pushDelayMs }
+    /// 상황별 보내기 지연 (FAST · COVERED · OLD-PEER · UNKNOWN · ALONE)
+    public var pushDelays: PushDelays
+    /// WebSocket {"head"} 를 받고 받기까지 (ms, 기본 0)
+    public var headPullDelayMs: Int
+    /// 받기 시작 사이 최소 간격 (ms, 기본 150)
+    public var minPullIntervalMs: Int
+    /// 실시간 쓰기 (기본 true). false 면 live 하위 프로토콜을 내밀지 않는다: presence · 초안 없음
+    public var live: Bool
+    /// liveEdit 묶음 (ms, 기본 50): 첫 입력은 바로, 그 뒤는 이 간격으로 (마지막 값은 꼭)
+    public var liveThrottleMs: Int
+    /// 실시간으로 받아들인 · 받은 편집을 동기화 저장소에 쓰는 최소 간격 (ms, 기본 100): 첫 변경은 바로, 그 뒤는 이 간격으로.
+    /// 앱 파일 저장(0.6초 묶음)보다 늘 먼저 — 앱은 파일을 쓰기 전에 storageBehind 면 flushLive() 를 기다리면 확실하다
+    public var liveFlushMs: Int
+    /// 받은 초안이 레코드로 확인되지 않으면 받은 기기가 대신 올리기까지 (ms, 기본 30000)
+    public var liveAdoptMs: Int
+    /// 쓰고 있는 칸(setEditing)을 지키는 시간 (ms, 기본 5000): 마지막 입력(liveEdit)부터 이만큼 지나면 포커스만 있는 칸으로 보고
+    /// 다른 기기의 더 새 글을 넣는다 (옛 글이 새 도장을 얻어 더 새 글을 덮지 않게 — SpiraldayKit editingGrace 와 같다)
+    public var editingGraceMs: Int
     /// WebSocket 이 없을 때 서버 확인 간격 (ms)
     public var pollMs: Int
     /// WebSocket 이 있을 때 안전 확인 간격 (ms)
@@ -188,9 +365,14 @@ public struct SyncEngineOptions: Sendable {
     public var platform: SyncPlatform
     public var log: @Sendable (SyncLogLevel, String) -> Void
 
+    /// - Parameters:
+    ///   - pushDelayMs: 이것만 주면 (예전 호출) 모든 보내기 상황에 이 값. 주지 않으면 상황별 기본값 (docs/sync-live.md §11.1)
+    ///   - pushDelays: 상황별 보내기 지연을 따로 (주면 pushDelayMs 보다 앞선다)
     public init(host: any SyncHost, transport: any SyncTransport, storage: any SyncStorage, credentials: (any CredentialStore)? = nil,
-                platform: SyncPlatform, auto: Bool = true, now: @escaping @Sendable () -> Int = { Int(Date().timeIntervalSince1970 * 1000) },
-                scanDelayMs: Int = 400, pushDelayMs: Int = 1500, pollMs: Int = 30_000, safetyPollMs: Int = 5 * 60_000,
+                platform: SyncPlatform, auto: Bool = true, socket: Bool? = nil, now: @escaping @Sendable () -> Int = { Int(Date().timeIntervalSince1970 * 1000) },
+                scanDelayMs: Int = 150, pushDelayMs: Int? = nil, pushDelays: PushDelays? = nil, headPullDelayMs: Int = 0, minPullIntervalMs: Int = 150,
+                live: Bool = true, liveThrottleMs: Int = 50, liveFlushMs: Int = 100, liveAdoptMs: Int = 30_000, editingGraceMs: Int = 5000,
+                pollMs: Int = 30_000, safetyPollMs: Int = 5 * 60_000,
                 concurrency: Int = 4, massDeleteDays: Int = 20, log: @escaping @Sendable (SyncLogLevel, String) -> Void = { _, _ in }) {
         self.host = host
         self.transport = transport
@@ -198,9 +380,33 @@ public struct SyncEngineOptions: Sendable {
         self.credentials = credentials
         self.platform = platform
         self.auto = auto
+        self.socket = socket ?? auto
         self.now = now
         self.scanDelayMs = scanDelayMs
-        self.pushDelayMs = pushDelayMs
+        if let pushDelays {
+            self.pushDelays = pushDelays
+        } else if let legacy = pushDelayMs {
+            // 예전 옵션: 모든 상황에 그 값
+            var d = PushDelays()
+            d.pushDelayMs = legacy
+            d.coveredPushDelayMs = legacy
+            d.oldPeerPushDelayMs = legacy
+            d.oldPeerMaxWaitMs = legacy
+            d.unknownPushDelayMs = legacy
+            d.unknownMaxWaitMs = legacy
+            d.alonePushDelayMs = legacy
+            d.aloneMaxWaitMs = legacy
+            self.pushDelays = d
+        } else {
+            self.pushDelays = PushDelays()
+        }
+        self.headPullDelayMs = headPullDelayMs
+        self.minPullIntervalMs = minPullIntervalMs
+        self.live = live
+        self.liveThrottleMs = liveThrottleMs
+        self.liveFlushMs = liveFlushMs
+        self.liveAdoptMs = liveAdoptMs
+        self.editingGraceMs = editingGraceMs
         self.pollMs = pollMs
         self.safetyPollMs = safetyPollMs
         self.concurrency = concurrency

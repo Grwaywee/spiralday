@@ -15,6 +15,7 @@ Windows 앱의 TypeScript 엔진과 **바이트 · 동작이 같다** — 같은
 Sources/SpiraldaySync/
   Engine.swift          SyncEngine (actor) — 수명 · 그룹 · 복구 · 기기 · 이전 버전 · 타이머 · WebSocket
   EngineSync.swift      한 바퀴: 비교(앱 → 상태) · 받기 · 409 합치기 · 보내기(batch) · 넣기(상태 → 앱) · 안전장치
+  EngineLive.swift      실시간 쓰기: liveEdit · setEditing · 초안 보내기 · 받기 · presence · 보호 칸 · 확인 대기 · 대신 올리기 · 보내기 상황
   EnginePairing.swift   PairingOffer (원래 기기) · PendingJoin (새 기기) · 승인 게이트
   EngineTypes.swift     SyncHost (앱과의 약속) · 상태 · 이벤트 · 오류 · 옵션
   EngineApp.swift       기본 구성 SyncEngine.standard · suspend/resume · os 로그
@@ -51,7 +52,7 @@ SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter KeychainTests   # 서명 없는 �
 
 | 테스트 | 내용 |
 |---|---|
-| `VectorsTests` | 프로토콜 테스트 벡터 전부 (하위 키 · rid · 봉인 · 기기 이름 · 페어링 코드/QR · confirmKey · 확인 숫자 · 복구 · carryTaskId) 바이트 그대로 |
+| `VectorsTests` | 프로토콜 테스트 벡터 전부 (하위 키 · rid · 봉인 · 기기 이름 · 페어링 코드/QR · confirmKey · 확인 숫자 · 복구 · carryTaskId · **실시간 초안 K_live · 세 초안 · 반대 벡터 · 크기 · 모양 거절**) 바이트 그대로 |
 | `BasicsTests` | 코드(한 글자 틀림 · 이웃 바뀜 검출), UUIDv5(RFC 9562), HLC, base64url, JS 규칙(숫자 → 글 · UTF-16 정렬 · JSON.stringify 이스케이프 · 파서), 날짜, 암호(변조 · 다른 키 · 이름 바꿔치기), **TypeScript 엔진이 만든 암호문을 풀고 같은 상태를 만든다**, 압축 폭탄 · 크기 속임 · `__proto__` |
 | `ConvergenceTests` | N 복제본 · 아무 순서 · 중복 · 지연 → 같은 상태 · 같은 앱 데이터, 되살아남 없음, 교환 · 결합 · 멱등, 동시 편집이 모두 남음 |
 | `AppDecodeTests` | 받은 상태에 아무 값이 들어 있어도 앱에 넣는 값을 SpiraldayKit 의 진짜 모델(`PlannerData` · `BookInfo`)로 늘 읽을 수 있다 (600번 퍼징) |
@@ -59,6 +60,8 @@ SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter KeychainTests   # 서명 없는 �
 | `LifecycleAndLossyHostTests` | 올리는 동안(느린 망) 앞으로 돌아오면 엔진이 멈추지 않음 · 모르는 키를 버리는 앱(모델로 다시 쓰는 앱)이 새 버전 기기의 키를 `null` 로 지우지 않음 |
 | `ChaosTests` | 엔진 2–3대 + 요청이 늦게 · 뒤섞여 · 두 번 · 안 닿거나 응답만 사라지는 네트워크, 동시 편집 · 동시 동기화 → 수렴 · 되살아남 없음 |
 | `StorageTests` | 파일 저장소 (일지 다시 읽기 · 사본으로 줄이기 · 끊긴 마지막 줄 · 사본 뒤 옛 일지), 껐다 켜도 남는 오프라인 편집, Keychain, 서버 주소 |
+| `Live*Tests` | 실시간 쓰기 (가짜 서버의 중계 · presence 흉내): 한글 조합 단계 · 할 일 · 칠하기가 상대 앱에 바로, 받은 기기는 올리지 않음 · 뒤따른 레코드는 바뀌는 것 없음, 닫힌 책은 보통 넣기, 옛 서버 · 듣는 기기 없음 · `live: false` · 섞인 그룹(옛 앱), 보내기 대기 · 버킷 · 너무 큰 조각, 재생 · 위조 · 자기 것 · 모양 거르기(다시 켠 뒤에도) · 시계가 9시간 다른 기기, 반쪽 항목 없음, 보호 칸(핑퐁 없음 · 쓰는 중 한 글자 · 포커스만 있는 칸 · 쉬면 들어옴 · 지운 할 일), 저장 전 죽음(보낸 쪽 · 받은 쪽 · 미뤄 둔 칸 · 파일이 먼저 쓰임), 저장 알림, 대신 올리기(다시 켠 뒤에도), 상황별 보내기 지연 · 자기 쓰기 다시 받지 않기 · `sendPending` · presence 가 늘면 바로 |
+| `LiveChaosTests` | property: 초안이 늦게 · 두 번 · 순서가 바뀌어 · 안 닿고 HTTP 도 혼란 · 앱 파일 저장 전 죽음 · 보호 칸 · 시계 → 모든 기기가 같고 보낼 것이 없다 (`LIVE_CHAOS_RUNS`), 저절로 도는 타이머와 겹치는 경주 (`LIVE_RACE_RUNS`) |
 
 진짜 서버 · TypeScript 엔진과 함께 붙이는 교차 언어 끝-끝 테스트는 서버 코드와 함께 따로 돌린다 (이 저장소에는 없다).
 
@@ -229,7 +232,7 @@ private func observe(_ new: PlannerData) {
 }
 ```
 
-엔진은 0.4초 뒤 비교하고 1.5초 뒤 올린다. 다른 기기의 편집은 WebSocket `{head}` 알림으로 1초 안팎에 받고, 알림이 없을 때는 30초(연결 중이면 5분)마다 확인한다. 연결이 끊기면 1 → 2 → 4 … 60초 + 무작위로 다시 붙는다.
+엔진은 저장 알림 0.15초 뒤 비교하고, 보내기는 상황에 따라 미룬다 (아래 7 — 다른 기기가 모두 초안을 받으면 2초, 없으면 마지막 변경 + 2초 · 최대 5초, presence 를 모르면 1.5초 · 최대 4초, 옛 앱이 있으면 1초 · 최대 2초, 초안으로 가지 않은 변경은 0.4초). 다른 기기의 편집은 WebSocket `{head}` 알림을 받는 즉시 받고(자기 쓰기의 알림은 받지 않는다), 알림이 없을 때는 30초(연결 중이면 5분)마다 확인한다. 연결이 끊기면 1 → 2 → 4 … 60초 + 무작위로 다시 붙는다.
 
 ### 6. 화면 흐름
 
@@ -261,6 +264,117 @@ private func observe(_ new: PlannerData) {
 
 경고 `.warning(code, message)`: `massDeleteBooks` · `massDeleteDays` · `bookMissing` (한꺼번에 사라진 것을 지우지 않고 되살림), `updateRequired`, `undecryptable`, `libraryUnreadable`, `recordTooLarge`.
 오류 `SyncEngineError.code`: `invalidCode` · `pairingDenied` · `pairingExpired` · `deviceLimit` · `pairingLimit` · `rateLimited` (8자 코드를 너무 많이 틀리면 QR 로 연결하라고 안내) · `wrongKey` · `recoveryNotFound` · `offline` · `alreadyInGroup` · `notInGroup` · `server`. `message` 는 그대로 보여 줄 수 있는 한국어.
+
+### 7. 실시간 쓰기 (글자 하나 단위)
+
+두 기기가 함께 열려 있으면 친 글자 하나(한글은 조합되는 음절마다) · 칠한 칸 하나가 상대 종이에 바로 보인다 (로컬 서버에서 3 ms, 운영에서는 + 왕복 약 0.2초).
+설계는 비공개 저장소의 `docs/sync-live.md`, 바이트 규칙은 `docs/sync-protocol.md` §4.1 · §6.9 와 같다 (TypeScript 엔진과 같은 바이트 — `VectorsTests`).
+
+**흐름**: 앱이 바꿀 때마다 `liveEdit(keys)` → 엔진이 50 ms 묶음으로 그 레코드만 `host.readLive` 로 읽어 비교 → 바뀐 조각에 HLC 도장 → 상태에 합침(보낼 것) →
+다른 기기가 듣고 있으면 봉인한 초안(`K_live`, 256바이트 채움)을 WebSocket 으로. 서버는 저장하지 않고 같은 그룹의 다른 기기에만 건넨다.
+받은 기기는 보낸 기기의 도장 그대로 상태에 합치고 `host.applyLive` 로 열린 책 메모리에 바로 넣는다 (올릴 이유가 아니다 — 받은 기기는 아무것도 올리지 않는다).
+레코드는 보낸 기기가 보통처럼 올리고, 같은 도장이라 받은 기기에서는 바뀌는 것이 없다. 30초 안에 레코드로 확인되지 않으면 받은 기기가 대신 올린다.
+서버가 중계를 모르면(지금 운영 서버 · `LIVE=off`) `{"peers"}` 가 오지 않으므로 초안 없이 예전처럼 레코드로 (약 1.5–2초).
+
+#### 7.1 엔진 API
+
+| | |
+|---|---|
+| `engine.liveEdit(_ keys: [String])` | **nonisolated · 기다리지 않음** (메인 스레드에서 입력마다). 앱의 메모리 값이 방금 바뀌었다: 키 입력 · IME 조합 한 단계(marked text 포함) · 칠하기 한 칸 · 표시 · 할 일 더하기/지우기 … `keys` = 바뀐 레코드 키 — 열린 책의 `RecordKeys.day(책, "yyyy-MM-dd")` · `RecordKeys.week(책, 월요일)` · `RecordKeys.prefs(책)` (책 id 대소문자 무관, 다른 종류는 무시). 첫 입력은 바로, 그 뒤는 50 ms 묶음 (마지막 값은 꼭). 그룹 밖 · 멈춤이면 아무것도 하지 않는다 (네트워크 0). 이 부름이 곧 "사용자가 치는 중" 이다 |
+| `engine.setEditing(_ at: FieldAddress?)` | **nonisolated · 기다리지 않음**. 캐럿이 있는 칸 (없으면 nil). 쓰는 중인 동안(마지막 `liveEdit` 부터 `editingGraceMs` 5초) 들어오는 변경으로 덮지 않는다. 포커스만 있는 칸은 지키지 않는다 (더 새 글을 받는다) |
+| `await engine.setEditingAndSettle(_ at:)` | 같고, 미뤄 둔 상대 글을 앱에 넣을 때까지 기다린다 — 쓰기를 마친 뒤 정리(빈 할 일 · 빈 메모 지우기)를 하는 곳은 이것을 기다린 뒤 정리한다 (정리가 화면의 옛 값을 보고 지우지 않게) |
+| `engine.editingProtected: Bool?` | **nonisolated**. 쓰고 있는 칸을 지금 지키는지 (칸이 없으면 nil). 호스트가 따로 칸을 지키는 안전망은 이 값을 따라야 한다 — 엔진보다 더 지키면 옛 글이 새 도장을 얻어 더 새 글을 덮는다 |
+| `engine.localChanged(bookId:saved:)` | 앱이 책 파일을 **다 쓴 뒤**: `saved` = 쓴 그 책의 PlannerData JSON 을 주는 함수 (`{ try? JSONValue.parse(raw) }` — 엔진이 앞선 레코드가 있을 때만 부른다). 실시간 쓰기를 하는 앱은 꼭 준다: 앱이 파일 저장 전에 죽었을 때 친 글 · 받은 글을 되살리고, 옛 파일 값이 새 편집으로 올라가 다른 기기의 글을 지우지 않게 |
+| `await engine.storageBehind` · `await engine.flushLive()` | 동기화 저장소가 메모리보다 뒤처졌는지 · 남은 실시간 일을 지금 (비교 · 초안 · 저장). 책 파일을 쓰기 직전에 `storageBehind` 면 `flushLive()` 를 기다린다 — 엔진은 받은 초안을 바로(그 뒤 0.1초 간격) 저장하므로 0.6초 묶음 저장이면 거의 늘 false |
+| `await engine.hasUnsent` · `await engine.sendPending()` | 서버에 아직 없는 이 기기의 편집이 있는지 · 지금 보내기 (창을 닫기 전 · 뒤로 갈 때 · 잠자기 전). 보낼 것이 없으면 요청 0. `suspend()` 도 먼저 `flushLive()` 한다 |
+| `await engine.presence` · `status.presence` | `LivePresence(relay:peers:live:)` 또는 nil (연결 없음 · 중계 없는 서버) |
+| `await engine.liveCounters` | `sent` · `deferred` · `tooLarge` · `received` · `dropped` · `adopted` (로그용) |
+| 실시간 이벤트 | `addLiveListener { … }` 또는 `for await e in engine.liveEvents()` — `SyncEvent` 와 따로 (초당 여러 번 온다). 콜백은 엔진 쪽에서 불리므로 MainActor 로 옮겨 쓴다 |
+
+`SyncLiveEvent`:
+
+| | 앱이 할 일 |
+|---|---|
+| `.presence(LivePresence?)` | (선택) 표시 |
+| `.remoteTyping(from:at:editing:)` | `editing == true` 면 그 칸 오른쪽 위에 작은 회색 글 **"다른 기기에서 쓰는 중"** (마지막 이벤트부터 3초, `allowsHitTesting(false)` — 포커스 · 레이아웃을 건드리지 않는다). `false` 면 아무것도 (종이가 바뀌는 것 자체가 표시) |
+| `.held(FieldAddress?)` | 칸이 있으면 쓰는 중이라 상대의 더 새 글을 미뤄 둠 → **"다른 기기의 글이 있어요"** (앞의 것이 있으면 앞의 것), nil 이면 끝 |
+| `.applied(bookId:)` | 받은 초안을 열린 책에 넣었다 (호스트가 이미 메모리를 바꿨다). 위젯 · 썸네일 다시 그리기 같은 무거운 일은 묶어서. 동기화 상태 표시는 그대로 (`SyncEvent.applied` 는 오지 않는다) |
+
+`FieldAddress(key: RecordKeys.day(책, 날짜), field: "comment")` · `field: "m0"`…`"m2"` · `"mt0"`… (메모 태그) · `"m+"` · `"mt+"` (3줄 넘은 메모) · 한 주 `RecordKeys.week(책, 월요일)` 의 `"goal"` · `"review"` · 첫 장 `RecordKeys.prefs(책)` 의 `"mottoText"` ·
+항목 `FieldAddress(key:, coll: .tasks, item: 할 일 id, field: "text")` · `.notes` (`"text"`) · `.ddays` (`"title"`) · `.categories` (형광펜 id 는 정수 문자열, `"name"`).
+
+#### 7.2 호스트에 더할 것 (선택 — 없으면 초안을 받아도 다음 바퀴의 `updateBook` 으로 넣는다)
+
+```swift
+/// 열린 책의 레코드 값 (메모리, 저장 전 편집 · 조합 중인 글자 포함). 열린 책이 아니면 nil (엔진은 readBook 으로)
+func readLive(bookId: String, keys: [String]) async -> [String: JSONValue]? {
+    guard let uuid = UUID(uuidString: bookId), uuid == store.library.activeID else { return nil }
+    var out: [String: JSONValue] = [:]
+    for key in keys {
+        guard let pk = RecordKeys.parse(key) else { continue }
+        switch pk.kind {
+        // 앱 파일과 같은 JSON (PlannerStore.encodeFile — .iso8601 · .sortedKeys), 레코드 하나만
+        case .day: out[key] = store.data.days[pk.date!].flatMap { try? JSONValue.parse(PlannerStore.encodeFile($0)) } ?? .null
+        case .week: out[key] = store.data.weeks[pk.date!].flatMap { try? JSONValue.parse(PlannerStore.encodeFile($0)) } ?? .null
+        case .prefs: out[key] = (try? JSONValue.parse(PlannerStore.encodeFile(store.data.prefs))) ?? .null
+        default: break
+        }
+    }
+    return out
+}
+
+/// 받은 초안을 열린 책 메모리에 바로 (같은 MainActor 차례 안에서). 파일은 보통처럼 묶어서 나중에 (바로 쓰지 않는다)
+func applyLive(bookId: String, keys: [String], _ transform: @Sendable ([String: JSONValue]) -> [String: JSONValue]) async -> Bool {
+    guard let uuid = UUID(uuidString: bookId), uuid == store.library.activeID, store.unreadableBooks[uuid] == nil,
+          let cur = await readLive(bookId: bookId, keys: keys) else { return false }
+    let next = transform(cur)                                  // 여기부터는 꼭 넣고 true
+    store.applyLiveRecords(next)                               // (앱이 만들 것) 레코드마다 decodeFile → 밖에서 온 변경으로
+                                                               // (isApplyingExternalChange — 되돌리기 단계에 옮김, liveEdit 를 부르지 않음)
+    store.scheduleSave()                                       // 0.6초 묶음 저장 → 다 쓴 뒤 localChanged(bookId:saved:)
+    return true
+}
+```
+
+- 값은 레코드 하나씩: 하루 = `PlannerData.days[날짜]` 의 JSON (없는 날 · 지운 날은 `.null`), 한 주 = `weeks[월요일]`, 설정 = `prefs` (기기마다 따로인 `lastKind` · `ddaysPerDay` 는 엔진이 지금 값 그대로 돌려준다). 앱 파일과 같은 인코더로 — 책 전체를 JSON 으로 바꾸지 않는다 (입력마다 불린다).
+- `transform` 은 그 순간의 앱 값을 먼저 비교해(그 사이에 친 글을 잃지 않게) 상태와 합친 값을 돌려준다. 쓰고 있는 칸은 이미 앱 값 그대로다 — 호스트가 칸을 따로 지키려면 `editingProtected` 를 따른다 (`keepingEditOf` 는 그 값이 true 일 때만).
+- 받은 값은 사용자의 편집이 아니다: `liveEdit` 를 부르지 않고, 되돌리기(⌘Z)에는 **밖에서 온 변경**으로 (쌓인 단계에 `rebased(from:to:)` 로 옮긴다 — 5 와 같다). 포커스 · 캐럿 · marked text · Scribble 을 건드리지 않게 쓰고 있는 칸은 엔진이 이미 바꾸지 않았다. 포커스만 있던 칸의 글이 다른 기기의 글로 바뀌었으면 그 칸의 되돌리기 기록을 비운다 (Mac `onEditedFieldReplaced` 와 같다).
+- `transform` 을 부르지 않고 false 를 돌려주면(열려 있지 않음 · 지금 넣을 수 없음) 엔진은 다음 바퀴의 `updateBook` 으로 넣는다. 부른 뒤에는 꼭 넣고 true.
+- 파일을 바로 쓰지 않는다 (`applyActiveData` 처럼 바로 저장하면 엔진 저장보다 파일이 먼저 쓰일 수 있다). 저장 직전에 `storageBehind` 면 `flushLive()` 를 기다리면 확실하다.
+
+#### 7.3 앱이 부를 곳
+
+```swift
+// 저장소가 열린 책을 바꿀 때마다 (글자 · 조합 단계 · 칠하기 한 칸 · 표시 · 할 일 더하기/지우기 · 미룸 · 메모 · D-day · 형광펜 …)
+sync.liveEdit([RecordKeys.day(book, Dates.key(day))])           // 미룸은 오늘과 다음 날 둘 다, 주 목표는 RecordKeys.week, 첫 장의 말 · 형광펜은 RecordKeys.prefs
+// 캐럿이 들어가고 나갈 때 (AppState.editingKey 가 바뀔 때)
+sync.setEditing(FieldAddress(key: RecordKeys.day(book, date), coll: .tasks, item: taskId, field: "text"))
+sync.setEditing(nil)                                              // 정리 전이면 await sync.setEditingAndSettle(nil)
+// 파일을 다 쓴 뒤
+store.onSaved = { bookId, library in
+    if let bookId { let raw = lastWrittenBytes; sync.localChanged(bookId: bookId.uuidString, saved: { try? JSONValue.parse(raw) }) }
+    if library { sync.localChanged(library: true) }
+}
+// 실시간 이벤트 → 힌트
+Task { for await e in sync.liveEvents() { await MainActor.run { hints.handle(e) } } }
+// 뒤로 갈 때 · 창을 닫기 전 · 잠자기 전: store.saveNow(); await sync.sendPending() (또는 suspend())
+```
+
+- IME: marked text(조합 중인 글자)도 저장소에 넣고 `liveEdit` 한다 — 상대 종이에 "ㅎ" → "하" → "한" 이 차례로 보인다. 조합 중인 칸은 쓰고 있는 칸이라 상대의 초안이 그 칸을 바꾸지 않는다 (조합이 깨지지 않는다).
+- 타임테이블: 끄는 동안 칸이 바뀔 때마다 `liveEdit` (그 날 키 하나). 끌기는 **지금 칸 위에 끈 범위만** 칠한다 (끌기 시작의 스냅샷으로 줄 전체를 다시 쓰면 그 사이 받은 상대 칸을 새 도장으로 되돌린다).
+- 동기화가 꺼져 있으면 엔진이 없으므로 아무것도 부르지 않는다 (네트워크 0 · 화면 그대로).
+
+#### 7.4 보내기 상황 (`PushMode.of(presence)` · `PushDelays.dueAt`)
+
+| 상황 | presence | 레코드 보내기 |
+|---|---|---|
+| COVERED | `live == peers > 0` | 첫 변경 + 2초 (보이는 지연은 초안이 맡는다) |
+| FAST | COVERED 인데 초안으로 가지 않은 변경 (책 정보 · 책장 · 너무 큰 조각) | 첫 변경 + 0.4초 |
+| OLD-PEER | `peers > live` (실시간을 모르는 옛 앱이 켜져 있음) | 마지막 변경 + 1초, 최대 2초 |
+| UNKNOWN | nil (중계 없는 서버 · WebSocket 막힘 · 연결 직후) | 마지막 변경 + 1.5초, 최대 4초 |
+| ALONE | `peers == 0` | 마지막 변경 + 2초, 최대 5초 (창을 닫을 때는 `sendPending` 으로 바로) |
+
+presence 가 늘면(다른 기기가 막 켜짐) 밀린 것을 바로 보낸다. `{"head"}` 를 받으면 바로 받는다 (0 ms, 받기 사이 최소 0.15초). 자기 쓰기의 head 로는 받지 않는다.
+옵션: `SyncEngineOptions(…, live: true, liveThrottleMs: 50, liveFlushMs: 100, liveAdoptMs: 30_000, editingGraceMs: 5000, pushDelays: PushDelays(), headPullDelayMs: 0, minPullIntervalMs: 150)` — `pushDelayMs:` 만 준 예전 호출은 모든 상황에 그 값.
 
 ### Mac 앱
 
@@ -298,4 +412,10 @@ private func observe(_ new: PlannerData) {
 - **같다**: 바이트 규칙 전부, 레코드 payload · 필드 이름 · 기본값, 합치기, 비교 순서(같은 시계면 같은 도장 — TypeScript 엔진이 만든 상태와 바이트까지 같은 것을 테스트로 확인), 안전장치, 페어링 · 복구 흐름, 오류 코드 · 문구.
 - **앱 값을 Swift 가 늘 읽게**: `x:` 필드로 앱이 아는 키를 덮어쓰지 않고, 날짜는 Swift 가 읽는 범위(월 1–12 …, 0000–9999 년)만 넣는다. 둘 다 받은 상태를 꾸며 넣었을 때만 생기는 일이다.
 - **없는 것**: 같은 객체면 비교를 건너뛰기 — Swift 값 타입에는 객체 정체성이 없다. 저장 알림(`localChanged(bookId:)`)으로는 그 책만 비교하고, 모든 책을 비교하는 것은 시작 · `syncNow()` · `resume()` 때뿐이다.
+- **실시간 쓰기의 모양**: 동작 · 바이트는 같고, Swift 에 맞게 —
+  - 호스트는 레코드 하나씩 (`readLive` · `applyLive(bookId:keys:)` — TS 의 `readBook` · `applyLive(bookId, fn(PlannerData))` 대신). 입력마다 책 전체를 JSON 으로 바꾸지 않게.
+  - `liveEdit` · `setEditing` · `editingProtected` 는 nonisolated (메인 스레드에서 기다리지 않고). 쓰고 있는 칸 · 마지막 입력 시각은 앱에 넣는 순간(호스트의 차례) 바로 읽는다.
+  - 실시간 이벤트는 `SyncLiveEvent` 로 따로 (`addLiveListener` · `liveEvents()`). `SyncEvent.applied` 는 실시간 넣기에 오지 않는다.
+  - 쓰기를 마친 뒤의 정리 앞에는 `setEditingAndSettle(nil)` 을 기다린다 (TS 는 `setEditing(null)` 이 동기라 그 자리에서 넣는다).
+  - 받은 초안은 넣기 전에 `apply` 로 적어 둔다 (넣기가 엔진 밖 차례라, 그 사이 저장되고 꺼져도 다시 켤 때 넣게). 앱 값을 읽고 비교하거나 넣는 일(실시간 · 바퀴)은 한 줄로 차례대로 (`appLock`), 넣은 결과는 그 사이의 변경을 덮지 않게 변경분만 돌려놓는다.
 - **문자열**: Swift `==` 는 유니코드 정규화로 같은 글도 같다고 보지만 엔진은 JS 처럼 글자 그대로 비교한다 (`JS.same` · `JS.less` — UTF-16 순서).

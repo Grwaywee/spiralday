@@ -45,7 +45,24 @@ public struct SocketHandlers: Sendable {
 public protocol SocketHandle: Sendable {
     /// "ping" (연결 유지) · "head" (지금 head 를 묻는다)
     func send(_ text: String)
+    /// 봉인한 초안 하나 (docs/sync-live.md §3.2 — {"draft","q"}). 보내지 못했으면 false (닫힘 · 보내기 대기가 Draft 의
+    /// bufferLimit 을 넘음) → 엔진은 그 조각을 다음 틱에 다음 조각과 합쳐 다시 보낸다
+    func sendDraft(_ draft: String, q: String) -> Bool
     func close()
+}
+
+extension SocketHandle {
+    /// 초안을 모르는 연결 (예전 구현): 보내지 않는다
+    public func sendDraft(_ draft: String, q: String) -> Bool { false }
+}
+
+/// WebSocket 하위 프로토콜 (docs/sync-protocol.md §4 · sync-live.md §2). 서버가 고르는 값은 늘 spiralday.v1
+public enum WSProtocol {
+    public static let v1 = "spiralday.v1"
+    /// 실시간 쓰기 기능 협상: 이 값을 아는 서버는 이 연결을 live 소켓으로 받는다 (presence · 초안 중계). 옛 서버는 무시한다
+    public static let live = "spiralday.live.1"
+    /// 보내기 대기가 이보다 많으면 초안을 보내지 않는다 (느린 망에서 옛 초안을 쌓지 않게)
+    public static let draftBufferLimit = 64 * 1024
 }
 
 public protocol SyncTransport: Sendable {
@@ -82,6 +99,13 @@ public protocol SyncTransport: Sendable {
     func joinByRecovery(recoveryId: String, auth: String, deviceName: String) async throws -> RecoveryJoinRes
 
     func openSocket(_ a: Auth, handlers: SocketHandlers) -> SocketHandle
+    /// live = 실시간 초안 · presence 를 받는 연결로 (하위 프로토콜에 spiralday.live.1 을 더한다)
+    func openSocket(_ a: Auth, handlers: SocketHandlers, live: Bool) -> SocketHandle
+}
+
+extension SyncTransport {
+    /// 실시간을 모르는 전송 (예전 구현): 보통 연결
+    public func openSocket(_ a: Auth, handlers: SocketHandlers, live: Bool) -> SocketHandle { openSocket(a, handlers: handlers) }
 }
 
 // MARK: - HTTP
@@ -280,11 +304,19 @@ public final class HTTPTransport: SyncTransport {
 
     /// WebSocket: 네이티브는 Authorization: Bearer 헤더로. 토큰은 주소에 넣지 않는다
     public func openSocket(_ a: Auth, handlers: SocketHandlers) -> SocketHandle {
+        openSocket(a, handlers: handlers, live: false)
+    }
+
+    /// live: 하위 프로토콜 목록 "spiralday.v1, spiralday.live.1" 을 함께 보낸다 (docs/sync-live.md §2). 새 서버는 spiralday.v1 을 골라
+    /// 돌려주고 {"head"} 다음에 {"peers"} 를 보낸다. 옛 서버는 Bearer 연결에 하위 프로토콜을 돌려주지 않지만 연결은 그대로 열린다
+    /// ({"peers"} 가 오지 않음 = 중계 없음)
+    public func openSocket(_ a: Auth, handlers: SocketHandlers, live: Bool) -> SocketHandle {
         var s = baseURL.absoluteString
         if s.hasPrefix("https") { s = "wss" + s.dropFirst(5) } else if s.hasPrefix("http") { s = "ws" + s.dropFirst(4) }
         var req = URLRequest(url: URL(string: s + g(a) + "/ws")!, timeoutInterval: timeout)
         for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
         req.setValue("Bearer \(a.token)", forHTTPHeaderField: "Authorization")
+        if live { req.setValue("\(WSProtocol.v1), \(WSProtocol.live)", forHTTPHeaderField: "Sec-WebSocket-Protocol") }
         return webSocket(req, handlers)
     }
 }
@@ -351,6 +383,25 @@ final class URLSessionSocket: NSObject, SocketHandle, URLSessionWebSocketDelegat
     func send(_ text: String) {
         guard let task = lock.withLock({ closed ? nil : self.task }) else { return }
         task.send(.string(text)) { _ in }
+    }
+
+    /// 아직 보내지 못한 글자 (URLSessionWebSocketTask 에는 bufferedAmount 가 없어 직접 센다)
+    private var buffered = 0
+
+    func sendDraft(_ draft: String, q: String) -> Bool {
+        let frame = JSONValue.object(["draft": .string(draft), "q": .string(q)]).canonical
+        let n = frame.utf8.count
+        let task: URLSessionWebSocketTask? = lock.withLock {
+            if closed || buffered + n > WSProtocol.draftBufferLimit { return nil }
+            buffered += n
+            return self.task
+        }
+        guard let task else { return false }
+        task.send(.string(frame)) { [weak self] _ in
+            guard let self else { return }
+            self.lock.withLock { self.buffered -= n }
+        }
+        return true
     }
 
     func close() {

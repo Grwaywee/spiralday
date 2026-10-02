@@ -17,6 +17,9 @@ enum ImportMode: String, Sendable {
     case zero
 }
 
+/// 기기마다 기억하는 마지막 초안 q 수 (재생 거르기)
+let LIVE_SEEN_MAX = 32
+
 struct Meta {
     var nodeId: String
     var hlc: Stamp?
@@ -30,6 +33,8 @@ struct Meta {
     var rename: String?
     /// 모르는 payload 버전이라 건너뛴 레코드가 있을 때, 그때 이 엔진이 알던 버전 (더 새 엔진으로 켜면 처음부터 다시 받는다)
     var skippedBelow: Int?
+    /// 기기마다 마지막으로 받아들인 초안의 q (재생 거르기, LIVE_SEEN_MAX 개까지)
+    var liveSeen: [String: Stamp] = [:]
 
     var json: JSONValue {
         var o: [String: JSONValue] = [
@@ -41,6 +46,7 @@ struct Meta {
         if let importMode { o["importMode"] = .string(importMode.rawValue) }
         if let rename { o["rename"] = .string(rename) }
         if let skippedBelow { o["skippedBelow"] = JSONValue(skippedBelow) }
+        if !liveSeen.isEmpty { o["liveSeen"] = .object(liveSeen.mapValues { .string($0) }) }
         return .object(o)
     }
 }
@@ -52,12 +58,26 @@ let MAX_DIGIT_TRIES = 3
 /// 승인 뒤 새 기기가 수락할 수 있는 시간 (서버는 30분 — 시계 차이를 두고 조금 짧게)
 let ACCEPT_WINDOW_MS = 25 * 60_000
 
-/// 레코드 하나의 동기화 상태 (값 타입: 앱에 넣는 동안 따로 고치고 끝나면 돌려놓는다)
+/// 저장된 그림자: 실시간 비교 · 넣기로 앱 메모리가 앱 파일보다 앞서 있을 때, 앱 파일에 있다고 아는 값 (docs/sync-live.md §7.4)
+enum SavedShadow: Sendable, Equatable {
+    /// 파일에 이 레코드가 없다
+    case empty
+    case value(Flat)
+
+    init(_ f: Flat?) { self = f.map { .value($0) } ?? .empty }
+
+    var flat: Flat? {
+        if case let .value(f) = self { return f }
+        return nil
+    }
+}
+
+/// 레코드 하나의 동기화 상태 (값 타입: 앱에 넣는 동안 따로 고치고 끝나면 변경분만 돌려놓는다)
 struct RecData: Sendable {
     /// 상태에 담긴 서버 버전 (다음에 보낼 baseSeq)
     var seq = 0
     var state = RecState()
-    /// 앱에 있다고 알고 있는 값 (마지막 비교 · 넣기)
+    /// 앱에 있다고 알고 있는 값 (마지막 비교 · 넣기) — 실시간으로 앞서 있으면 앱 메모리 값
     var shadow: Flat?
     /// 서버에 아직 없는 변경
     var dirty = false
@@ -68,37 +88,34 @@ struct RecData: Sendable {
     var ver = 0
     /// 되돌리기로 고쳤다: 다음 보내기에서 서버가 지금 버전을 이전 버전으로 꼭 남기게 (keep)
     var keep = false
+    /// 저장된 그림자 (nil = 앞서 있지 않음: shadow 가 파일 값). 저장소에는 {shadow: saved, pend: shadow} 로 쓴다
+    var saved: SavedShadow?
+    /// 쓰고 있는 칸(보호 칸) 때문에 상태와 다른 값을 앱에 두었다 → 쓰기를 마치면 다시 맞춘다 (저장소에도: 꺼졌다 켜면 넣는다)
+    var held = false
 
-    /// 그림자와 지금 값을 비교해 바뀐 것을 상태에 합친다. (바뀌었는지, 저장할 것이 생겼는지)
-    mutating func absorb(_ kind: RecordKind, _ cur: Flat, _ clock: StampSource) -> (changed: Bool, touched: Bool) {
+    /// 그림자와 지금 값을 비교해 바뀐 것을 상태에 합친다. (합친 조각 — 이 기기의 편집, 도장을 올린 뒤, 저장할 것이 생겼는지)
+    mutating func absorb(_ kind: RecordKind, _ cur: Flat, _ clock: StampSource) -> (delta: RecState?, touched: Bool) {
         if state.x != nil {
             shadow = nil
-            return (false, false)
+            saved = nil
+            return (nil, false)
         }
         if let p = pend, cur == p {
             // 넣으려던 값이 이미 앱에 있다 (넣은 뒤 꺼졌다) → 편집이 아니다
             shadow = p
             pend = nil
-            return (false, true)
+            return (nil, true)
         }
         var delta = Records.diff(kind, prev: shadow, cur: cur, clock: clock)
         let had = shadow != nil
         shadow = cur
-        if CRDT.isEmptyDelta(delta) { return (false, !had) }
+        if CRDT.isEmptyDelta(delta) { return (nil, !had) }
         // 이 기기의 편집은 이 기기가 본 그 필드의 값보다 늘 이긴다 (시계가 크게 앞선 기기의 도장 위에서도)
         if let h = clock as? HLC { CRDT.liftDelta(&delta, state, node: h.node) }
         CRDT.mergeInto(&state, delta)
         dirty = true
         ver += 1
-        return (true, true)
-    }
-
-    var stored: JSONValue {
-        var o: [String: JSONValue] = ["seq": JSONValue(seq), "state": CRDT.toJSON(state), "dirty": .bool(dirty), "apply": .bool(apply)]
-        if let shadow { o["shadow"] = shadow.json }
-        if let pend { o["pend"] = pend.json }
-        if keep { o["keep"] = true }
-        return .object(o)
+        return (delta, true)
     }
 
     var hasContent: Bool { state.x != nil || !state.f.isEmpty || !state.c.isEmpty }
@@ -113,11 +130,34 @@ final class RecEntry {
     var blocked = false
     /// 이 ver 의 암호문이 서버 한도(1 MiB)를 넘었다 → 다시 고칠 때까지 보내지 않는다
     var tooLarge: Int?
+    /// 받았지만 아직 서버에서 확인되지 않은 초안 조각들 (다른 기기의 도장) — 이것은 "올릴 이유" 가 아니다
+    var liveFrag: RecState?
+    /// liveFrag 의 경로마다 마지막으로 초안이 그 경로를 바꾼 때 (ms, 이 기기 시계)
+    var liveTimes: [String: Int] = [:]
 
     init(key: String, pk: ParsedKey, rid: String) {
         self.key = key
         self.pk = pk
         self.rid = rid
+    }
+
+    var stored: JSONValue {
+        var o: [String: JSONValue] = ["seq": JSONValue(d.seq), "state": CRDT.toJSON(d.state), "dirty": .bool(d.dirty), "apply": .bool(d.apply)]
+        if let saved = d.saved {
+            // 실시간으로 앱 메모리가 앱 파일보다 앞서 있다: 그림자 = 파일 값, pend = 메모리 값 (docs/sync-live.md §7.4)
+            if let f = saved.flat { o["shadow"] = f.json }
+            if let p = d.pend ?? d.shadow { o["pend"] = p.json }
+        } else {
+            if let shadow = d.shadow { o["shadow"] = shadow.json }
+            if let pend = d.pend { o["pend"] = pend.json }
+        }
+        if d.keep { o["keep"] = true }
+        if let f = liveFrag {
+            o["lv"] = CRDT.toJSON(f)
+            o["lvt"] = .object(liveTimes.mapValues { JSONValue($0) })
+        }
+        if d.held { o["ph"] = 1 }
+        return .object(o)
     }
 }
 
@@ -149,6 +189,87 @@ let MAX_RECORD_BYTES = 1024 * 1024
 /// 기한을 볼 때 두 기기 시계 차이를 받아 주는 여유
 let CLOCK_GRACE_MS = 30_000
 
+/// 앱(메인 스레드)이 엔진을 기다리지 않고 부르는 실시간 쓰기 신호 (liveEdit · setEditing). 엔진 actor 가 차례로 가져간다.
+/// 쓰고 있는 칸 · 마지막 입력 시각은 앱에 넣는 일(호스트의 차례)도 바로 읽는다 (그 순간의 보호 칸)
+final class LiveBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var keys = Set<String>()
+    private var typedAt = Int.min / 4
+    private var editing: FieldAddress?
+    private var editingSeq = 0
+    private var scheduled = false
+    /// 실시간 길을 돌리는지 (그룹 안 · 돌고 있음 · 처음 가져오기를 마침) — 아니면 키를 모으지 않는다 (네트워크 0)
+    private var active = false
+
+    /// 입력: 마지막 입력 시각을 적고 (돌고 있으면) 키를 모은다. 엔진이 가져가야 하면 true
+    func noteEdit(_ ks: [String], now: Int) -> Bool {
+        lock.withLock {
+            typedAt = max(typedAt, now)
+            guard active else { return false }
+            keys.formUnion(ks)
+            if scheduled { return false }
+            scheduled = true
+            return true
+        }
+    }
+
+    /// 쓰고 있는 칸이 바뀌었으면 true (엔진이 가져가야 한다)
+    func setEditing(_ at: FieldAddress?) -> Bool {
+        lock.withLock {
+            if editing == at { return false }
+            editing = at
+            editingSeq += 1
+            if scheduled { return false }
+            scheduled = true
+            return true
+        }
+    }
+
+    /// 엔진이 가져간다: 모인 키 · 지금 쓰고 있는 칸
+    func take() -> (keys: Set<String>, editing: FieldAddress?, typedAt: Int) {
+        lock.withLock {
+            let k = keys
+            keys = []
+            scheduled = false
+            return (k, editing, typedAt)
+        }
+    }
+
+    func setActive(_ on: Bool) {
+        lock.withLock {
+            active = on
+            if !on { keys = [] }
+        }
+    }
+
+    var current: (editing: FieldAddress?, typedAt: Int) { lock.withLock { (editing, typedAt) } }
+
+    /// 엔진이 아직 가져가지 않은 liveEdit 키가 있다
+    var hasKeys: Bool { lock.withLock { !keys.isEmpty } }
+
+    /// 지금 지키는 칸 (쓰고 있는 칸이 있고 마지막 입력부터 grace 가 지나지 않았다)
+    func protected(now: Int, grace: Int) -> FieldAddress? {
+        lock.withLock {
+            guard let e = editing, now - typedAt < grace else { return nil }
+            return e
+        }
+    }
+
+    func reset() {
+        lock.withLock {
+            keys = []
+            editing = nil
+            editingSeq += 1
+        }
+    }
+}
+
+/// actor 안에서만 쓰는 비동기 잠금 (차례대로)
+struct AsyncLockState {
+    var held = false
+    var waiters: [CheckedContinuation<Void, Never>] = []
+}
+
 // MARK: - 엔진
 
 public actor SyncEngine {
@@ -158,14 +279,26 @@ public actor SyncEngine {
     nonisolated let credStore: (any CredentialStore)?
     nonisolated let nowFn: @Sendable () -> Int
     nonisolated let auto: Bool
+    /// WebSocket 을 여는지 (기본 = auto)
+    nonisolated let socketOn: Bool
+    /// 실시간 쓰기 (live 하위 프로토콜 · presence · 초안)
+    nonisolated let liveOn: Bool
     let scanDelayMs: Int
-    let pushDelayMs: Int
+    let delays: PushDelays
+    let headPullDelayMs: Int
+    let minPullIntervalMs: Int
+    let liveThrottleMs: Int
+    let liveFlushMs: Int
+    let liveAdoptMs: Int
+    nonisolated let editingGraceMs: Int
     let pollMs: Int
     let safetyPollMs: Int
     let concurrency: Int
     let massDeleteDays: Int
     let logFn: @Sendable (SyncLogLevel, String) -> Void
     public nonisolated let platform: SyncPlatform
+    /// 앱이 기다리지 않고 부르는 liveEdit · setEditing 을 받아 두는 곳
+    nonisolated let liveBox = LiveBox()
 
     var meta = Meta(nodeId: "0000000000000000")
     var hlc = HLC(node: "0000000000000000", wall: { 0 })
@@ -198,12 +331,15 @@ public actor SyncEngine {
     var wsBackoff = 0
     var wantPull = false
     var wantPush = false
+    var wantHeadPull = false
     var retryAt = 0
     var batchOk = true
     /// 파일이 사라져 동기화된 내용으로 되살릴 책
     var restoreBooks = Set<String>()
     var listeners: [UUID: @Sendable (SyncEvent) -> Void] = [:]
     var droppedListeners = Set<UUID>()
+    var liveListeners: [UUID: @Sendable (SyncLiveEvent) -> Void] = [:]
+    var droppedLiveListeners = Set<UUID>()
     var pairingWakers: [UUID: (pairingId: String, cont: CheckedContinuation<Void, Never>, timer: Task<Void, Never>?)] = [:]
     /// 이번 실행을 시작할 때 이미 맞춰 둔(그림자가 있던) 책 — 책장 파일을 새로 만든 실행에서 "잃은 책" 을 가리는 데 쓴다
     var knownAtStart = Set<String>()
@@ -218,6 +354,53 @@ public actor SyncEngine {
     // 한 줄 실행 (작업을 하나씩 차례로)
     var lockHeld = false
     var lockWaiters: [CheckedContinuation<Void, Never>] = []
+    /// 앱 값을 읽고 비교하거나 앱에 넣는 일 (실시간 길 · 바퀴의 비교 · 넣기) 은 하나씩 — 그림자가 앱 값과 어긋나지 않게
+    var appLock = AsyncLockState()
+    /// 동기화 저장소 쓰기는 부른 순서대로 하나씩 (나중 쓰기가 먼저 닿아 옛 값으로 덮이지 않게)
+    var flushLock = AsyncLockState()
+    /// 동기화 저장소에 쓰는 중인 수
+    var writing = 0
+
+    // 보내기 · 받기 시점 (docs/sync-live.md §11)
+    var pushTimer: Task<Void, Never>?
+    var pushTimerAt = 0
+    /// 아직 보내지 않은 첫 변경 · 마지막 변경
+    var pushFirstAt: Int?
+    var pushLastAt = 0
+    /// 밀린 변경 중 초안으로 가지 않은 것이 있다 → COVERED 여도 FAST 지연으로 보낸다
+    var pushUncovered = false
+    /// 서버가 알려 준 가장 큰 head
+    var headSeen = 0
+    var lastPullAt = Int.min / 4
+    /// 내가 쓴 순번 (그 head 알림으로 다시 받지 않게)
+    var ownSeqs = Set<Int>()
+    /// 이 기기의 편집을 상태에 합쳤다 (보내기 예약)
+    var localDirty = false
+    /// 앱이 localChanged(saved:) 로 저장한 값을 알려 준 적이 있다 → 저장된 그림자는 그 알림으로만 앞으로 간다
+    var savedHints = false
+
+    // 실시간 쓰기 (docs/sync-live.md §6–§9)
+    var presenceV: LivePresence?
+    /// 엔진이 마지막으로 본 쓰고 있는 칸 (바뀌면 미뤄 둔 칸을 다시 맞춘다)
+    var editingSeen: FieldAddress?
+    var heldTimer: Task<Void, Never>?
+    /// 앱에 알린 held 칸 (held 이벤트를 바뀔 때만)
+    var heldAt: FieldAddress?
+    var liveKeys = Set<String>()
+    var liveTickTask: Task<Void, Never>?
+    var liveLastTick = Int.min / 4
+    /// 레코드 키 → 아직 보내지 못한 조각 (다음 틱에 다음 조각과 합쳐 보낸다). 순서는 liveUnsentOrder
+    var liveUnsent: [String: RecState] = [:]
+    var liveUnsentOrder: [String] = []
+    var liveSendTimer: Task<Void, Never>?
+    var liveFlushTask: Task<Void, Never>?
+    var lastLiveFlushAt = Int.min / 4
+    var liveAdoptTimer: Task<Void, Never>?
+    /// 받은 초안을 앱에 넣을 레코드 (차례대로, 같은 레코드는 한 번에)
+    var liveApplyQueue: [String] = []
+    var liveApplyTask: Task<Void, Never>?
+    var bucket = (msgs: Double(LIVE_MSG_BURST), chars: Double(LIVE_CHAR_BURST), at: 0)
+    var counters = LiveCounters()
 
     public init(_ o: SyncEngineOptions) {
         host = o.host
@@ -226,8 +409,16 @@ public actor SyncEngine {
         credStore = o.credentials
         nowFn = o.now
         auto = o.auto
+        socketOn = o.socket
+        liveOn = o.live
         scanDelayMs = o.scanDelayMs
-        pushDelayMs = o.pushDelayMs
+        delays = o.pushDelays
+        headPullDelayMs = o.headPullDelayMs
+        minPullIntervalMs = o.minPullIntervalMs
+        liveThrottleMs = o.liveThrottleMs
+        liveFlushMs = o.liveFlushMs
+        liveAdoptMs = o.liveAdoptMs
+        editingGraceMs = o.editingGraceMs
         pollMs = o.pollMs
         safetyPollMs = o.safetyPollMs
         concurrency = max(1, o.concurrency)
@@ -285,6 +476,11 @@ public actor SyncEngine {
             // 예전 엔진이 모르는 버전이라 건너뛴 레코드가 있었다: 이제 읽을 수 있으니 처음부터 다시 받는다 (합치기는 멱등)
             if sb < PAYLOAD_VERSION { meta.head = 0 } else { meta.skippedBelow = sb }
         }
+        if case let .object(seen)? = m?["liveSeen"] {
+            for (k, v) in seen {
+                if let q = v.stringValue, Stamps.isStamp(q), isId22(k) { meta.liveSeen[k] = q }
+            }
+        }
         let nf = nowFn
         hlc = HLC(node: meta.nodeId, last: meta.hlc, wall: { Int64(nf()) })
         for (key, v) in stored.records {
@@ -301,6 +497,13 @@ public actor SyncEngine {
             e.d.apply = v["apply"] == .bool(true)
             e.d.pend = Flat(json: v["pend"])
             e.d.keep = v["keep"] == .bool(true)
+            // 보호 칸 때문에 상태와 다른 값을 앱에 둔 채 꺼졌다 → 이제 보호가 없으니 상태를 넣는다 (쓰기를 마친 것과 같다)
+            if v["ph"] != nil, v["ph"] != .null { e.d.apply = true }
+            if let lvv = v["lv"], let lv = try? CRDT.parseState(lvv), !CRDT.isEmptyDelta(lv) {
+                e.liveFrag = lv
+                let stored = v["lvt"]?.objectValue ?? [:]
+                for path in fragPaths(lv) { e.liveTimes[path] = stored[path]?.safeInt ?? 0 }
+            }
             if pk.kind == .book, e.d.shadow != nil, e.d.state.x == nil, let b = pk.bookId { knownAtStart.insert(b) }
         }
         creds = credStore != nil ? try await credStore!.get() : meta.creds
@@ -321,10 +524,12 @@ public actor SyncEngine {
         guard initialized, creds != nil, !running, !disposed else { return }
         running = true
         setState(.idle)
+        if socketOn { connectSocket() }
         if auto {
-            connectSocket()
             schedulePoll()
+            armAdopt()
         }
+        syncLiveActive()
         kick(scan: .all, pull: true, push: true, delay: 0)
     }
 
@@ -333,14 +538,17 @@ public actor SyncEngine {
         running = false
         clearTimers()
         closeSocket()
+        syncLiveActive()
         if creds != nil, state != .removed, state != .groupGone { setState(.idle) }
     }
 
-    /// 다 끝냄 (남은 쓰기를 마친다)
+    /// 다 끝냄 (남은 쓰기를 마친다 — 실시간으로 받아들인 · 받은 편집도 저장소에)
     public func dispose() async {
         stop()
         disposed = true
-        await locked {}
+        await locked {
+            do { try await flush() } catch { log(.warn, "동기화 상태를 저장하지 못함", error) }
+        }
         for (_, w) in pairingWakers {
             w.timer?.cancel()
             w.cont.resume()
@@ -350,8 +558,14 @@ public actor SyncEngine {
 
     public var status: SyncStatus {
         SyncStatus(state: state, pending: initialized ? recs.values.reduce(0) { $0 + ($1.d.dirty ? 1 : 0) } : 0,
-                   lastSyncAt: meta.lastSyncAt, error: errorText, gid: creds?.gid, deviceId: creds?.deviceId, live: live)
+                   lastSyncAt: meta.lastSyncAt, error: errorText, gid: creds?.gid, deviceId: creds?.deviceId, live: live, presence: presenceV)
     }
+
+    /// 지금 연결의 presence (연결 없음 · 모름 = nil)
+    public var presence: LivePresence? { presenceV }
+
+    /// 실시간 쓰기 세기
+    public var liveCounters: LiveCounters { counters }
 
     public var inGroup: Bool { creds != nil }
 
@@ -393,6 +607,37 @@ public actor SyncEngine {
         if case let .pairing(id, _) = e { wakePairing(id) }
     }
 
+    /// 실시간 쓰기 이벤트 받기 (presence · 다른 기기에서 쓰는 중 · 미뤄 둔 칸 · 바로 넣음). 돌려받은 id 로 끊는다.
+    /// 콜백은 엔진 쪽에서 불리므로 화면은 MainActor 로 옮겨서 쓴다
+    @discardableResult
+    public func addLiveListener(_ cb: @escaping @Sendable (SyncLiveEvent) -> Void) -> UUID {
+        let id = UUID()
+        liveListeners[id] = cb
+        return id
+    }
+
+    public func removeLiveListener(_ id: UUID) {
+        if liveListeners.removeValue(forKey: id) == nil { droppedLiveListeners.insert(id) }
+    }
+
+    func addLiveListener(id: UUID, _ cb: @escaping @Sendable (SyncLiveEvent) -> Void) {
+        if droppedLiveListeners.remove(id) != nil { return }
+        liveListeners[id] = cb
+    }
+
+    /// 실시간 쓰기 이벤트를 AsyncStream 으로. 붙기 전의 이벤트는 오지 않는다
+    public nonisolated func liveEvents() -> AsyncStream<SyncLiveEvent> {
+        AsyncStream { cont in
+            let id = UUID()
+            cont.onTermination = { _ in Task { await self.removeLiveListener(id) } }
+            Task { await self.addLiveListener(id: id) { cont.yield($0) } }
+        }
+    }
+
+    func emitLive(_ e: SyncLiveEvent) {
+        for l in liveListeners.values { l(e) }
+    }
+
     func setState(_ s: SyncState, _ error: String? = nil) {
         let changed = s != state || error != errorText
         state = s
@@ -414,14 +659,20 @@ public actor SyncEngine {
 
     /// 앱이 저장했다 (bookId 를 주면 그 책만, 없으면 책장과 모든 책). 어디서 불러도 된다 (기다리지 않는다).
     /// 사용자가 책을 지웠으면 deletedBooks 로 알려 준다: 엔진은 책장에서 사라진 책을 이 표시가 있을 때 바로 지운 것으로 보고,
-    /// 없으면 잃은 것은 아닌지 따져 본다 (scanLibrary)
-    public nonisolated func localChanged(bookId: String? = nil, library: Bool = false, deletedBooks: [String] = []) {
-        Task { await self.noteLocalChange(bookId: bookId, library: library, deletedBooks: deletedBooks) }
+    /// 없으면 잃은 것은 아닌지 따져 본다 (scanLibrary).
+    /// saved: 앱이 방금 파일에 다 쓴 그 책 값 (bookId 와 함께, PlannerData JSON — 엔진이 필요할 때만 부른다: 실시간으로 앞선 레코드가
+    /// 있을 때). 실시간 쓰기를 하는 앱은 꼭 넘긴다 — 엔진은 앱 파일에 있는 값을 알아야 앱이 저장 전에 꺼졌을 때 친 글을 되살린다
+    /// (docs/sync-live.md §7.4). 넘기지 않으면 비교한 값을 저장된 값으로 본다
+    public nonisolated func localChanged(bookId: String? = nil, library: Bool = false, deletedBooks: [String] = [],
+                                         saved: (@Sendable () -> JSONValue?)? = nil) {
+        Task { await self.noteLocalChange(bookId: bookId, library: library, deletedBooks: deletedBooks, saved: saved) }
     }
 
     /// localChanged 와 같고, 알림을 받을 때까지 기다린다 (테스트)
-    public func noteLocalChange(bookId: String? = nil, library: Bool = false, deletedBooks: [String] = []) {
+    public func noteLocalChange(bookId: String? = nil, library: Bool = false, deletedBooks: [String] = [],
+                                saved: (@Sendable () -> JSONValue?)? = nil) {
         guard initialized, creds != nil else { return }
+        if let bookId, let saved { noteSaved(bookId.uppercased(), saved) }
         for id in deletedBooks { deletedHint.insert(id.uppercased()) }
         let library = library || !deletedBooks.isEmpty
         guard running else { return }
@@ -447,7 +698,8 @@ public actor SyncEngine {
 
     func scanTimerFired() {
         scanTimer = nil
-        if let hints = takeHints() { kick(scan: hints, push: true, pushDelay: pushDelayMs, delay: 0) }
+        // 비교는 바로, 보내기는 비교가 찾은 변경으로 (상황별 지연 — requestPush)
+        if let hints = takeHints() { kick(scan: hints, delay: 0) }
     }
 
     func takeHints() -> ScanHints? {
@@ -544,6 +796,7 @@ public actor SyncEngine {
             if let credStore { try await credStore.set(nil) }
             meta = Meta(nodeId: meta.nodeId, hlc: hlc.last)
             metaTouched = true
+            resetLive()
             try await flush()
         }
         live = false
@@ -568,7 +821,9 @@ public actor SyncEngine {
             meta.lastSyncAt = nil
             meta.recovery = nil
             meta.rename = nil
+            meta.liveSeen = [:]
             metaTouched = true
+            resetLive()
             try await flush()
         }
         start()
@@ -795,11 +1050,12 @@ public actor SyncEngine {
 
     // MARK: - 타이머
 
-    func kick(scan: ScanHints? = nil, pull: Bool = false, push: Bool = false, pushDelay: Int? = nil, delay: Int) {
+    func kick(scan: ScanHints? = nil, pull: Bool = false, push: Bool = false, headPull: Bool = false, pushDelay: Int? = nil, delay: Int) {
         guard running else { return }
         if let scan { scanHints = scan.merged(scanHints) }
         if pull { wantPull = true }
         if push { wantPush = true }
+        if headPull { wantHeadPull = true }
         guard auto else { return }
         let at = now() + max(delay, pushDelay ?? 0, backoffRemaining())
         if cycleTimer != nil, at >= cycleAt { return }
@@ -819,10 +1075,12 @@ public actor SyncEngine {
         let scan = takeHints()
         let pull = wantPull
         let push = wantPush
+        let headPull = wantHeadPull
         wantPull = false
         wantPush = false
+        wantHeadPull = false
         // 타이머의 취소가 진행 중인 동기화에 번지지 않게 따로 돈다
-        Task { await self.locked { await self.cycle(scan: scan, pull: pull, push: push) } }
+        Task { await self.locked { await self.cycle(scan: scan, pull: pull, push: push, headPull: headPull) } }
     }
 
     func backoffRemaining() -> Int { max(0, retryAt - now()) }
@@ -845,13 +1103,24 @@ public actor SyncEngine {
     }
 
     func clearTimers() {
-        for t in [scanTimer, cycleTimer, pollTimer, wsTimer, pingTimer] { t?.cancel() }
+        for t in [scanTimer, cycleTimer, pollTimer, wsTimer, pingTimer, pushTimer, liveTickTask, liveSendTimer, liveFlushTask, liveAdoptTimer, heldTimer] { t?.cancel() }
         scanTimer = nil
         cycleTimer = nil
         pollTimer = nil
         wsTimer = nil
         pingTimer = nil
+        pushTimer = nil
+        liveTickTask = nil
+        liveSendTimer = nil
+        liveFlushTask = nil
+        liveAdoptTimer = nil
+        heldTimer = nil
+        pushFirstAt = nil
+        pushLastAt = 0
+        pushUncovered = false
         cycleAt = Int.max
+        // 멈춘 동안 받은 liveEdit 는 다음 비교가 잡는다
+        liveKeys = []
     }
 
     // MARK: - WebSocket
@@ -873,7 +1142,7 @@ public actor SyncEngine {
             onClose: { code, reason in
                 cont.yield(.close(code, reason))
                 cont.finish()
-            }))
+            }), live: liveOn)
         socketTask = Task { [weak self] in
             for await ev in stream {
                 guard let self else { return }
@@ -888,13 +1157,17 @@ public actor SyncEngine {
         case .open:
             live = true
             wsBackoff = 0
+            // presence 는 이 연결에서 {"peers"} 를 받아야 안다 (옛 서버는 보내지 않는다)
+            setPresence(nil)
             emit(.status(status))
             pingTimer?.cancel()
-            pingTimer = Task { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 30_000_000_000)
-                    if Task.isCancelled { return }
-                    await self?.ping()
+            if auto {
+                pingTimer = Task { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 30_000_000_000)
+                        if Task.isCancelled { return }
+                        await self?.ping()
+                    }
                 }
             }
             schedulePoll()
@@ -905,12 +1178,13 @@ public actor SyncEngine {
             live = false
             pingTimer?.cancel()
             pingTimer = nil
+            setPresence(nil)
             emit(.status(status))
             if code == WSClose.deviceRemoved { return onFatal(.removed, "이 기기는 동기화 그룹에서 빠졌어요.") }
             if code == WSClose.groupDeleted { return onFatal(.groupGone, "동기화 그룹이 지워졌어요.") }
             // 같은 기기가 연결을 너무 많이 열어 서버가 오래된 것을 닫았다 → 다시 열지 않고 주기 확인으로
             if code == WSClose.replaced { return schedulePoll() }
-            guard running else { return }
+            guard running, auto else { return }
             wsBackoff = min(60_000, wsBackoff > 0 ? wsBackoff * 2 : 1000)
             let ms = Int(Double(wsBackoff) * (0.75 + Double.random(in: 0..<0.5)))
             wsTimer?.cancel()
@@ -934,6 +1208,7 @@ public actor SyncEngine {
         socket = nil
         socketGen += 1
         live = false
+        setPresence(nil)
         socketTask?.cancel()
         socketTask = nil
         s?.close()
@@ -944,7 +1219,11 @@ public actor SyncEngine {
         // 닫힘 프레임이 늦게 와도(프록시 · 모바일 망) 바로 멈춘다
         case .removed: onFatal(.removed, "이 기기는 동기화 그룹에서 빠졌어요.")
         case .deleted: onFatal(.groupGone, "동기화 그룹이 지워졌어요.")
-        case let .head(h): if h > meta.head { kick(pull: true, delay: 1000) }
+        case let .draft(draft, q, from): onDraft(draft: draft, q: q, from: from)
+        case let .presence(peers, l): setPresence(LivePresence(relay: true, peers: peers, live: l))
+        case let .head(h):
+            if h > headSeen { headSeen = h }
+            if h > meta.head { kickHeadPull() }
         case .devices:
             emit(.devices)
             // 두 번째 기기가 들어오면 그룹 용량이 늘어난다 → 용량 때문에 멈춘 보내기를 바로 다시
@@ -961,6 +1240,7 @@ public actor SyncEngine {
         running = false
         clearTimers()
         closeSocket()
+        syncLiveActive()
         setState(s, message)
     }
 

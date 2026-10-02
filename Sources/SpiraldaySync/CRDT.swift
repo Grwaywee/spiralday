@@ -228,6 +228,40 @@ public enum CRDT {
         }
     }
 
+    /// frag(받았지만 아직 서버에서 확인되지 않은 초안 조각)에서 by(서버 버전 · 내가 올린 상태)가 이미 덮는 것을 지운다 (frag 를 바꾼다).
+    /// 덮음 = by 와 합쳐도 by 가 바뀌지 않음: 필드는 by 의 도장 ≥ 조각의 도장, 항목 필드는 그것 또는 by 의 항목 d ≥ 도장(버려짐),
+    /// 항목 a · d 는 by 의 것 ≥. by 에 x 가 있으면 모두 덮는다. 다 지워지면 빈 조각 (isEmptyDelta). docs/sync-live.md §8.4
+    public static func dropCovered(_ frag: inout RecState, by: RecState) {
+        if by.x != nil {
+            frag = RecState()
+            return
+        }
+        for k in Array(frag.f.keys) {
+            if let b = by.f[k], JS.greaterOrEqual(b.stamp, frag.f[k]!.stamp) { frag.f[k] = nil }
+        }
+        for name in Array(frag.c.keys) {
+            var items = frag.c[name]!
+            let have = by.c[name] ?? [:]
+            for id in Array(items.keys) {
+                var it = items[id]!
+                if let b = have[id] {
+                    for k in Array(it.f.keys) {
+                        let st = it.f[k]!.stamp
+                        if let d = b.d, !JS.less(d, st) {
+                            it.f[k] = nil
+                        } else if let bf = b.f[k], JS.greaterOrEqual(bf.stamp, st) {
+                            it.f[k] = nil
+                        }
+                    }
+                    if !it.a.isEmpty, !b.a.isEmpty, JS.greaterOrEqual(b.a, it.a) { it.a = "" }
+                    if let d = it.d, let bd = b.d, JS.greaterOrEqual(bd, d) { it.d = nil }
+                }
+                if it.a.isEmpty, it.d == nil, it.f.isEmpty { items[id] = nil } else { items[id] = it }
+            }
+            if items.isEmpty { frag.c[name] = nil } else { frag.c[name] = items }
+        }
+    }
+
     /// 상태에 들어 있는 가장 큰 도장 (HLC 에 알려 주려고)
     public static func maxStamp(in s: RecState) -> Stamp? {
         var m: Stamp? = s.x

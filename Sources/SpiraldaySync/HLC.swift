@@ -52,8 +52,10 @@ public protocol StampSource: AnyObject {
     func next() -> Stamp
 }
 
-public final class HLC: StampSource {
+/// 진짜 시계. 엔진(actor)과 앱에 넣는 일(호스트의 MainActor 차례)이 같은 시계를 쓰므로 안에서 잠근다
+public final class HLC: StampSource, @unchecked Sendable {
     public let node: String
+    private let lock = NSLock()
     private var t: Int64 = 0
     private var c = 0
     private let wall: () -> Int64
@@ -68,17 +70,19 @@ public final class HLC: StampSource {
     /// 지금 이 기기에서 일어난 일의 도장 (지금까지 본 모든 도장보다 크다)
     public func next() -> Stamp {
         let w = min(Stamps.maxT, max(0, wall()))
-        if w > t {
-            t = w
-            c = 0
-        } else if c < Stamps.maxC {
-            c += 1
-        } else if t < Stamps.maxT {
-            // 카운터가 다 차면 논리 시각을 1ms 올린다
-            t += 1
-            c = 0
+        return lock.withLock {
+            if w > t {
+                t = w
+                c = 0
+            } else if c < Stamps.maxC {
+                c += 1
+            } else if t < Stamps.maxT {
+                // 카운터가 다 차면 논리 시각을 1ms 올린다
+                t += 1
+                c = 0
+            }
+            return Stamps.make(t: t, c: c, node: node)
         }
-        return Stamps.make(t: t, c: c, node: node)
     }
 
     /// 다른 기기의 도장을 봤다: 다음 도장은 이것보다 크게.
@@ -92,18 +96,18 @@ public final class HLC: StampSource {
             p.t = cap
             p.c = 0
         }
-        if p.t > t || (p.t == t && p.c > c) {
-            t = p.t
-            c = p.c
+        lock.withLock {
+            if p.t > t || (p.t == t && p.c > c) {
+                t = p.t
+                c = p.c
+            }
         }
         return skewed
     }
 
     /// 지금까지 본 가장 큰 (시각, 카운터)
-    public var last: Stamp { Stamps.make(t: t, c: c, node: node) }
+    public var last: Stamp { lock.withLock { Stamps.make(t: t, c: c, node: node) } }
 
-    /// 같은 시계를 하나 더 (앱에 넣는 동안 따로 쓰고, 끝나면 observe 로 합친다)
-    func copy() -> HLC { HLC(node: node, last: last, wall: wall) }
 }
 
 /// 처음 가져오기(그룹에 합류하기 전부터 있던 기록)용 시계: 시각 0 에서 시작한다.

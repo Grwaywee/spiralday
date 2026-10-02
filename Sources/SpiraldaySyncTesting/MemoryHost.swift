@@ -10,6 +10,9 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
     private var _unreadable = Set<String>()
     private var _applied = 0
     private var _settings: JSONValue?
+    private var _openBook: String?
+    private var _liveApplied = 0
+    private var _liveReads = 0
 
     public init(library: JSONValue = ["books": [], "sampleSeeded": false], sharedSettings: JSONValue? = nil) {
         _library = library
@@ -44,6 +47,18 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
 
     /// updateBook/updateLibrary 가 불린 횟수
     public var applied: Int { lock.withLock { _applied } }
+
+    /// 앱에서 열린 책 (실시간 읽기 readLive · 넣기 applyLive 를 받는 책). nil 이면 받지 않는다 → 엔진은 readBook · updateBook 으로
+    public var openBook: String? {
+        get { lock.withLock { _openBook } }
+        set { lock.withLock { _openBook = newValue?.uppercased() } }
+    }
+
+    /// applyLive 로 넣은 횟수
+    public var liveApplied: Int { lock.withLock { _liveApplied } }
+
+    /// readLive 로 읽은 횟수
+    public var liveReads: Int { lock.withLock { _liveReads } }
 
     public var sharedSettings: JSONValue? {
         get { lock.withLock { _settings } }
@@ -89,6 +104,55 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
                 if o["activeID"] == .null { o["activeID"] = nil }
                 _library = .object(o)
             }
+        }
+    }
+
+    public func readLive(bookId: String, keys: [String]) async -> [String: JSONValue]? {
+        lock.withLock {
+            let k = bookId.uppercased()
+            guard _openBook == k, let data = _books[k] else { return nil }
+            _liveReads += 1
+            var out: [String: JSONValue] = [:]
+            for key in keys { out[key] = Self.recordValue(data, key) ?? .null }
+            return out
+        }
+    }
+
+    public func applyLive(bookId: String, keys: [String], _ transform: @Sendable ([String: JSONValue]) -> [String: JSONValue]) async -> Bool {
+        lock.withLock {
+            let k = bookId.uppercased()
+            guard _openBook == k, var data = _books[k] else { return false }
+            var cur: [String: JSONValue] = [:]
+            for key in keys { cur[key] = Self.recordValue(data, key) ?? .null }
+            let next = transform(cur)
+            for key in keys {
+                guard let pk = RecordKeys.parse(key), let v = next[key] else { continue }
+                let value: JSONValue? = v.isNull ? nil : v
+                switch pk.kind {
+                case .day: data = Records.withDay(data, pk.date!, value)
+                case .week: data = Records.withWeek(data, pk.date!, value)
+                case .prefs:
+                    if case var .object(o) = data, let value {
+                        o["prefs"] = value
+                        data = .object(o)
+                    }
+                default: break
+                }
+            }
+            _books[k] = data
+            _liveApplied += 1
+            return true
+        }
+    }
+
+    /// 책 JSON 에서 레코드 하나의 값 (하루 · 한 주 · 설정)
+    static func recordValue(_ data: JSONValue, _ key: String) -> JSONValue? {
+        guard let pk = RecordKeys.parse(key) else { return nil }
+        switch pk.kind {
+        case .day: return data["days"]?[pk.date!]
+        case .week: return data["weeks"]?[pk.date!]
+        case .prefs: return data["prefs"]
+        default: return nil
         }
     }
 

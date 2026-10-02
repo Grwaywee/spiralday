@@ -178,13 +178,27 @@ public enum ServerPush: Sendable, Equatable {
     case removed
     /// 그룹이 지워졌다 (곧 4404 로 닫힌다)
     case deleted
+    /// presence (live 소켓에만, docs/sync-live.md §3.1): 이 기기를 뺀 같은 그룹 기기 중 연결이 열린 기기 수 · 그중 초안을 받는 기기 수.
+    /// 이것을 받은 연결만 "중계 있음" 이다
+    case presence(peers: Int, live: Int)
+    /// 다른 기기의 봉인한 초안 (§3.3). from 은 서버가 붙인 보낸 기기 id. 키가 문자열이 아니면 빈 글 (받는 쪽 검사가 버린다)
+    case draft(draft: String, q: String, from: String)
     case unknown
 
     public static func parse(_ text: String) -> ServerPush {
         guard let v = try? JSONValue.parse(text), case let .object(o) = v else { return .unknown }
         if o["removed"] == .bool(true) { return .removed }
         if o["deleted"] == .bool(true) { return .deleted }
-        if case let .number(h)? = o["head"] { return .head(Int(h)) }
+        if o.keys.contains("draft") {
+            return .draft(draft: o["draft"]?.stringValue ?? "", q: o["q"]?.stringValue ?? "", from: o["from"]?.stringValue ?? "")
+        }
+        if o.keys.contains("peers") {
+            // 모양이 틀린 presence 는 무시한다 (모르는 것과 같다)
+            guard let p = o["peers"]?.safeInt, let l = o["live"]?.safeInt, p >= 0, l >= 0, l <= p else { return .unknown }
+            return .presence(peers: p, live: l)
+        }
+        // 범위 밖 숫자로 멈추지 않게 (Int(Double) 은 넘치면 멈춘다)
+        if case .number? = o["head"] { return o["head"]?.safeInt.map { .head($0) } ?? .unknown }
         if o["devices"] != nil { return .devices }
         if case let .string(p)? = o["pairing"] { return .pairing(id: p, status: JS.string(o["status"])) }
         return .unknown

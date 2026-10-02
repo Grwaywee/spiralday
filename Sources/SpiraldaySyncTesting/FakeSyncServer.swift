@@ -120,6 +120,40 @@ struct HttpErr: Error {
     var headers: [String: String] = [:]
 }
 
+/// 실시간 초안 중계 한도 (docs/sync-live.md §5 — 진짜 서버와 같은 값, 기기마다)
+public struct FakeLiveLimits: Sendable {
+    public var frameChars = 32_768
+    public var msgPerSec = 25.0
+    public var msgBurst = 40.0
+    public var charsPerSec = 131_072.0
+    public var charBurst = 262_144.0
+    public init() {}
+}
+
+/// 버린 초안 수 (이유마다)
+public struct FakeLiveDrops: Sendable, Equatable {
+    public var shape = 0
+    public var size = 0
+    public var rate = 0
+    public var notLive = 0
+    public init() {}
+}
+
+/// 중계 프레임 하나 (relayFilter 가 받는다). deliver() 로 늦게 · 두 번 · 순서를 바꿔 보내고, deliver(text:) 로 꾸민 글을 보낼 수 있다
+public struct FakeRelay: Sendable {
+    /// 서버가 만든 중계 프레임 {"draft","q","from"}
+    public let frame: String
+    /// 보낸 기기 · 받는 기기
+    public let fromDevice: String
+    public let toDevice: String
+    let target: FakeSocket
+
+    /// 받는 소켓에 이 프레임을 보낸다 (닫혔으면 아무것도 안 함)
+    public func deliver() { target.serverSend(frame) }
+    /// 받는 소켓에 다른 글을 보낸다 (꾸민 프레임)
+    public func deliver(text: String) { target.serverSend(text) }
+}
+
 public final class FakeSyncServer: @unchecked Sendable {
     public struct Device: Sendable {
         public let id: String
@@ -193,6 +227,8 @@ public final class FakeSyncServer: @unchecked Sendable {
         public let path: String
         public let body: JSONValue?
         public let status: Int
+        /// 요청한 가짜 IP (transport(ip:) — 기기마다 다르게 주면 기기의 요청을 가를 수 있다)
+        public var ip: String = ""
     }
 
     private let lock = NSRecursiveLock()
@@ -208,6 +244,15 @@ public final class FakeSyncServer: @unchecked Sendable {
     private var globalCodeFails: [Int] = []
     private let nowFn: @Sendable () -> Int
     public let host: String
+    // 실시간 (presence · 초안 중계)
+    private var _live = true
+    private var _liveLimits = FakeLiveLimits()
+    private var _liveDrops = FakeLiveDrops()
+    private var _relayed = 0
+    private var _relayFilter: (@Sendable (FakeRelay) -> Bool)?
+    /// 기기마다: 보낸 초안 프레임 수 · 속도 버킷
+    private var draftFrames: [String: Int] = [:]
+    private var liveBuckets: [String: (msgs: Double, chars: Double, at: Int)] = [:]
 
     public init(limits: FakeServerLimits = FakeServerLimits(), now: @escaping @Sendable () -> Int = { Int(Date().timeIntervalSince1970 * 1000) }) {
         self.limits = limits
@@ -219,6 +264,41 @@ public final class FakeSyncServer: @unchecked Sendable {
     deinit { FakeURLProtocol.unregister(host) }
 
     func now() -> Int { nowFn() }
+
+    /// 실시간 초안 중계 · presence (docs/sync-live.md §3). false = 옛 서버 흉내: 하위 프로토콜 "spiralday.live.1" 을 모른다
+    /// ({"peers"} 를 보내지 않고 초안을 무시한다). 바꾸면 다음 연결부터
+    public var live: Bool {
+        get { lock.withLock { _live } }
+        set { lock.withLock { _live = newValue } }
+    }
+
+    public var liveLimits: FakeLiveLimits {
+        get { lock.withLock { _liveLimits } }
+        set { lock.withLock { _liveLimits = newValue } }
+    }
+
+    /// 버린 초안 (이유마다)
+    public var liveDrops: FakeLiveDrops { lock.withLock { _liveDrops } }
+
+    /// 중계한 초안 프레임 수 (받는 소켓마다 하나)
+    public var relayed: Int { lock.withLock { _relayed } }
+
+    /// (테스트) 중계 프레임 하나를 받는 소켓에 보내기 전에. false 를 돌려주면 보내지 않는다 — 테스트가 쥐고 있다가 relay.deliver() 로
+    /// 늦게 · 두 번 · 순서를 바꿔 보낼 수 있다
+    public var relayFilter: (@Sendable (FakeRelay) -> Bool)? {
+        get { lock.withLock { _relayFilter } }
+        set { lock.withLock { _relayFilter = newValue } }
+    }
+
+    /// 이 기기가 보낸 초안 프레임 수 (버린 것 포함)
+    public func draftsSent(by deviceId: String) -> Int { lock.withLock { draftFrames[deviceId] ?? 0 } }
+
+    /// 이 기기의 열린 WebSocket 의 보내기 대기를 흉내 낸다 (bytes 가 한도를 넘으면 초안을 보내지 못한다)
+    public func setBuffered(deviceId: String, bytes: Int) {
+        lock.withLock {
+            for g in groups.values { for sk in g.sockets where sk.deviceId == deviceId { sk.buffered = bytes } }
+        }
+    }
 
     /// records/batch 를 받는지 (false 면 404 → 엔진은 하나씩 보낸다)
     public var batch: Bool {
@@ -319,7 +399,7 @@ public final class FakeSyncServer: @unchecked Sendable {
         var parsed: JSONValue?
         var status = 500
         let path = url.path
-        defer { _log.append(LogEntry(method: method, path: path, body: parsed, status: status)) }
+        defer { _log.append(LogEntry(method: method, path: path, body: parsed, status: status, ip: headers["X-Fake-IP"] ?? headers["x-fake-ip"] ?? "")) }
         do {
             if let body, !body.isEmpty, method != "GET", method != "DELETE" {
                 guard let v = try? JSONValue.parse(body) else { throw HttpErr(status: 400, code: "invalid_json", message: "JSON 을 읽을 수 없습니다.") }
@@ -463,6 +543,7 @@ public final class FakeSyncServer: @unchecked Sendable {
             s.serverClose(4401, "device_removed")
         }
         g.sockets.removeAll { $0.deviceId == deviceId }
+        updatePresence(g)
         broadcast(g, ["devices": true])
     }
 
@@ -942,17 +1023,97 @@ public final class FakeSyncServer: @unchecked Sendable {
                 }
                 sock.deviceId = dev.id
                 sock.server = self
+                let offered = (req.value(forHTTPHeaderField: "Sec-WebSocket-Protocol") ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                sock.live = self._live && offered.contains(WSProtocol.live)
                 g.sockets.append(sock)
                 sock.group = g
                 sock.serverOpen()
                 sock.serverSend(#"{"head":\#(g.head)}"#)
+                self.updatePresence(g, fresh: sock)
             }
         }
         return sock
     }
 
     func socketClosed(_ s: FakeSocket) {
-        lock.withLock { s.group?.sockets.removeAll { $0 === s } }
+        lock.withLock {
+            guard let g = s.group else { return }
+            g.sockets.removeAll { $0 === s }
+            updatePresence(g)
+        }
+    }
+
+    // MARK: - 실시간 (presence · 초안 중계)
+
+    /// 소켓 s 에서 본 presence: 이 기기를 뺀 기기 중 열린 소켓이 있는 기기 · 그중 live 소켓이 있는 기기
+    func presenceOf(_ g: Group, _ s: FakeSocket) -> (Int, Int) {
+        var peers = Set<String>()
+        var live = Set<String>()
+        for o in g.sockets where o.isOpen {
+            guard let d = o.deviceId, d != s.deviceId else { continue }
+            peers.insert(d)
+            if o.live { live.insert(d) }
+        }
+        return (peers.count, live.count)
+    }
+
+    /// live 소켓마다 presence 가 바뀌었으면 알린다 (fresh 는 방금 받은 소켓 — 늘 보낸다)
+    func updatePresence(_ g: Group, fresh: FakeSocket? = nil) {
+        guard _live else { return }
+        for s in g.sockets where s.live && s.isOpen {
+            let p = presenceOf(g, s)
+            if s !== fresh, let last = s.presence, last == p { continue }
+            s.presence = p
+            s.serverSend(#"{"peers":\#(p.0),"live":\#(p.1)}"#)
+        }
+    }
+
+    /// 클라이언트 → 서버 초안 프레임 (§3.4: 모양 · 크기 · 기기마다 속도 상한, 넘치면 버리고 끊지 않는다)
+    func socketMessage(_ sock: FakeSocket, _ data: String) {
+        var out: [(FakeRelay, (@Sendable (FakeRelay) -> Bool)?)] = []
+        lock.withLock {
+            guard let g = sock.group, let from = sock.deviceId else { return }
+            draftFrames[from, default: 0] += 1
+            guard _live, sock.live else {
+                _liveDrops.notLive += 1
+                return
+            }
+            let L = _liveLimits
+            if data.utf16.count > L.frameChars {
+                _liveDrops.size += 1
+                return
+            }
+            guard let m = try? JSONValue.parse(data), case let .string(draft)? = m["draft"], case let .string(q)? = m["q"],
+                  Draft.isDraft(draft), Stamps.isStamp(q) else {
+                _liveDrops.shape += 1
+                return
+            }
+            let t = now()
+            var b = liveBuckets[from] ?? (L.msgBurst, L.charBurst, t)
+            let dt = Double(max(0, t - b.at)) / 1000
+            b.at = t
+            b.msgs = min(L.msgBurst, b.msgs + dt * L.msgPerSec)
+            b.chars = min(L.charBurst, b.chars + dt * L.charsPerSec)
+            let cost = Double(data.utf16.count)
+            if b.msgs < 1 || b.chars < cost {
+                liveBuckets[from] = b
+                _liveDrops.rate += 1
+                return
+            }
+            b.msgs -= 1
+            b.chars -= cost
+            liveBuckets[from] = b
+            // 받은 프레임을 그대로 넘기지 않고 세 키로 다시 만든다 (from 은 서버가 붙인다)
+            let frame = JSONValue.object(["draft": .string(draft), "q": .string(q), "from": .string(from)]).canonical
+            for t in g.sockets where t.live && t.isOpen && t.deviceId != from {
+                _relayed += 1
+                out.append((FakeRelay(frame: frame, fromDevice: from, toDevice: t.deviceId ?? "", target: t), _relayFilter))
+            }
+        }
+        for (r, filter) in out {
+            if let filter, !filter(r) { continue }
+            r.deliver()
+        }
     }
 
     func headOf(_ g: Group) -> Int { lock.withLock { g.head } }
@@ -963,6 +1124,24 @@ public final class FakeSyncServer: @unchecked Sendable {
             for g in groups.values {
                 for s in g.sockets { s.serverClose(1006, "dropped") }
                 g.sockets = []
+            }
+        }
+    }
+
+    /// 이 기기의 열린 WebSocket 에 글 하나를 보낸다 (테스트: 꾸민 · 다시 보낸 중계 프레임)
+    public func push(toDevice deviceId: String, text: String) {
+        lock.withLock {
+            for g in groups.values { for s in g.sockets where s.deviceId == deviceId { s.serverSend(text) } }
+        }
+    }
+
+    /// 이 기기의 열린 WebSocket 만 네트워크 오류로 끊는다
+    public func dropSockets(deviceId: String) {
+        lock.withLock {
+            for g in groups.values {
+                for s in g.sockets where s.deviceId == deviceId { s.serverClose(1006, "dropped") }
+                g.sockets.removeAll { $0.deviceId == deviceId }
+                updatePresence(g)
             }
         }
     }
@@ -977,13 +1156,27 @@ final class FakeSocket: SocketHandle, @unchecked Sendable {
     var deviceId: String?
     weak var server: FakeSyncServer?
     var group: FakeSyncServer.Group?
+    /// live 소켓 (하위 프로토콜 spiralday.live.1 로 열었고 서버가 실시간을 한다)
+    var live = false
+    /// 마지막으로 알린 presence
+    var presence: (Int, Int)?
+    /// 보내기 대기 흉내 (bytes)
+    var buffered = 0
 
     init(handlers: SocketHandlers) { self.handlers = handlers }
+
+    var isOpen: Bool { lock.withLock { state == 1 } }
 
     func send(_ text: String) {
         guard lock.withLock({ state == 1 }) else { return }
         if text == "ping" { serverSend("pong") }
         if text == "head", let g = group, let s = server { serverSend(#"{"head":\#(s.headOf(g))}"#) }
+    }
+
+    func sendDraft(_ draft: String, q: String) -> Bool {
+        guard lock.withLock({ state == 1 }), buffered <= WSProtocol.draftBufferLimit, let s = server else { return false }
+        s.socketMessage(self, JSONValue.object(["draft": .string(draft), "q": .string(q)]).canonical)
+        return true
     }
 
     func close() {

@@ -5,12 +5,14 @@ import Foundation
 extension SyncEngine {
     // MARK: - 한 바퀴
 
-    func cycle(scan: ScanHints?, pull: Bool, push: Bool) async {
+    func cycle(scan: ScanHints?, pull: Bool, push: Bool, headPull: Bool = false) async {
         guard creds != nil, keys != nil else { return }
         if state == .removed || state == .groupGone { return }
         var scan = scan
         var pull = pull
         var push = push
+        // {"head"} 로 온 받기는 그 사이 내 쓰기(ownSeqs)나 다른 받기로 이미 따라잡았으면 하지 않는다
+        if headPull, !pull, headSeen > meta.head { pull = true }
         do {
             if !meta.imported {
                 try await importAll()
@@ -24,6 +26,8 @@ extension SyncEngine {
             if touchesServer { setState(.syncing) }
             if pull { try await self.pull() }
             try await applyPending()
+            // 확인되지 않은 초안을 대신 올릴 때가 됐으면 (받기가 먼저 확인해 준다)
+            if adoptLive(), !touchesServer { requestPush() }
             if touchesServer { try await pushAll() }
             if touchesServer, meta.rename != nil { await retryRename() }
             try await applyPending()
@@ -36,6 +40,14 @@ extension SyncEngine {
                 retryAt = 0
                 setState(.idle)
             }
+            // 보내지 않은 바퀴(비교만)가 찾은 변경 → 상황별 지연 뒤에 보낸다. 새 변경을 찾지 못한 비교(저장 알림 · 주기 비교)는
+            // "마지막 변경" 을 뒤로 밀지 않는다 (OLD-PEER · UNKNOWN · ALONE 이 저장 알림마다 늦어지지 않게)
+            if !push, recs.values.contains(where: pushable) {
+                if localDirty || pushFirstAt == nil { requestPush() } else { armPush() }
+            }
+            localDirty = false
+            // 비교 · 넣기가 찾은 이 기기의 편집도 듣는 기기에 초안으로
+            sendUnsent()
         } catch {
             try? await flush()
             onCycleError(error)
@@ -124,12 +136,19 @@ extension SyncEngine {
 
     func touch(_ e: RecEntry) { touched.insert(e.key) }
 
+    /// 바뀐 것을 동기화 저장소에. 쓰기는 부른 순서대로 하나씩 (flushLock) — 실시간 길과 바퀴가 함께 불러도 옛 값이 새 값을 덮지 않게
     func flush() async throws {
         guard initialized else { return }
+        writing += 1
+        await acquireFlush()
+        defer {
+            releaseFlush()
+            writing -= 1
+        }
         var put: [(String, JSONValue)] = []
         for k in touched {
             guard let e = recs[k] else { continue }
-            put.append((k, e.d.stored))
+            put.append((k, e.stored))
         }
         let last = hlc.last
         if meta.hlc != last {
@@ -145,34 +164,65 @@ extension SyncEngine {
 
     // MARK: - 비교 (앱 → 상태)
 
-    func absorb(_ e: RecEntry, _ kind: RecordKind, _ cur: Flat, _ clock: StampSource) -> Bool {
+    /// 한 레코드: 그림자와 지금 값을 비교해 바뀐 것을 상태에 합친다. 합친 조각(이 기기의 편집, 도장을 올린 뒤) 또는 nil.
+    /// 이 기기의 진짜 편집(clock = HLC)이고 초안으로 오가는 레코드면 듣는 기기에 보낼 조각에 더한다
+    @discardableResult
+    func absorb(_ e: RecEntry, _ kind: RecordKind, _ cur: Flat, _ clock: StampSource) -> RecState? {
         let r = e.d.absorb(kind, cur, clock)
         if r.touched { touch(e) }
-        return r.changed
+        guard let delta = r.delta else { return nil }
+        localDirty = true
+        draftOrUncovered(e.key, kind, delta, real: (clock as AnyObject) === hlc)
+        return delta
     }
 
-    func diffKey(_ key: String, _ kind: RecordKind, _ cur: Flat, _ clock: StampSource) {
-        if let e0 = recs[key] {
-            if absorb(e0, kind, cur, clock) { reconcile(e0, kind, cur) }
+    /// 비교 하나. live = 실시간 길 (앱 메모리 값: 저장된 그림자를 남긴다), 아니면 바퀴의 비교 (앱이 저장했다고 알린 값)
+    func diffKey(_ key: String, _ kind: RecordKind, _ cur: Flat, _ clock: StampSource, live: Bool = false) {
+        guard let e0 = recs[key] else {
+            // 처음 보는 레코드: 비어 있으면 만들지 않는다
+            let delta = Records.diff(kind, prev: nil, cur: cur, clock: clock)
+            if CRDT.isEmptyDelta(delta) { return }
+            let e = rec(key)
+            CRDT.mergeInto(&e.d.state, delta)
+            e.d.shadow = cur
+            e.d.dirty = true
+            e.d.ver += 1
+            if live { e.d.saved = .empty }
+            touch(e)
+            localDirty = true
+            draftOrUncovered(key, kind, delta, real: (clock as AnyObject) === hlc)
+            reconcile(e, kind, cur)
             return
         }
-        // 처음 보는 레코드: 비어 있으면 만들지 않는다
-        let delta = Records.diff(kind, prev: nil, cur: cur, clock: clock)
-        if CRDT.isEmptyDelta(delta) { return }
-        let e = rec(key)
-        CRDT.mergeInto(&e.d.state, delta)
-        e.d.shadow = cur
-        e.d.dirty = true
-        e.d.ver += 1
-        touch(e)
-        reconcile(e, kind, cur)
+        let hadPend = e0.d.pend != nil
+        let before = e0.d.shadow
+        let delta = absorb(e0, kind, cur, clock)
+        if live {
+            if delta != nil, e0.d.saved == nil {
+                e0.d.saved = SavedShadow(before)
+                touch(e0)
+            }
+        } else if !savedHints, e0.d.saved != nil {
+            // 저장 알림을 주지 않는 앱: 비교한 값이 파일 값이다 (예전 동작)
+            e0.d.saved = nil
+            touch(e0)
+        }
+        // 넣으려던 값(pend)과 앱 값이 다르다 = 넣기 전에 꺼졌거나 앱 파일이 실시간 상태보다 뒤처졌다 (저장 전에 꺼짐) →
+        // 상태를 앱에 다시 넣는다 (그 값을 새 편집으로 올리지 않는다). pend 는 다음 넣기가 새로 적는다
+        let stalePend = hadPend && e0.d.pend != nil
+        if delta != nil || stalePend { reconcile(e0, kind, cur) }
+        if stalePend {
+            e0.d.pend = nil
+            touch(e0)
+        }
     }
 
-    /// 앱의 편집을 상태에 합친 뒤: 상태로 만든 값이 앱 값과 뜻이 다르면 앱에 다시 넣는다
+    /// 앱의 편집을 상태에 합친 뒤: 상태로 만든 값이 앱 값과 뜻이 다르면 앱에 다시 넣는다.
+    /// 쓰고 있는 칸은 양쪽 모두 앱 값으로 (그 칸 하나 때문에 넣지 않는다)
     func reconcile(_ e: RecEntry, _ kind: RecordKind, _ cur: Flat) {
         if e.d.state.x != nil || e.d.apply { return }
         let mine = Records.materialize(e.pk, Records.stateOfFlat(kind, cur))
-        let want = Records.materialize(e.pk, e.d.state)
+        let want = Records.materialize(e.pk, protectedState(e.d.state, key: e.key, kind: kind, cur: cur, at: protectedAddress()).0)
         if mine == want { return }
         e.d.apply = true
         touch(e)
@@ -196,9 +246,11 @@ extension SyncEngine {
                 }
                 continue
             }
+            // 앱 값을 읽고 비교하는 동안 실시간 길이 이 책을 맞추지 않게 (옛 값으로 비교하면 방금 넣은 초안을 되돌린다)
+            await acquireApp()
             let data = await host.readBook(id: id)
-            if data == .unreadable { continue }
-            scanBook(id, data, clock)
+            if data != .unreadable { scanBook(id, data, clock) }
+            releaseApp()
         }
         if hints.has(RecordKeys.lib), host.supportsSharedSettings, let s = await host.readSharedSettings() {
             diffKey(RecordKeys.lib, .lib, Records.flattenLib(s), clock)
@@ -254,6 +306,7 @@ extension SyncEngine {
             guard let e = recs[k] else { continue }
             e.d.apply = true
             e.d.shadow = nil
+            e.d.saved = nil
             touch(e)
         }
     }
@@ -266,12 +319,14 @@ extension SyncEngine {
         for e in entries {
             CRDT.mergeInto(&e.d.state, RecState(x: x))
             e.d.shadow = nil
+            e.d.saved = nil
             e.d.pend = nil
             e.d.apply = false
             e.d.dirty = true
             e.d.ver += 1
             touch(e)
         }
+        pushUncovered = true
     }
 
     func scanBook(_ bookId: String, _ read: BookRead, _ clock: StampSource) {
@@ -294,6 +349,7 @@ extension SyncEngine {
                     guard let e = recs[k], e.pk.kind != .book else { continue }
                     e.d.apply = true
                     e.d.shadow = nil
+                    e.d.saved = nil
                     touch(e)
                 }
                 return
@@ -315,6 +371,7 @@ extension SyncEngine {
             for e in vanished {
                 e.d.apply = true
                 e.d.shadow = nil
+                e.d.saved = nil
                 touch(e)
             }
         }
@@ -346,6 +403,7 @@ extension SyncEngine {
         meta.imported = true
         metaTouched = true
         try await flush()
+        syncLiveActive()
     }
 
     // MARK: - 받기 (서버 → 상태)
@@ -369,6 +427,7 @@ extension SyncEngine {
 
     func pull() async throws {
         let a = try authOrThrow()
+        lastPullAt = now()
         var since = meta.head
         // 서버에서 본 가장 큰 순번 (내가 쓴 것 포함). 서버 head 가 이보다 작으면 서버가 되돌려진 것
         var known = since
@@ -384,6 +443,7 @@ extension SyncEngine {
                     if e.d.hasContent { e.d.dirty = true }
                     touch(e)
                 }
+                ownSeqs = []
                 since = 0
                 meta.head = 0
                 metaTouched = true
@@ -396,6 +456,8 @@ extension SyncEngine {
             if !more || last == nil {
                 meta.head = res.head
                 metaTouched = true
+                ownSeqs = ownSeqs.filter { $0 > res.head }
+                advanceHead()
                 break
             }
             meta.head = since
@@ -432,11 +494,13 @@ extension SyncEngine {
         let wasDirty = e.d.dirty
         let changed = CRDT.mergeInto(&e.d.state, remote)
         e.d.seq = seq
+        // 받은 초안 중 이 서버 버전이 확인해 준 것 (남은 것은 "올릴 이유" 가 아니다 — 보낸 기기가 올린다)
+        let target = confirmLive(e, remote)
         if changed {
             e.d.apply = true
             e.d.ver += 1
-            if !wasDirty, e.d.state != remote { e.d.dirty = true }
-        } else if wasDirty, e.d.state == remote {
+            if !wasDirty, e.d.state != target { e.d.dirty = true }
+        } else if wasDirty, e.d.state == target {
             // 서버의 지금 버전이 내 상태와 같다 (응답만 잃은 쓰기가 서버에 닿았던 것) → 다시 쓰지 않는다
             e.d.dirty = false
         }
@@ -452,8 +516,10 @@ extension SyncEngine {
     /// 보낼 레코드를 모두 보낸다: 여러 개면 batch(100개씩), 서버가 batch 를 모르면 하나씩 (동시에 몇 개)
     func pushAll() async throws {
         let a = try authOrThrow()
-        for _ in 0..<12 {
+        for round in 0..<12 {
             let dirty = recs.values.filter(pushable).sorted { $0.key < $1.key }
+            // 지금 밀린 것은 모두 이 보내기에 실린다: 그 뒤의 변경만 FAST · COVERED 를 다시 정한다
+            if round == 0 { pushUncovered = false }
             if dirty.isEmpty { return }
             if dirty.count == 1 || !batchOk {
                 try await pushEach(dirty.map(\.key))
@@ -463,7 +529,7 @@ extension SyncEngine {
             var quota: SyncHTTPError?
             var i = 0
             chunks: while i < dirty.count {
-                var chunk: [(e: RecEntry, ver: Int, ct: String)] = []
+                var chunk: [(e: RecEntry, ver: Int, ct: String, sent: RecState?)] = []
                 var bytes = 0
                 while i < dirty.count, chunk.count < 100 {
                     let e = dirty[i]
@@ -473,7 +539,7 @@ extension SyncEngine {
                         continue
                     }
                     if !chunk.isEmpty, bytes + ct.utf8.count > 6 * 1024 * 1024 { break }
-                    chunk.append((e, e.d.ver, ct))
+                    chunk.append((e, e.d.ver, ct, e.liveFrag != nil ? e.d.state : nil))
                     bytes += ct.utf8.count
                     i += 1
                 }
@@ -498,6 +564,8 @@ extension SyncEngine {
                         w.e.d.seq = seq
                         if w.e.d.ver == w.ver { w.e.d.dirty = false }
                         w.e.d.keep = false
+                        if let sent = w.sent { _ = confirmLive(w.e, sent) }
+                        noteOwnSeq(seq)
                         touch(w.e)
                     }
                 }
@@ -557,12 +625,16 @@ extension SyncEngine {
             let ver = e.d.ver
             let ct = encrypt(e)
             if rejectTooLarge(e, ct) { return }
+            // 보내는 동안 받은 초안은 이 쓰기에 없다 → 확인은 보낸 상태로만
+            let sent = e.liveFrag != nil ? e.d.state : nil
             let r = try await transport.putRecord(a, RecordWrite(rid: e.rid, baseSeq: e.d.seq, ct: ct, keep: e.d.keep))
             switch r {
             case let .ok(seq):
                 e.d.seq = seq
                 if e.d.ver == ver { e.d.dirty = false }
                 e.d.keep = false
+                if let sent { _ = confirmLive(e, sent) }
+                noteOwnSeq(seq)
                 touch(e)
                 return
             case let .conflict(seq, ct):
@@ -595,7 +667,7 @@ extension SyncEngine {
             e.d.apply = true
             e.d.ver += 1
         }
-        if e.d.state == remote { e.d.dirty = false }
+        if e.d.state == confirmLive(e, remote) { e.d.dirty = false }
     }
 
     /// 받은 상태의 도장을 시계에 알린다. 시계보다 하루 넘게 앞선 도장이면 (한 번) 알린다
@@ -649,31 +721,42 @@ extension SyncEngine {
                     guard let e = recs[k] else { continue }
                     e.d.apply = false
                     e.d.shadow = nil
+                    e.d.saved = nil
                     e.d.pend = nil
                     touch(e)
                 }
                 continue
             }
             if localBook == nil, info == nil { continue } // 책 정보가 올 때까지 기다린다
-            let dataRecs = entries.filter { $0.pk.kind != .book }
+            // 넣기 전에 다시 본다: 실시간 길이 그 사이 넣었을 수 있다
+            let dataRecs = entries.filter { $0.pk.kind != .book && $0.d.apply }
             if !dataRecs.isEmpty || localBook == nil {
-                // 넣으려는 값을 먼저 적어 둔다 (넣다가 꺼져도 편집으로 오해하지 않게)
-                for e in dataRecs {
-                    e.d.pend = Records.flattenOf(e.pk, Records.materialize(e.pk, e.d.state))
-                    touch(e)
+                // 앱 값을 읽고 넣는 동안 실시간 길이 이 책을 맞추지 않게
+                await acquireApp()
+                do {
+                    // 넣으려는 값을 먼저 적어 둔다 (넣다가 꺼져도 편집으로 오해하지 않게)
+                    for e in dataRecs {
+                        e.d.pend = Records.flattenOf(e.pk, Records.materialize(e.pk, e.d.state))
+                        touch(e)
+                    }
+                    try await flush()
+                    let job = BookApplyJob(
+                        bookId: bookId,
+                        entries: dataRecs.map { EntrySnap(key: $0.key, pk: $0.pk, d: $0.d) },
+                        deleteIfMissing: localBook != nil && !restoreBooks.contains(bookId),
+                        prefsKnown: recs[RecordKeys.prefs(bookId)] != nil,
+                        clock: hlc,
+                        protection: protectionProbe())
+                    try await host.updateBook(id: bookId) { cur in job.run(cur) }
+                    let needsRescan = commit(job)
+                    releaseApp()
+                    changedBooks.append(bookId)
+                    restoreBooks.remove(bookId)
+                    if needsRescan { kick(scan: .some([bookId]), push: true, delay: 50) }
+                } catch {
+                    releaseApp()
+                    throw error
                 }
-                try await flush()
-                let job = BookApplyJob(
-                    bookId: bookId,
-                    entries: dataRecs.map { EntrySnap(key: $0.key, pk: $0.pk, d: $0.d) },
-                    deleteIfMissing: localBook != nil && !restoreBooks.contains(bookId),
-                    prefsKnown: recs[RecordKeys.prefs(bookId)] != nil,
-                    clock: hlc.copy())
-                try await host.updateBook(id: bookId) { cur in job.run(cur) }
-                let needsRescan = commit(job)
-                changedBooks.append(bookId)
-                restoreBooks.remove(bookId)
-                if needsRescan { kick(scan: .some([bookId]), push: true, delay: 50) }
             }
             if let brec, case let .book(v)? = info, brec.d.apply || localBook == nil { infoUpdates.append((bookId, v)) }
         }
@@ -683,18 +766,18 @@ extension SyncEngine {
                 updates: infoUpdates,
                 entries: infoUpdates.compactMap { recs[RecordKeys.book($0.0)] }.map { EntrySnap(key: $0.key, pk: $0.pk, d: $0.d) },
                 removals: removals,
-                clock: hlc.copy())
+                clock: hlc)
             try await host.updateLibrary { cur in job.run(cur) }
             if let out = job.output() {
-                commitEntries(out.entries, clock: job.clock)
+                for (key, o) in out { if let e = recs[key] { commitApplied(e, o, live: false) } }
             }
             libraryChanged = true
             for id in removals { try await host.updateBook(id: id) { _ in nil } }
         }
         if let e = libRec, host.supportsSharedSettings {
-            let job = SettingsApplyJob(entry: EntrySnap(key: e.key, pk: e.pk, d: e.d), clock: hlc.copy())
+            let job = SettingsApplyJob(entry: EntrySnap(key: e.key, pk: e.pk, d: e.d), clock: hlc)
             try await host.updateSharedSettings { cur in job.run(cur) }
-            if let out = job.output() { commitEntries([out], clock: job.clock) }
+            if let o = job.output() { commitApplied(e, o, live: false) }
         } else if let e = libRec {
             e.d.apply = false
             touch(e)
@@ -710,27 +793,13 @@ extension SyncEngine {
     /// 앱에 넣은 결과를 장부에 돌려놓는다. 다시 비교할 책이면 true
     func commit(_ job: BookApplyJob) -> Bool {
         guard let out = job.output() else { return false }
-        commitEntries(out.entries, clock: job.clock)
+        for (key, o) in out.entries { if let e = recs[key] { commitApplied(e, o, live: false) } }
         if let sh = out.newPrefsShadow {
             let e = rec(RecordKeys.prefs(job.bookId))
             e.d.shadow = sh
             touch(e)
         }
         return out.rescan
-    }
-
-    func commitEntries(_ snaps: [EntrySnap], clock: HLC) {
-        for s in snaps {
-            guard let e = recs[s.key] else { continue }
-            e.d.state = s.d.state
-            e.d.shadow = s.d.shadow
-            e.d.pend = s.d.pend
-            e.d.dirty = s.d.dirty
-            e.d.apply = s.d.apply
-            e.d.ver = s.d.ver
-            touch(e)
-        }
-        hlc.observe(clock.last)
     }
 }
 
@@ -742,10 +811,11 @@ struct EntrySnap: Sendable {
     var d: RecData
 }
 
-/// 책 한 권에 넣기: 넣는 순간의 앱 값을 먼저 비교(그 사이의 편집을 상태에 합침) → 상태 → 앱 값 → 그림자 = 넣은 값
+/// 책 한 권에 넣기: 넣는 순간의 앱 값을 먼저 비교(그 사이의 편집을 상태에 합침) → 상태(쓰고 있는 칸은 앱 값) → 앱 값 → 그림자 = 넣은 값.
+/// 엔진의 장부는 바꾸지 않는다 — 결과(AppliedRec)를 엔진이 돌려놓는다 (그 사이 온 초안 · 받기를 덮지 않게)
 final class BookApplyJob: @unchecked Sendable {
     struct Output {
-        var entries: [EntrySnap]
+        var entries: [(String, AppliedRec)]
         var rescan: Bool
         var newPrefsShadow: Flat?
     }
@@ -755,15 +825,17 @@ final class BookApplyJob: @unchecked Sendable {
     let deleteIfMissing: Bool
     let prefsKnown: Bool
     let clock: HLC
+    let protection: @Sendable () -> FieldAddress?
     private let lock = NSLock()
     private var out: Output?
 
-    init(bookId: String, entries: [EntrySnap], deleteIfMissing: Bool, prefsKnown: Bool, clock: HLC) {
+    init(bookId: String, entries: [EntrySnap], deleteIfMissing: Bool, prefsKnown: Bool, clock: HLC, protection: @escaping @Sendable () -> FieldAddress?) {
         self.bookId = bookId
         self.entries = entries
         self.deleteIfMissing = deleteIfMissing
         self.prefsKnown = prefsKnown
         self.clock = clock
+        self.protection = protection
     }
 
     func output() -> Output? { lock.withLock { out } }
@@ -773,36 +845,25 @@ final class BookApplyJob: @unchecked Sendable {
             // 있던 책인데 파일이 없어졌다 = 그 사이에 지운 것 (되살리기로 한 책이 아니면 만들지 않는다)
             if cur == nil, deleteIfMissing { return nil }
             var data = cur ?? PlannerModel.emptyPlannerData()
-            var work = entries
+            var results: [(String, AppliedRec)] = []
             var rescan = false
-            for i in work.indices {
-                let pk = work[i].pk
-                switch pk.kind {
-                case .day:
-                    _ = work[i].d.absorb(.day, Records.flattenDay(data["days"]?[pk.date!]), clock)
-                    let built = Records.buildDay(work[i].d.state)
-                    data = Records.withDay(data, pk.date!, built)
-                    work[i].d.shadow = Records.flattenDay(built)
-                case .week:
-                    _ = work[i].d.absorb(.week, Records.flattenWeek(data["weeks"]?[pk.date!]), clock)
-                    let built = Records.buildWeek(work[i].d.state)
-                    data = Records.withWeek(data, pk.date!, built)
-                    work[i].d.shadow = Records.flattenWeek(built)
-                case .prefs:
-                    if work[i].d.state.x == nil {
-                        _ = work[i].d.absorb(.prefs, Records.flattenPrefs(data["prefs"]), clock)
-                        let built = Records.buildPrefs(work[i].d.state)
-                        data = Records.withPrefs(data, built)
-                        work[i].d.shadow = Records.flattenPrefs(.object(built))
-                        if built["categories"]?.arrayValue?.isEmpty ?? true { rescan = true }
+            let at = protection()
+            for w in entries {
+                var d = w.d
+                let pk = w.pk
+                let (value, o) = d.applyTo(pk, key: w.key, appValue: recordValue(pk, inBook: data), clock: clock, protectedAt: at)
+                if o.applied {
+                    switch pk.kind {
+                    case .day: data = Records.withDay(data, pk.date!, value)
+                    case .week: data = Records.withWeek(data, pk.date!, value)
+                    case .prefs: if case let .object(p)? = value { data = Records.withPrefs(data, p) }
+                    default: break
                     }
-                default:
-                    break
                 }
-                work[i].d.apply = false
-                work[i].d.pend = nil
+                if o.rescan { rescan = true }
+                results.append((w.key, o))
             }
-            var o = Output(entries: work, rescan: rescan, newPrefsShadow: nil)
+            var o = Output(entries: results, rescan: rescan, newPrefsShadow: nil)
             // 새로 만든 책의 기본 설정은 편집이 아니다
             if cur == nil, !prefsKnown { o.newPrefsShadow = Records.flattenPrefs(data["prefs"]) }
             out = o
@@ -813,16 +874,12 @@ final class BookApplyJob: @unchecked Sendable {
 
 /// 책장에 넣기: 책 정보 바꾸기 · 새 책 더하기 (만든 때 순서로, 예시 플래너 앞에) · 지운 책 빼기
 final class LibraryApplyJob: @unchecked Sendable {
-    struct Output {
-        var entries: [EntrySnap]
-    }
-
     let updates: [(String, JSONValue)]
     let entries: [EntrySnap]
     let removals: [String]
     let clock: HLC
     private let lock = NSLock()
-    private var out: Output?
+    private var out: [(String, AppliedRec)]?
 
     init(updates: [(String, JSONValue)], entries: [EntrySnap], removals: [String], clock: HLC) {
         self.updates = updates
@@ -831,18 +888,21 @@ final class LibraryApplyJob: @unchecked Sendable {
         self.clock = clock
     }
 
-    func output() -> Output? { lock.withLock { out } }
+    func output() -> [(String, AppliedRec)]? { lock.withLock { out } }
 
     func run(_ cur: JSONValue) -> JSONValue {
         lock.withLock {
-            var work = entries
+            var results: [(String, AppliedRec)] = []
             var books = Records.books(cur)
             for (id, info0) in updates {
-                guard let wi = work.firstIndex(where: { $0.key == RecordKeys.book(id) }) else { continue }
+                guard var w = entries.first(where: { $0.key == RecordKeys.book(id) }) else { continue }
+                var o = AppliedRec()
+                o.before = w.d.shadow
+                o.real = true
                 var info = info0
                 if let idx = books.firstIndex(where: { JS.string($0["id"]).uppercased() == id }) {
-                    _ = work[wi].d.absorb(.book, Records.flattenBook(books[idx]), clock)
-                    guard case let .book(b)? = Records.buildBook(id, work[wi].d.state) else { continue }
+                    o.delta = w.d.absorb(.book, Records.flattenBook(books[idx]), clock).delta
+                    guard case let .book(b)? = Records.buildBook(id, w.d.state) else { continue }
                     info = b
                     var next = info.objectValue ?? [:]
                     if let s = books[idx]["isSample"], JS.truthy(s) { next["isSample"] = s }
@@ -854,14 +914,16 @@ final class LibraryApplyJob: @unchecked Sendable {
                     let at = books.firstIndex { JS.truthy($0["isSample"]) || JS.less(r, rank($0)) } ?? books.count
                     books.insert(info, at: at)
                 }
-                work[wi].d.shadow = Records.flattenBook(info)
-                work[wi].d.apply = false
+                o.shadow = Records.flattenBook(info)
+                o.applied = true
+                o.builtFrom = w.d.state
+                results.append((w.key, o))
             }
             if !removals.isEmpty {
                 let gone = Set(removals)
                 books = books.filter { !gone.contains(JS.string($0["id"]).uppercased()) }
             }
-            out = Output(entries: work)
+            out = results
             var o = cur.objectValue ?? [:]
             o["books"] = .array(books)
             return .object(o)
@@ -874,23 +936,26 @@ final class SettingsApplyJob: @unchecked Sendable {
     let entry: EntrySnap
     let clock: HLC
     private let lock = NSLock()
-    private var out: EntrySnap?
+    private var out: AppliedRec?
 
     init(entry: EntrySnap, clock: HLC) {
         self.entry = entry
         self.clock = clock
     }
 
-    func output() -> EntrySnap? { lock.withLock { out } }
+    func output() -> AppliedRec? { lock.withLock { out } }
 
     func run(_ cur: JSONValue) -> JSONValue {
         lock.withLock {
-            var e = entry
-            _ = e.d.absorb(.lib, Records.flattenLib(cur), clock)
-            let built = Records.buildLib(e.d.state)
-            e.d.shadow = Records.flattenLib(built)
-            e.d.apply = false
-            out = e
+            var d = entry.d
+            var o = AppliedRec()
+            o.before = d.shadow
+            o.delta = d.absorb(.lib, Records.flattenLib(cur), clock).delta
+            let built = Records.buildLib(d.state)
+            o.shadow = Records.flattenLib(built)
+            o.applied = true
+            o.builtFrom = d.state
+            out = o
             return built
         }
     }

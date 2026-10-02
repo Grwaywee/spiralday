@@ -6,6 +6,7 @@
 //   2 rid  — 레코드 id: rid = base64url(HMAC-SHA256(K_rid, 레코드 키))
 //   3      — 쓰지 않는다 (예전 확인 숫자 자리. 다른 용도로 다시 쓰지 않는다)
 //   4 name — 기기 이름 암호화 (AD 에 기기 id)
+//   5 live — 실시간 초안 봉인 (AD "spiralday/draft/v1:gid:from:q"). 레코드 키와 달라서 초안을 레코드로 끼워 넣을 수 없다
 // 페어링 seed (QR 비밀 · 8자 코드의 Argon2id) → crypto_kdf (문맥 "SpPair01"):
 //   1 codeHash (서버의 색인) · 2 wrapKey (K 를 감싼다) · 3 confirmKey (확인 숫자 4자리)
 // 봉인 = 0x01 ‖ nonce(24) ‖ AEAD(키, nonce, 평문, AD)
@@ -169,11 +170,35 @@ public enum SyncCrypto {
 
 // MARK: - 그룹 키
 
+/// 실시간 초안 (docs/sync-live.md §4 — 모든 엔진이 같은 바이트)
+public enum Draft {
+    /// 초안 평문은 이 단위로 공백(0x20)을 채운다 (서버가 크기로 글자 수를 세지 못하게)
+    public static let pad = 256
+    /// 채운 평문 최대 (92 × 256). 넘으면 보내지 않는다 (레코드 경로)
+    public static let maxPlain = 92 * pad
+    /// 봉인한 초안 base64url 길이: 평문 최소 256바이트 → 396자, 서버 한도 32,000자
+    public static let minChars = 396
+    public static let maxChars = 32_000
+    /// 초안 payload 버전
+    public static let version = 1
+
+    /// 봉인한 초안 모양 (^[A-Za-z0-9_-]{396,32000}$)
+    public static func isDraft(_ s: String) -> Bool {
+        let u = s.utf8
+        guard u.count >= minChars, u.count <= maxChars else { return false }
+        return u.allSatisfy { ($0 >= 0x41 && $0 <= 0x5A) || ($0 >= 0x61 && $0 <= 0x7A) || ($0 >= 0x30 && $0 <= 0x39) || $0 == 0x2D || $0 == 0x5F }
+    }
+
+    static func ad(gid: String, from: String, q: String) -> [UInt8] { utf8("spiralday/draft/v1:\(gid):\(from):\(q)") }
+}
+
 public final class GroupKeys: Sendable {
     public let key: [UInt8]
     let enc: [UInt8]
     let ridKey: [UInt8]
     let nameKey: [UInt8]
+    /// K_live (id 5): 실시간 초안
+    let liveKey: [UInt8]
     private let ridCache = OSAllocatedUnfairLock(initialState: [String: String]())
 
     public init(key: [UInt8]) throws {
@@ -182,6 +207,45 @@ public final class GroupKeys: Sendable {
         enc = SyncCrypto.kdf(key, id: 1, ctx: SyncCrypto.ctxGroup)
         ridKey = SyncCrypto.kdf(key, id: 2, ctx: SyncCrypto.ctxGroup)
         nameKey = SyncCrypto.kdf(key, id: 4, ctx: SyncCrypto.ctxGroup)
+        liveKey = SyncCrypto.kdf(key, id: 5, ctx: SyncCrypto.ctxGroup)
+    }
+
+    /// 초안 봉인 (docs/sync-live.md §4): payload {v: 1, k: 레코드 키, s: 조각} 의 정규 JSON 을 공백으로 256바이트의 배수까지 채워
+    /// K_live 로, AD = "spiralday/draft/v1:gid:from:q". 채운 평문이 23,552바이트를 넘으면 nil (보내지 않는다).
+    /// nonce 는 테스트 벡터를 만들 때만 넘긴다 (실제로는 늘 난수)
+    public func sealDraft(key recordKey: String, state: RecState, gid: String, from: String, q: Stamp, nonce: [UInt8]? = nil) -> String? {
+        let payload: JSONValue = ["v": JSONValue(Draft.version), "k": .string(recordKey), "s": CRDT.toJSON(state)]
+        let json = payload.canonicalBytes
+        let size = max(Draft.pad, (json.count + Draft.pad - 1) / Draft.pad * Draft.pad)
+        if size > Draft.maxPlain { return nil }
+        var plain = json
+        plain.append(contentsOf: repeatElement(0x20, count: size - json.count))
+        return Base64URL.encode(SyncCrypto.seal(key: liveKey, plain: plain, ad: Draft.ad(gid: gid, from: from, q: q), nonce: nonce))
+    }
+
+    /// 초안 풀기와 모양 검사 (§4.4 의 3–4). 틀리면 CryptoError:
+    /// 형식 · 풀리지 않음 · 평문 23,552바이트 초과 · JSON 객체가 아님 · v ≠ 1 · 키가 하루 · 한 주 · 책 설정이 아님 · 상태 모양 · 레코드 지움(x)
+    public func openDraft(_ draft: String, gid: String, from: String, q: Stamp) throws -> (key: String, state: RecState) {
+        guard Draft.isDraft(draft) else { throw CryptoError("초안 형식이 틀림") }
+        guard let sealed = Base64URL.decode(draft) else { throw CryptoError("초안이 base64url 이 아님") }
+        let plain = try SyncCrypto.open(key: liveKey, sealed: sealed, ad: Draft.ad(gid: gid, from: from, q: q))
+        if plain.count > Draft.maxPlain { throw CryptoError("초안이 너무 큼") }
+        // JS 는 잘못된 UTF-8 이면 (fatal 디코더) 실패한다
+        guard String(bytes: plain, encoding: .utf8) != nil, let p = try? JSONValue.parse(plain) else { throw CryptoError("초안이 JSON 이 아님") }
+        guard case let .object(o) = p else { throw CryptoError("초안 모양이 틀림") }
+        guard o["v"] == .number(Double(Draft.version)) else { throw CryptoError("모르는 초안 버전") }
+        guard case let .string(k)? = o["k"] else { throw CryptoError("초안 모양이 틀림") }
+        guard let pk = RecordKeys.parse(k), pk.kind == .day || pk.kind == .week || pk.kind == .prefs else {
+            throw CryptoError("초안으로 받지 않는 레코드")
+        }
+        let s: RecState
+        do {
+            s = try CRDT.parseState(o["s"])
+        } catch {
+            throw CryptoError("초안 상태 모양이 틀림")
+        }
+        if s.x != nil { throw CryptoError("초안은 레코드를 지울 수 없음") }
+        return (k, s)
     }
 
     public static func generate() -> GroupKeys {

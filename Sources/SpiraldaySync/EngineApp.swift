@@ -34,6 +34,8 @@ extension SyncEngine {
         guard initialized, creds != nil, running else { return }
         lifeSeq += 1
         let seq = lifeSeq
+        // 실시간으로 친 · 받은 것을 먼저 (남은 liveEdit 비교 · 못 보낸 초안 · 저장소)
+        await flushLive()
         scanTimer?.cancel()
         scanTimer = nil
         let hints = takeHints() ?? .all
@@ -48,10 +50,8 @@ extension SyncEngine {
         lifeSeq += 1
         guard running else { return start() }
         // suspend 가 마무리하는 중이었다: 연결 · 주기 확인을 되살리고 한 바퀴 (밀린 비교도 모두)
-        if auto {
-            connectSocket()
-            if pollTimer == nil { schedulePoll() }
-        }
+        if socketOn { connectSocket() }
+        if auto, pollTimer == nil { schedulePoll() }
         kick(scan: .all, pull: true, push: true, delay: 0)
     }
 

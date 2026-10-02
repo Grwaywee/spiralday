@@ -62,4 +62,114 @@ final class VectorsTests: XCTestCase {
     func testCarryTaskId() {
         XCTAssertEqual(CarryID.carryTaskId("3F2504E0-4F89-11D3-9A0C-0305E82C3301"), "0D594A5F-8FD8-50CA-803B-6260FFD0478F")
     }
+
+    // MARK: - 실시간 초안 (docs/sync-live.md §4.5 · sync-protocol.md §6.9) — TypeScript 엔진과 같은 바이트
+
+    let FROM = "CCCCCCCCCCCCCCCCCCCCCC"
+    let KEY = "d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02"
+
+    struct DraftVector {
+        let name: String
+        let q: String
+        let s: JSONValue
+        let json: String
+        let draft: String
+    }
+
+    var draftVectors: [DraftVector] {
+        [
+            DraftVector(
+                name: "① 메모(COMMENT) \"안녕\"", q: "0199a29fb68000010123456789abcdef",
+                s: ["c": [:], "f": ["comment": ["안녕", "0199a29fb68000000123456789abcdef"]]],
+                json: #"{"k":"d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02","s":{"c":{},"f":{"comment":["안녕","0199a29fb68000000123456789abcdef"]}},"v":1}"#,
+                draft: "AUBBQkNERUZHSElKS0xNTk9QUVJTVFVWV5r548mIOXJwhGe1HeeJeEj-8bcdSk43ESPTX6NKGsN_vUao9aMexbnLU8m1xIFbRHzF8lcUza92RqvxDbI6ElFf3bzCsP2oxFGW1t-y3KJqQ4SyJ2NwRpqpSYW78NcE4Jnj4xO2H6jD8GPrevk8ZfUigpueEAAsdmdZRaSqibyaigZibRoeSkWP_fHOvS9thDnUa4vTWJtU8MGLV-XVuBNdPaQToEL6IY-f5WXjxeAkXUI9IFMa6hj88NUvO9m3Z3ndSQrSmgOz_wuYb8MN7v5puFGMx7y20wnIsf-JeX7SXJPwAgBQd5cM184FNa_EruNbsJbXP-lYk_Yf8eCq2NXyO7PHx2MBasD0QruRxeNU"),
+            DraftVector(
+                name: "② 할 일 글 (조합 중인 \"준\")", q: "0199a29fb68000030123456789abcdef",
+                s: ["c": ["tasks": ["0D594A5F-8FD8-50CA-803B-6260FFD0478F": ["a": "", "f": ["text": ["회의 준", "0199a29fb68000020123456789abcdef"]]]]], "f": [:]],
+                json: #"{"k":"d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02","s":{"c":{"tasks":{"0D594A5F-8FD8-50CA-803B-6260FFD0478F":{"a":"","f":{"text":["회의 준","0199a29fb68000020123456789abcdef"]}}}},"f":{}},"v":1}"#,
+                draft: "AUBBQkNERUZHSElKS0xNTk9QUVJTVFVWV5r548mIOXJwhGe1HeeJeEj-8bcdSk43ESPTX6NKGsN_vUao9aMexbnLU8m1xIFbRHzF8lcUza92RqvxDbI6ElFf3byd6L69jRjPzsf_gYs6FMTRKH5_kkllmi0b4rhn_ZDq6TCpEPyX9h2dDvk4Yv1VkpLRB1c5dHwaC-WozuDD9Q96OUxKUiScbUticZLVhPVQy4nfWotF6djKRfyT-gVFLbQDsFDqMJ2M8XD10vg9HAB-ZBZc6GWhrYhyN9vxZWOGFFfemFWx5RrFb8MN7v5puFGMx7y20wnIsf-JeX7SXJPwAgBQd5cM184FNa_EruNbsJbXP-lYk_Yf8eCq2NX0AmwQEjRARjJJYS_KAsaV"),
+            DraftVector(
+                name: "③ 타임테이블 07시 줄", q: "0199a29fb68000050123456789abcdef",
+                s: ["c": [:], "f": ["s07": [[3, 3, 3, -1, -1, -1], "0199a29fb68000040123456789abcdef"]]],
+                json: #"{"k":"d/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2026-10-02","s":{"c":{},"f":{"s07":[[3,3,3,-1,-1,-1],"0199a29fb68000040123456789abcdef"]}},"v":1}"#,
+                draft: "AUBBQkNERUZHSElKS0xNTk9QUVJTVFVWV5r548mIOXJwhGe1HeeJeEj-8bcdSk43ESPTX6NKGsN_vUao9aMexbnLU8m1xIFbRHzF8lcUza92RqvxDbI6ElFf3bzCsP2oxFGW1s_thu01dqujMQt-mSMMkywD49cL4fX2-EK1H_fA9GK9KP80ZfUjgJyaFAQoemsOEP_3jbjbsx55Y2UVFVOc9vPUrHJthDnUa4vTWJtU8MGLV-XVuBNdPaQToEL6IY-f5WXjxeAkXUI9IFMa6hj88NUvO9m3Z3ndSQrSmgOz_wuYb8MN7v5puFGMx7y20wnIsf-JeX7SXJPwAgBQd5cM184FNa_EruNbsJbXP-lYk_Yf8eCq2NVmlE8gCsazqERPAI5WLErZ"),
+        ]
+    }
+
+    func testLiveKeyIsSubkey5() {
+        XCTAssertEqual(Hex.encode(SyncCrypto.kdf(K, id: 5, ctx: "SpSync01")), "648f97d5b65e4ba6fe7a7e47c09fdde808921dc15bf2c8e014cd29e828f1704e")
+        XCTAssertEqual(Hex.encode(SyncCrypto.kdf(K, id: 1, ctx: "SpSync01")), "4d37f03f0735137208d5868a25c2de93e84dfa9d2f97adf1317df9029820fde3")
+    }
+
+    func testDraftVectorsByteForByte() throws {
+        let keys = try GroupKeys(key: K)
+        let live = SyncCrypto.kdf(K, id: 5, ctx: "SpSync01")
+        for v in draftVectors {
+            let st = try CRDT.parseState(v.s)
+            let draft = keys.sealDraft(key: KEY, state: st, gid: GID, from: FROM, q: v.q, nonce: NONCE)
+            XCTAssertEqual(draft, v.draft, v.name)
+            XCTAssertEqual(draft?.utf8.count, 396, v.name)
+            // 평문 = 정규 JSON + 공백 (256바이트)
+            let plain = try SyncCrypto.open(key: live, sealed: Base64URL.decode(v.draft)!, ad: Array("spiralday/draft/v1:\(GID):\(FROM):\(v.q)".utf8))
+            XCTAssertEqual(plain.count, 256, v.name)
+            let text = String(decoding: plain, as: UTF8.self)
+            XCTAssertEqual(String(text.reversed().drop { $0 == " " }.reversed()), v.json, v.name)
+            XCTAssertTrue(plain.suffix(256 - v.json.utf8.count).allSatisfy { $0 == 0x20 }, v.name)
+            // 풀기: 같은 키 · 같은 상태
+            let back = try keys.openDraft(v.draft, gid: GID, from: FROM, q: v.q)
+            XCTAssertEqual(back.key, KEY, v.name)
+            XCTAssertEqual(back.state, st, v.name)
+            XCTAssertEqual(CRDT.toJSON(back.state).canonical, v.s.canonical, v.name)
+        }
+    }
+
+    func testDraftAntiVectors() throws {
+        let keys = try GroupKeys(key: K)
+        let v = draftVectors[0]
+        // from · q · gid 를 바꾼 AD, K_enc 로는 풀리지 않는다
+        XCTAssertThrowsError(try keys.openDraft(v.draft, gid: GID, from: "DDDDDDDDDDDDDDDDDDDDDD", q: v.q))
+        XCTAssertThrowsError(try keys.openDraft(v.draft, gid: GID, from: FROM, q: "0199a29fb68000020123456789abcdef"))
+        XCTAssertThrowsError(try keys.openDraft(v.draft, gid: "BBBBBBBBBBBBBBBBBBBBBB", from: FROM, q: v.q))
+        let enc = SyncCrypto.kdf(K, id: 1, ctx: "SpSync01")
+        XCTAssertThrowsError(try SyncCrypto.open(key: enc, sealed: Base64URL.decode(v.draft)!, ad: Array("spiralday/draft/v1:\(GID):\(FROM):\(v.q)".utf8)))
+        // 초안을 레코드로 끼워 넣어도 풀리지 않는다 (키 · AD 가 다르다)
+        XCTAssertThrowsError(try keys.decryptRecord(rid: keys.rid(KEY), ct: v.draft))
+    }
+
+    func testDraftLimitsAndRejectedShapes() throws {
+        let keys = try GroupKeys(key: K)
+        let q = draftVectors[0].q
+        let live = SyncCrypto.kdf(K, id: 5, ctx: "SpSync01")
+        // 너무 크면 봉인하지 않는다 (평문 23,552바이트 넘음)
+        let big = RecState(f: ["comment": FieldEntry(.string(String(repeating: "가", count: 8000)), q)])
+        XCTAssertNil(keys.sealDraft(key: KEY, state: big, gid: GID, from: FROM, q: q))
+        let almost = RecState(f: ["comment": FieldEntry(.string(String(repeating: "a", count: 23_000)), q)])
+        let sealed = try XCTUnwrap(keys.sealDraft(key: KEY, state: almost, gid: GID, from: FROM, q: q))
+        XCTAssertLessThanOrEqual(sealed.utf8.count, 32_000)
+        XCTAssertEqual(try keys.openDraft(sealed, gid: GID, from: FROM, q: q).key, KEY)
+        func raw(_ json: String) -> String {
+            var p = Array(json.utf8)
+            while p.count % 256 != 0 { p.append(0x20) }
+            return Base64URL.encode(SyncCrypto.seal(key: live, plain: p, ad: Array("spiralday/draft/v1:\(GID):\(FROM):\(q)".utf8)))
+        }
+        func message(_ d: String) -> String {
+            do {
+                _ = try keys.openDraft(d, gid: GID, from: FROM, q: q)
+                return ""
+            } catch {
+                return "\(error)"
+            }
+        }
+        // 지움(x) · 책 정보 · 모르는 버전 · 모양이 틀린 상태는 받지 않는다
+        XCTAssertTrue(message(raw(#"{"v":1,"k":"\#(KEY)","s":{"f":{},"c":{},"x":"\#(q)"}}"#)).contains("지울 수 없음"))
+        XCTAssertTrue(message(raw(#"{"v":1,"k":"b/3F2504E0-4F89-11D3-9A0C-0305E82C3301","s":{"f":{},"c":{}}}"#)).contains("받지 않는"))
+        XCTAssertTrue(message(raw(#"{"v":2,"k":"\#(KEY)","s":{"f":{},"c":{}}}"#)).contains("버전"))
+        XCTAssertFalse(message(raw(#"{"v":1,"k":"\#(KEY)","s":{"f":{"a":1}}}"#)).isEmpty)
+        // __proto__ 는 버린다
+        let proto = try keys.openDraft(raw(#"{"v":1,"k":"\#(KEY)","s":{"f":{"__proto__":["x","\#(q)"]},"c":{}}}"#), gid: GID, from: FROM, q: q)
+        XCTAssertTrue(proto.state.f.isEmpty)
+        XCTAssertTrue(message("short").contains("형식"))
+        // 정규형이 아닌 base64url (모양은 맞아도) 은 거절
+        XCTAssertFalse(message(String(repeating: "A", count: 397)).isEmpty)
+    }
 }
