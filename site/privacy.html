@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>개인정보 처리방침 — Spiralday</title>
-<meta name="description" content="Spiralday 가 처리하는 정보와 그 목적, 보관 기간, 끄고 지우는 방법. 플래너 기록은 내 컴퓨터에만 저장돼요.">
+<meta name="description" content="Spiralday 가 처리하는 정보와 그 목적, 보관 기간, 끄고 지우는 방법. 플래너 기록은 내 기기에 저장되고, 동기화를 켜면 회사도 읽을 수 없게 암호화한 사본만 동기화 서버에 둬요.">
 <meta name="theme-color" content="#FCFBF7">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -155,11 +155,11 @@
     <p class="label">Privacy</p>
     <h1>개인정보 <span class="hl" style="--c: #F7C3CD">처리방침</span></h1>
     <p class="lead">주식회사 린에자일헝그리(이하 ‘회사’)는 Spiralday 를 만들고 운영해요. Spiralday 가 어떤 정보를 왜 처리하는지 여기에 적어 둡니다.</p>
-    <p class="date">시행일: 2026년 9월 29일 · 개정: 2026년 10월 2일 (Windows 앱 추가)</p>
+    <p class="date">시행일: 2026년 9월 29일 · 개정: 2026년 10월 3일 (Spiralday Sync 추가)</p>
 
     <div class="summary">
       <ul>
-        <li><b>플래너 기록은 내 컴퓨터에만</b> — 회사로 보내지 않아요</li>
+        <li><b>플래너 기록은 내 기기에</b> — 회사로 보내지 않아요. 동기화(선택)를 켜면 회사도 읽을 수 없게 암호화한 사본만 동기화 서버에 둬요</li>
         <li><b>익명 사용 통계</b> — 하루 한 번 앱 버전 · 운영체제와 버전 · 칩 종류 · 언어 · 무작위 설치 번호만. 설정에서 끌 수 있어요</li>
         <li><b>계정 · 광고 없음</b> — 로그인도, 광고도 없어요</li>
       </ul>
@@ -188,7 +188,22 @@
       <p><a href="mailto:contact@leanagilehungry.com">contact@leanagilehungry.com</a> 으로 메일을 보내면 보낸 분의 이메일 주소와 메일 내용을 받게 돼요. 답장하고 문의를 처리하는 데만 써요.</p>
 
       <h3>다. 플래너 기록은 수집하지 않아요</h3>
-      <p>할 일, 타임테이블, 메모, 형광펜, D-day 같은 기록은 내 컴퓨터에만 저장돼요 (Mac: <code>~/Library/Application Support/Spiralday</code>, Windows: <code>%APPDATA%\Spiralday</code>). 회사로 보내지 않고, 회사는 볼 수 없어요.</p>
+      <p>할 일, 타임테이블, 메모, 형광펜, D-day 같은 기록은 내 기기에 저장돼요 (Mac: <code>~/Library/Application Support/Spiralday</code>, Windows: <code>%APPDATA%\Spiralday</code>). 회사로 보내지 않고, 회사는 볼 수 없어요. 동기화를 켜도 마찬가지예요 (아래 라).</p>
+
+      <h3>라. Spiralday Sync (내 기기끼리 동기화 — 켤 때만)</h3>
+      <p>동기화는 기본으로 꺼져 있고, 앱의 설정 → 동기화에서 켤 때만 써요. 켜지 않으면 아래 정보는 아무것도 만들거나 보내지 않아요. 계정이 없어서 이름 · 이메일 · 전화번호를 받지 않아요.</p>
+      <p>켜면 플래너 기록을 내 기기에서 <b>종단간 암호화</b>한 뒤 동기화 서버(<code>sync.spiralday.com</code>)로 보내요. 암호를 푸는 열쇠는 내 기기에만 있어서 서버도, 회사도 내용을 읽을 수 없어요.</p>
+      <table>
+        <thead><tr><th>서버가 두는 것</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr><td>암호화한 기록</td><td>플래너 내용 · 플래너 이름 · 날짜 · 기기 이름은 모두 암호문이에요. 기록마다 무작위로 보이는 번호(불투명 id)와 순번만 붙어요.</td></tr>
+          <tr><td>기록의 크기와 쓴 때</td><td>암호문의 바이트 수, 서버에 올린 시각, 어느 기기가 올렸는지</td></tr>
+          <tr><td>기기 목록</td><td>그룹의 기기 수, 기기 종류(Mac · Windows · iPhone · iPad 등), 들어온 때 · 마지막으로 접속한 때, 기기를 알아보는 토큰의 해시 값(토큰 그대로는 두지 않아요)</td></tr>
+          <tr><td>복구 보관함</td><td>복구 코드로만 풀리는 암호화한 그룹 열쇠 (복구 코드는 서버에 보내지 않아요)</td></tr>
+          <tr><td>요청 제한용 IP 값</td><td>남용을 막으려고 IP 주소를 HMAC-SHA256 으로 바꾼 값만 요청 수를 세는 동안(최대 24시간) 두고 지워요. IP 주소 그대로는 저장하지 않아요.</td></tr>
+        </tbody>
+      </table>
+      <p>목적: 내 기기들의 플래너를 같게 맞추고, 잘못 고친 하루 · 한 주를 이전 버전으로 되돌리고, 기기를 모두 잃었을 때 복구 코드로 되살리기 위해서예요. 서버는 내용을 읽지 못하므로 분석 · 광고에 쓰지 않아요.</p>
     </section>
 
     <section id="retention">
@@ -196,6 +211,7 @@
       <ul class="list">
         <li>익명 사용 통계: 수집한 날로부터 2년이 지나면 파기해요.</li>
         <li>문의 메일: 처리가 끝난 뒤 1년 안에 지워요.</li>
+        <li>동기화: 그룹을 지우면(설정 → 동기화 → 그룹 지우기) 서버의 사본을 바로 지워요. 그룹을 13개월(396일) 동안 쓰지 않으면 저절로 지워요. 덮어쓴 이전 버전은 덮인 때부터 30일, 그룹에서 뺀 기기의 표시는 30일 뒤에 지워요. 요청 제한용 IP 값은 최대 24시간 뒤에 지워요.</li>
       </ul>
     </section>
 
@@ -210,12 +226,14 @@
         <li>익명 사용 통계는 회사가 운영하는 서버에 저장돼요. 서버는 Amazon Web Services(AWS) 서울 리전(<code>ap-northeast-2</code>)에 있어요.</li>
         <li>앱 다운로드와 업데이트 확인은 GitHub(GitHub Releases · GitHub Pages)를 거쳐요. 앱은 하루 한 번 새 버전이 있는지 확인하고, 있으면 GitHub Releases 에서 받아요. 이 과정에는 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub 개인정보 처리방침</a>이 적용돼요.</li>
         <li>이 웹사이트(spiralday.com)도 GitHub Pages 에서 열리고, 손글씨 글꼴은 Google Fonts 에서, GitHub 별 개수는 GitHub API 에서 불러와요.</li>
+        <li>동기화 서버는 Cloudflare, Inc. 의 Workers · Durable Objects 에서 돌아요 (저장 위치는 아시아 · 태평양 지역으로 지정). 동기화를 켠 기기가 서버와 주고받을 때 위 1-라의 정보가 네트워크로 Cloudflare 의 서버(미국 회사, 처리하는 데이터센터는 여러 나라에 있어요)로 가고, 2의 기간 동안 보관돼요. 이 과정에는 <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare 개인정보 처리방침</a>이 적용돼요. 동기화를 켜지 않으면 아무것도 가지 않아요.</li>
       </ul>
     </section>
 
     <section id="logs">
       <h2><span class="n">5.</span>접속 기록</h2>
       <p>익명 사용 통계에는 IP 주소를 저장하지 않아요. 다만 서버를 운영하면서 보안과 장애 대응을 위해 접속 기록(IP 주소, 접속 시각 등)이 서버에 일시적으로 남을 수 있어요.</p>
+      <p>동기화 서버의 운영 기록에는 요청 주소를 남기지 않고, 오류 · 사용량을 살피는 데 필요한 사건(예: 그룹을 만듦)만 남겨요. 플래너 내용은 암호문이라 기록에 남을 수 없어요.</p>
     </section>
 
     <section id="rights">
@@ -223,6 +241,7 @@
       <ul class="list">
         <li><b>끄기</b> — Mac 은 설정 → 데이터, Windows 는 설정 → 익명 사용 통계에서 ‘익명 사용 통계 보내기’를 끄면 돼요.</li>
         <li><b>지우기</b> — 같은 화면에 보이는 설치 번호를 <a href="mailto:contact@leanagilehungry.com">contact@leanagilehungry.com</a> 으로 보내 주시면 그 번호로 쌓인 기록을 지워요.</li>
+        <li><b>동기화 끄고 지우기</b> — 설정 → 동기화에서 ‘이 기기에서 끄기’로 그 기기만 빠지고, ‘그룹 지우기’로 서버의 사본을 바로 모두 지워요. 계정이 없어서 회사는 어느 그룹이 누구의 것인지 알 수 없고, 그래서 대신 지워 드릴 수 없어요. 기기를 모두 잃었으면 복구 코드로 되살린 뒤 지우거나, 13개월 뒤 저절로 지워지기를 기다려 주세요.</li>
         <li>문의 메일을 포함해 회사가 가진 내 정보의 열람 · 정정 · 삭제 · 처리 정지도 같은 주소로 요청할 수 있어요.</li>
       </ul>
     </section>
