@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared page components. All sizes passed in are already in POINTS
@@ -8,31 +12,47 @@ import AppKit
 
 // MARK: - Inline editable text (Text 로 그리고, 탭하면 그 자리에서 편집)
 
-struct InlineField: View {
-    @Binding var text: String
-    var placeholder: String = ""
-    var font: Font
+public struct InlineField: View {
+    @Binding public var text: String
+    public var placeholder: String = ""
+    public var font: Font
     /// 편집 상태를 구분하는 전역 키 (AppState.editingKey)
-    var key: String
+    public var key: String
     /// 탭했을 때 편집을 시작할 키 (기본: key). 빈 줄을 누르면 첫 빈 줄을 편집하게 할 때 사용.
-    var tapKey: String? = nil
-    var color: Color = Ink.text
-    var highlight: Color? = nil
+    public var tapKey: String? = nil
+    public var color: Color = Ink.text
+    public var highlight: Color? = nil
     /// 완료된 할 일: 이 색 펜으로 글자 위에 줄을 긋는다
-    var strike: Color? = nil
+    public var strike: Color? = nil
     /// 1 이면 한 줄, 그 이상이면 여러 줄 (alignment 가 .center 면 상하좌우 가운데, 아니면 위에서부터)
-    var lines: Int = 1
+    public var lines: Int = 1
     /// 여러 줄일 때 줄과 줄 사이 (인쇄된 줄 간격에 맞출 때)
-    var lineSpacing: CGFloat = 0
-    var alignment: Alignment = .leading
-    var onSubmit: (() -> Void)? = nil
-    var onEnd: (() -> Void)? = nil
+    public var lineSpacing: CGFloat = 0
+    public var alignment: Alignment = .leading
+    public var onSubmit: (() -> Void)? = nil
+    public var onEnd: (() -> Void)? = nil
 
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
     @FocusState private var focused: Bool
 
-    var body: some View {
+    public init(text: Binding<String>, placeholder: String = "", font: Font, key: String, tapKey: String? = nil, color: Color = Ink.text, highlight: Color? = nil, strike: Color? = nil, lines: Int = 1, lineSpacing: CGFloat = 0, alignment: Alignment = .leading, onSubmit: (() -> Void)? = nil, onEnd: (() -> Void)? = nil) {
+        self._text = text
+        self.placeholder = placeholder
+        self.font = font
+        self.key = key
+        self.tapKey = tapKey
+        self.color = color
+        self.highlight = highlight
+        self.strike = strike
+        self.lines = lines
+        self.lineSpacing = lineSpacing
+        self.alignment = alignment
+        self.onSubmit = onSubmit
+        self.onEnd = onEnd
+    }
+
+    public var body: some View {
         Group {
             if state.editingKey == key && !isSnapshot {
                 editor
@@ -68,7 +88,21 @@ struct InlineField: View {
         .onChange(of: focused) { _, f in
             if !f && state.editingKey == key { state.editingKey = nil }
         }
+        #if !os(macOS)
+        // iOS: 여러 줄 글상자는 Return 이 줄바꿈이 된다. 다음 줄로 넘어가는 칸(할 일 · 메모)은 Mac 처럼 Return = 다음 줄
+        .submitLabel(onSubmit != nil ? .next : .done)
+        .onChange(of: text) { _, new in
+            guard lines > 1, onSubmit != nil, new.contains("\n") else { return }
+            text = new.replacingOccurrences(of: "\n", with: "")
+            submit()
+        }
+        #endif
         .onDisappear { onEnd?() }
+    }
+
+    /// Return: 다음 줄로 (onSubmit) — 글이 비었거나 다음이 없으면 쓰기를 마친다
+    private func submit() {
+        if let onSubmit, !text.isEmpty { onSubmit() } else { state.endEditing() }
     }
 
     private var display: some View {
@@ -96,9 +130,13 @@ struct InlineField: View {
 }
 
 /// 완료한 일 위에 펜으로 한 번 그은 줄 (살짝 기울고 끝이 둥근)
-struct StrikeLine: View {
-    let color: Color
-    var body: some View {
+public struct StrikeLine: View {
+    public let color: Color
+
+    public init(color: Color) {
+        self.color = color
+    }
+    public var body: some View {
         GeometryReader { g in
             let w = g.size.width, h = g.size.height
             Path { p in
@@ -114,10 +152,14 @@ struct StrikeLine: View {
 
 // MARK: - ○ △ × → marks
 
-struct MarkShape: Shape {
-    let mark: Mark
+public struct MarkShape: Shape {
+    public let mark: Mark
 
-    func path(in r: CGRect) -> Path {
+    public init(mark: Mark) {
+        self.mark = mark
+    }
+
+    public func path(in r: CGRect) -> Path {
         var p = Path()
         let i = r.insetBy(dx: r.width * 0.12, dy: r.height * 0.12)
         switch mark {
@@ -145,20 +187,29 @@ struct MarkShape: Shape {
 }
 
 /// 펜으로 그린 체크 표시. 클릭하면 ○ → △ → × → → → (없음) 순서로 바뀐다.
-struct MarkButton: View {
-    let mark: Mark
+public struct MarkButton: View {
+    public let mark: Mark
     /// 표시 크기 (pt)
-    var size: CGFloat
-    var color: Color = Ink.red
-    var lineWidth: CGFloat = 2
+    public var size: CGFloat
+    public var color: Color = Ink.red
+    public var lineWidth: CGFloat = 2
     /// 표시가 없을 때 옅은 점선 동그라미를 보여줄지 (양식에 체크 박스가 인쇄돼 있으면 false)
-    var showsPlaceholder = false
-    let action: () -> Void
+    public var showsPlaceholder = false
+    public let action: () -> Void
 
     @State private var hover = false
     @Environment(\.isSnapshot) private var isSnapshot
 
-    var body: some View {
+    public init(mark: Mark, size: CGFloat, color: Color = Ink.red, lineWidth: CGFloat = 2, showsPlaceholder: Bool = false, action: @escaping () -> Void) {
+        self.mark = mark
+        self.size = size
+        self.color = color
+        self.lineWidth = lineWidth
+        self.showsPlaceholder = showsPlaceholder
+        self.action = action
+    }
+
+    public var body: some View {
         ZStack {
             if mark != .none {
                 MarkShape(mark: mark)
@@ -182,13 +233,18 @@ struct MarkButton: View {
 
 // MARK: - Task context menu
 
-struct TaskMenu: View {
-    let date: Date
-    let task: PlanTask
+public struct TaskMenu: View {
+    public let date: Date
+    public let task: PlanTask
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
 
-    var body: some View {
+    public init(date: Date, task: PlanTask) {
+        self.date = date
+        self.task = task
+    }
+
+    public var body: some View {
         // 할 일 왼쪽 칸(주간: 왼쪽 색 막대)을 누르면 뜨는 메뉴와 같은 것
         Menu("형광펜 (분류)") {
             ForEach(store.categories) { c in
@@ -217,10 +273,10 @@ struct TaskMenu: View {
 
 extension AppState {
     /// 할 일 편집 키: "t|yyyy-MM-dd|<할 일 id>" (일간 · 주간이 같이 쓴다)
-    static func taskKey(_ d: Date, _ id: UUID) -> String { "t|\(Dates.key(d))|\(id.uuidString)" }
+    public static func taskKey(_ d: Date, _ id: UUID) -> String { "t|\(Dates.key(d))|\(id.uuidString)" }
 
     /// 그날 할 일을 쓰는 중이면 그 할 일의 id
-    func editingTaskID(on d: Date) -> UUID? {
+    public func editingTaskID(on d: Date) -> UUID? {
         let dk = "t|\(Dates.key(d))|"
         guard let k = editingKey, k.hasPrefix(dk) else { return nil }
         return UUID(uuidString: String(k.dropFirst(dk.count)))
@@ -228,7 +284,7 @@ extension AppState {
 
     /// 그날 할 일을 쓰는 중이면 편집을 끝낸다. → 로 넘기기 · 거두기로 그날 할 일이 늘거나 줄면
     /// 쓰던 줄 아래가 막히거나 주간 칸의 순서가 바뀌므로, 쓰던 것을 먼저 마친다.
-    func endEditingTasks(on d: Date) {
+    public func endEditingTasks(on d: Date) {
         if editingKey?.hasPrefix("t|\(Dates.key(d))|") == true { endEditing() }
     }
 }
@@ -237,9 +293,11 @@ extension AppState {
 
 /// 할 일을 먼저 쓰고, 형광펜(분류)은 나중에 고른다. 일간 TASKS 의 왼쪽 칸이나 주간 할 일 줄의 왼쪽 색 막대를 누르면
 /// 마우스 자리에 작은 메뉴가 뜬다: 형광펜마다 색 견본 + 이름, 그리고 "없음". 지금 것에 체크.
+/// (macOS: NSMenu 를 마우스 자리에. iOS 는 TaskCategoryPicker 를 SwiftUI Menu 로 띄운다)
+#if os(macOS)
 @MainActor
-enum TaskCategoryMenu {
-    static func show(store: PlannerStore, date: Date, taskID: UUID) {
+public enum TaskCategoryMenu {
+    public static func show(store: PlannerStore, date: Date, taskID: UUID) {
         guard let task = store.day(date).tasks.first(where: { $0.id == taskID }) else { return }
         let current = store.category(task.cat)?.id
         let menu = NSMenu(title: "형광펜")
@@ -294,22 +352,79 @@ private final class ActionMenuItem: NSMenuItem {
 
     @objc private func fire() { run() }
 }
+#endif
+
+/// 형광펜(분류) 고르기 목록: 형광펜마다 색 견본 + 이름, 그리고 "없음". 지금 것에 체크.
+/// SwiftUI Menu / contextMenu 안에 넣어 쓴다 (iOS 의 할 일 왼쪽 칸, 폰의 키보드 도구 막대).
+public struct TaskCategoryPicker: View {
+    public let date: Date
+    public let taskID: UUID
+
+    @EnvironmentObject private var store: PlannerStore
+
+    public init(date: Date, taskID: UUID) {
+        self.date = date
+        self.taskID = taskID
+    }
+
+    public var body: some View {
+        let current = store.category(store.day(date).tasks.first { $0.id == taskID }?.cat)?.id
+        Picker("형광펜 (분류)", selection: Binding(get: { current }, set: { store.setCategory(date, taskID, $0) })) {
+            ForEach(store.categories) { c in
+                Label { Text(c.name) } icon: { CategorySwatch.image(c.color) }
+                    .tag(Optional(c.id))
+            }
+            Label { Text("없음") } icon: { CategorySwatch.image(nil) }
+                .tag(Int?.none)
+        }
+        .pickerStyle(.inline)
+    }
+}
+
+/// 형광펜으로 짧게 한 번 그은 색 견본 (없음: 옅은 점선 테두리만). 메뉴 항목의 그림으로 쓴다.
+public enum CategorySwatch {
+    @MainActor
+    public static func image(_ color: Color?) -> Image {
+        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        let view = ZStack {
+            if let color {
+                shape.fill(color)
+                shape.stroke(Color.black.opacity(0.12), lineWidth: 0.6)
+            } else {
+                shape.stroke(Color.gray.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [2, 1.6]))
+            }
+        }
+        .frame(width: 20, height: 11)
+        .padding(.vertical, 1)
+        let r = ImageRenderer(content: view)
+        r.scale = 3
+        guard let cg = r.cgImage else { return Image(systemName: "circle") }
+        return Image(decorative: cg, scale: 3).renderingMode(.original)
+    }
+}
 
 /// 할 일 왼쪽 칸 (일간: 카테고리 칸, 주간: 색 막대 자리). 누르면 형광펜 메뉴가 뜬다.
 /// 화면에서만 있고 (넘김 스냅샷 · PDF 에는 없다), 마우스를 올리면 옅게 드러난다.
-struct TaskCategoryCell: View {
-    let date: Date
-    let taskID: UUID
+public struct TaskCategoryCell: View {
+    public let date: Date
+    public let taskID: UUID
     /// 형광펜이 없는 할 일이면 마우스를 올렸을 때 "분류" 글씨를 옅게 보여 준다 (nil = 보여 주지 않는다)
-    var hint: Font? = nil
-    var cornerRadius: CGFloat = 6
+    public var hint: Font? = nil
+    public var cornerRadius: CGFloat = 6
 
     @EnvironmentObject private var store: PlannerStore
     @State private var hover = false
 
-    var body: some View {
+    public init(date: Date, taskID: UUID, hint: Font? = nil, cornerRadius: CGFloat = 6) {
+        self.date = date
+        self.taskID = taskID
+        self.hint = hint
+        self.cornerRadius = cornerRadius
+    }
+
+    public var body: some View {
         let cat = store.category(store.day(date).tasks.first { $0.id == taskID }?.cat)
-        ZStack {
+        let cell = ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Ink.pen.opacity(hover ? 0.08 : 0))
             if hover, cat == nil, let hint {
@@ -321,27 +436,43 @@ struct TaskCategoryCell: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { TaskCategoryMenu.show(store: store, date: date, taskID: taskID) }
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: NSCursor.pointingHand.set()
-            case .ended: NSCursor.arrow.set()
-            }
+        #if os(macOS)
+        cell
+            .onTapGesture { TaskCategoryMenu.show(store: store, date: date, taskID: taskID) }
+            .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+            .pointerCursor(.pointingHand)
+            .onDisappear { if hover { PointerCursor.arrow.set() } }
+            .help(cat.map { "형광펜: \($0.name) — 눌러서 바꾸기" } ?? "눌러서 형광펜(분류) 고르기")
+        #else
+        // 누르면 그 자리에 형광펜 메뉴 (iPad 포인터를 올리면 옅게 드러난다)
+        Menu {
+            TaskCategoryPicker(date: date, taskID: taskID)
+        } label: {
+            cell
         }
-        .onDisappear { if hover { NSCursor.arrow.set() } }
-        .help(cat.map { "형광펜: \($0.name) — 눌러서 바꾸기" } ?? "눌러서 형광펜(분류) 고르기")
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .accessibilityLabel(cat.map { "형광펜: \($0.name)" } ?? "형광펜(분류) 고르기")
+        #endif
     }
 }
 
 // MARK: - Stars
 
-struct Stars: View {
-    let value: Int
-    var size: CGFloat
-    let set: (Int) -> Void
+public struct Stars: View {
+    public let value: Int
+    public var size: CGFloat
+    public let set: (Int) -> Void
 
-    var body: some View {
+    public init(value: Int, size: CGFloat, set: @escaping (Int) -> Void) {
+        self.value = value
+        self.size = size
+        self.set = set
+    }
+
+    public var body: some View {
         HStack(spacing: size * 0.18) {
             ForEach(1...5, id: \.self) { i in
                 Image(systemName: i <= value ? "star.fill" : "star")
@@ -365,13 +496,13 @@ struct Stars: View {
 /// - 밥 도구: 시작 칸에 🍴 아이콘, 끝나는 칸까지 화살표 (클릭만 하면 1시간)
 /// - 지우개: 칠한 칸과 겹치는 메모/밥시간을 함께 지운다
 /// 격자 자체(선, 숫자)는 각 페이지가 그린다.
-struct SlotPainter: View {
-    let date: Date
+public struct SlotPainter: View {
+    public let date: Date
     /// 한 칸 너비 / 한 행 높이 (pt)
-    let cellW: CGFloat
-    let rowH: CGFloat
+    public let cellW: CGFloat
+    public let rowH: CGFloat
     /// 행 높이 대비 위아래 여백 비율
-    var inset: CGFloat = 0.14
+    public var inset: CGFloat = 0.14
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
@@ -382,12 +513,19 @@ struct SlotPainter: View {
     /// 글씨/밥 도구로 끌고 있는 범위
     @State private var pending: ClosedRange<Int>? = nil
 
-    static func hourLabel(_ row: Int) -> String {
+    public init(date: Date, cellW: CGFloat, rowH: CGFloat, inset: CGFloat = 0.14) {
+        self.date = date
+        self.cellW = cellW
+        self.rowH = rowH
+        self.inset = inset
+    }
+
+    public static func hourLabel(_ row: Int) -> String {
         let h = (6 + row) % 24
         return String(h % 12 == 0 ? 12 : h % 12)
     }
 
-    var body: some View {
+    public var body: some View {
         let rec = store.day(date)
         let colors = Dictionary(uniqueKeysWithValues: store.categories.map { ($0.id, $0.color) })
         let accent = store.concept(date).accent
@@ -404,12 +542,7 @@ struct SlotPainter: View {
                     .onChanged { v in drag(v.location, rec.slots) }
                     .onEnded { v in dragEnded(v.location) }
             )
-            .onContinuousHover { phase in
-                switch phase {
-                case .active: (state.tool == AppState.textTool ? NSCursor.iBeam : NSCursor.crosshair).set()
-                case .ended: NSCursor.arrow.set()
-                }
-            }
+            .pointerCursor(state.tool == AppState.textTool ? .iBeam : .crosshair)
 
             ForEach(rec.notes) { n in
                 if n.kind == .text { textNote(n) } else { mealHandle(n) }
@@ -601,8 +734,8 @@ struct SlotPainter: View {
 
 /// 한 날에 붙일 D-day 를 고른다. 저장한 D-day 에서 고르거나 새로 만들어 붙이고,
 /// 여기서 붙이고 떼고 고친 것은 이 날에만 남는다 (다른 날, 저장한 목록은 그대로).
-struct DDayEditor: View {
-    let date: Date
+public struct DDayEditor: View {
+    public let date: Date
 
     @EnvironmentObject private var store: PlannerStore
     @State private var newTitle = ""
@@ -612,7 +745,7 @@ struct DDayEditor: View {
     @State private var picking: String? = nil
     @State private var showPast = false
 
-    init(date: Date) {
+    public init(date: Date) {
         self.date = Dates.day(date)
         _newDate = State(initialValue: Dates.add(days: 30, to: Dates.day(date)))
     }
@@ -633,7 +766,7 @@ struct DDayEditor: View {
 
     private var accent: Color { store.concept(date).accent }
 
-    var body: some View {
+    public var body: some View {
         let mine = store.ddays(date)
         let full = mine.count >= Prefs.maxDDays
         let used = Set(mine.compactMap(\.source))
@@ -713,7 +846,9 @@ struct DDayEditor: View {
                 if picking == "new" { calendar($newDate) }
                 HStack {
                     Toggle("목록에도 저장", isOn: $saveToLibrary)
+                        #if os(macOS)
                         .toggleStyle(.checkbox)
+                        #endif
                         .font(.system(size: 12))
                         .help("켜 두면 저장한 D-day 목록에도 들어가서 다른 날에도 골라 붙일 수 있어요")
                     Spacer()

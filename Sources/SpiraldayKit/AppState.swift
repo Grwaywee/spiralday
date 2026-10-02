@@ -1,45 +1,51 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import Combine
 
 @MainActor
-final class AppState: ObservableObject {
-    @Published private(set) var kind: PageKind
-    @Published var weekIndex = 0
-    @Published var dayIndex = 0
-    @Published var editingKey: String? = nil
+public final class AppState: ObservableObject {
+    @Published public private(set) var kind: PageKind
+    @Published public var weekIndex = 0
+    @Published public var dayIndex = 0
+    @Published public var editingKey: String? = nil
     /// 형광펜 카테고리 id, 또는 아래 특수 도구
-    @Published var tool = 0
-    static let eraser = -1
-    static let textTool = -2
-    static let mealTool = -3
-    @Published var fontsReady = false
+    @Published public var tool = 0
+    public static let eraser = -1
+    public static let textTool = -2
+    public static let mealTool = -3
+    @Published public var fontsReady = false
     /// 주간 ↔ 일간 전환으로 창 비율이 바뀌는 중
-    @Published var morphing = false
+    @Published public var morphing = false
     /// 팔레트 자리를 만드느라 창 크기를 바꾸는 중 (그동안 쪽을 바꾸지 않는다: 창 애니메이션이 겹치지 않게)
-    var frameBusy = false
+    public var frameBusy = false
 
-    let curl = CurlController()
+    public let curl = CurlController()
     /// 숫자 키로 형광펜을 고를 때 순서 → id 변환용, 펼친 책의 범위
-    weak var store: PlannerStore? {
+    public weak var store: PlannerStore? {
         didSet { bindStore() }
     }
     private var bookWatch: AnyCancellable?
     private var frontWatch: AnyCancellable?
-    let baseDay: Date
-    let baseWeek: Date
+    public let baseDay: Date
+    public let baseWeek: Date
 
     /// 창 컨트롤러가 주입: 창 비율 전환 애니메이션. apply() 를 적절한 시점에 호출해야 한다.
-    var kindTransition: ((_ to: PageKind, _ apply: @escaping () -> Void) -> Void)?
+    public var kindTransition: ((_ to: PageKind, _ apply: @escaping () -> Void) -> Void)?
     /// 페이지/데이터가 바뀌었을 때 (창 제목, 스냅샷 미리 그리기 등)
-    var onPageChange: (() -> Void)?
+    public var onPageChange: (() -> Void)?
     /// 단축키(1–7 · E)로 도구를 바꿨을 때 (접힌 팔레트를 잠깐 펼쳐 보여 준다)
-    var onToolShortcut: (() -> Void)?
+    public var onToolShortcut: (() -> Void)?
 
+    #if os(macOS)
     private var monitors: [Any] = []
     private var swipeActive = false
+    #endif
 
-    init(kind: PageKind = .daily, today: Date = Date()) {
+    public init(kind: PageKind = .daily, today: Date = Date()) {
         self.kind = kind
         baseDay = Dates.day(today)
         baseWeek = Dates.weekStart(today)
@@ -52,14 +58,14 @@ final class AppState: ObservableObject {
 
     private var book: BookInfo? { store?.activeBook }
 
-    var dayRange: ClosedRange<Int> {
+    public var dayRange: ClosedRange<Int> {
         guard let b = book else { return -100_000...100_000 }
         let lo = Dates.daysBetween(baseDay, b.start)
         let hi = b.end.map { Dates.daysBetween(baseDay, $0) } ?? 100_000
         return lo...max(lo, hi)
     }
 
-    var weekRange: ClosedRange<Int> {
+    public var weekRange: ClosedRange<Int> {
         guard let b = book else { return -20_000...20_000 }
         let lo = Dates.daysBetween(baseWeek, Dates.weekStart(b.start)) / 7
         let hi = b.end.map { Dates.daysBetween(baseWeek, Dates.weekStart($0)) / 7 } ?? 20_000
@@ -71,23 +77,23 @@ final class AppState: ObservableObject {
     // 그래서 넘기기·모서리 끌기·스와이프·페이지 넘김 스냅샷이 모두 번호 하나로 그대로 동작한다.
 
     /// 앞 장이 있는지 (펼친 책이 있을 때만)
-    var hasFront: Bool { book != nil }
+    public var hasFront: Bool { book != nil }
 
     /// k 쪽(일간/주간)에서 그 앞 장의 번호
-    func frontIndex(_ page: FrontPage, _ k: PageKind) -> Int {
+    public func frontIndex(_ page: FrontPage, _ k: PageKind) -> Int {
         let first = k == .weekly ? weekRange.lowerBound : dayRange.lowerBound
         return first - FrontPage.allCases.count + page.rawValue
     }
 
     /// k 쪽의 index 번째 장이 앞 장이면 그 장
-    func frontPage(kind k: PageKind, index i: Int) -> FrontPage? {
+    public func frontPage(kind k: PageKind, index i: Int) -> FrontPage? {
         guard hasFront, k.flips else { return nil }
         let first = k == .weekly ? weekRange.lowerBound : dayRange.lowerBound
         return FrontPage(rawValue: i - (first - FrontPage.allCases.count))
     }
 
     /// 지금 펼친 장이 표지 / 첫 장이면 그 장 (날짜 페이지·홈이면 nil)
-    var front: FrontPage? { frontPage(kind: kind, index: index) }
+    public var front: FrontPage? { frontPage(kind: kind, index: index) }
 
     /// 넘길 수 있는 범위 = 앞 장 + 책의 날(주)
     private func pageRange(_ k: PageKind) -> ClosedRange<Int> {
@@ -104,7 +110,7 @@ final class AppState: ObservableObject {
     }
 
     /// 지금 페이지에서 delta 장 넘길 수 있는지
-    func canStep(_ delta: Int) -> Bool { kind.flips && pageRange(kind).contains(index + delta) }
+    public func canStep(_ delta: Int) -> Bool { kind.flips && pageRange(kind).contains(index + delta) }
 
     private func clampDay(_ i: Int) -> Int { min(max(i, dayRange.lowerBound), dayRange.upperBound) }
     private func clampWeek(_ i: Int) -> Int { min(max(i, weekRange.lowerBound), weekRange.upperBound) }
@@ -139,14 +145,14 @@ final class AppState: ObservableObject {
         weekIndex = clampWeek(weekIndex)
     }
 
-    /// 넘길 수 없을 때: 트랙패드 진동으로 알려 준다
+    /// 넘길 수 없을 때: 트랙패드(iOS: 손끝) 진동으로 알려 준다
     private func bump() {
-        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        Haptics.bump()
     }
 
     // MARK: pages
 
-    var index: Int {
+    public var index: Int {
         switch kind {
         case .weekly: weekIndex
         case .daily: dayIndex
@@ -155,10 +161,10 @@ final class AppState: ObservableObject {
     }
 
     /// 앞 장(표지·첫 장)의 번호는 책의 첫 주 / 첫날로 읽는다 (팔레트의 컬러·D-day, PDF ‘지금 페이지’ 등)
-    func weekStart(_ i: Int) -> Date { Dates.add(days: 7 * (hasFront ? max(i, weekRange.lowerBound) : i), to: baseWeek) }
-    func dayDate(_ i: Int) -> Date { Dates.add(days: hasFront ? max(i, dayRange.lowerBound) : i, to: baseDay) }
+    public func weekStart(_ i: Int) -> Date { Dates.add(days: 7 * (hasFront ? max(i, weekRange.lowerBound) : i), to: baseWeek) }
+    public func dayDate(_ i: Int) -> Date { Dates.add(days: hasFront ? max(i, dayRange.lowerBound) : i, to: baseDay) }
 
-    var currentDate: Date { kind == .weekly ? weekStart(weekIndex) : dayDate(dayIndex) }
+    public var currentDate: Date { kind == .weekly ? weekStart(weekIndex) : dayDate(dayIndex) }
 
     /// 홈에서 주간/일간으로 갈 때 돌아갈 곳
     private var lastPageKind: PageKind = .daily
@@ -182,21 +188,25 @@ final class AppState: ObservableObject {
 
     // MARK: editing
 
-    func endEditing() {
+    public func endEditing() {
         guard editingKey != nil else { return }
         editingKey = nil
+        #if os(macOS)
         NSApp.keyWindow?.makeFirstResponder(nil)
+        #else
+        PlatformServices.endTextEditing?()
+        #endif
     }
 
     // MARK: navigation
 
-    func flip(_ dir: FlipDirection) {
+    public func flip(_ dir: FlipDirection) {
         guard !morphing, kind.flips else { return }
         guard canStep(dir.delta) else { bump(); return }
         curl.flip(dir)
     }
 
-    func goToday() {
+    public func goToday() {
         guard curl.isIdle, !morphing else { return }
         if kind == .home {
             dayIndex = clampDay(0)
@@ -215,13 +225,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    func openDay(_ d: Date) {
+    public func openDay(_ d: Date) {
         endEditing()
         dayIndex = clampDay(Dates.daysBetween(baseDay, d))
         setKind(.daily)
     }
 
-    func switchKind(_ k: PageKind) {
+    public func switchKind(_ k: PageKind) {
         guard k != kind else { return }
         endEditing()
         if k == .home {
@@ -258,7 +268,7 @@ final class AppState: ObservableObject {
     /// - k: 일간/주간 중 어느 쪽에서 (nil = 지금 쪽, 홈이면 마지막으로 보던 쪽, 창 비율이 바뀌는 중이면 바뀐 뒤의 쪽)
     /// 같은 쪽이면 종이를 넘겨서 가고 (여러 장이면 한 번에), 다른 쪽이면 그 장을 편 채로 쪽을 바꾼다.
     /// 넘기는 중이거나 다른 쪽으로 바뀌는 중이면 끝난 뒤에 다시 해 본다.
-    func showFront(_ page: FrontPage, in k: PageKind? = nil) {
+    public func showFront(_ page: FrontPage, in k: PageKind? = nil) {
         showFront(page, in: k, tries: 0)
     }
 
@@ -288,9 +298,57 @@ final class AppState: ObservableObject {
         if target == showing { onPageChange?() } else { setKind(target) }
     }
 
-    // MARK: keyboard & trackpad
+    // MARK: keyboard (공용)
 
-    func installMonitors() {
+    /// 단축키로 도구 고르기 (팔레트가 접혀 있으면 잠깐 펼쳐 보여 준다)
+    public func pickTool(_ id: Int) {
+        tool = id
+        onToolShortcut?()
+    }
+
+    /// 하드웨어 키보드 단축키 (macOS 는 아래 키 감시가, iOS 는 앱의 키 명령이 부른다). 맥과 같은 키:
+    /// ← → 넘기기 · T 오늘 · W 주간 · D 일간 · H 홈 · E 지우개 · 1–7 형광펜 (한글 자판 ㅅ ㅈ ㅇ ㅗ ㄷ 도)
+    public enum KeyShortcut: Equatable {
+        case previousPage, nextPage, today, weekly, daily, home, eraser
+        /// 팔레트 순서 (0 = 첫 형광펜)
+        case pen(Int)
+
+        /// 누른 글자 (수정 키 없이) → 단축키
+        public init?(character c: String) {
+            switch c.lowercased() {
+            case "t", "ㅅ": self = .today
+            case "w", "ㅈ": self = .weekly
+            case "d", "ㅇ": self = .daily
+            case "h", "ㅗ": self = .home
+            case "e", "ㄷ": self = .eraser
+            case "1", "2", "3", "4", "5", "6", "7": self = .pen(Int(c)! - 1)
+            default: return nil
+            }
+        }
+    }
+
+    /// 단축키를 실행한다. 처리했으면 true.
+    @discardableResult
+    public func perform(_ k: KeyShortcut) -> Bool {
+        switch k {
+        case .previousPage: flip(.backward)
+        case .nextPage: flip(.forward)
+        case .today: goToday()
+        case .weekly: switchKind(.weekly)
+        case .daily: switchKind(.daily)
+        case .home: switchKind(.home)
+        case .eraser: pickTool(Self.eraser)
+        case .pen(let i):
+            guard let cats = store?.categories, i >= 0, i < cats.count else { return false }
+            pickTool(cats[i].id)
+        }
+        return true
+    }
+
+    #if os(macOS)
+    // MARK: keyboard & trackpad (macOS)
+
+    public func installMonitors() {
         guard monitors.isEmpty else { return }
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             let eat = MainActor.assumeIsolated { self?.handleKey(e) ?? false }
@@ -333,12 +391,6 @@ final class AppState: ObservableObject {
         return true
     }
 
-    /// 단축키로 도구 고르기 (팔레트가 접혀 있으면 잠깐 펼쳐 보여 준다)
-    private func pickTool(_ id: Int) {
-        tool = id
-        onToolShortcut?()
-    }
-
     /// 트랙패드 두 손가락 가로 스와이프로 종이를 잡고 넘긴다
     /// 처리했으면 true (이벤트를 먹는다)
     private func handleScroll(_ e: NSEvent) -> Bool {
@@ -373,4 +425,5 @@ final class AppState: ObservableObject {
         }
         return swipeActive
     }
+    #endif
 }

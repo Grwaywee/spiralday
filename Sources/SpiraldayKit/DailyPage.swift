@@ -1,9 +1,12 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// 일간 페이지 (디자인 1277 × 2000). 인쇄된 양식(DailyFormPrint) 위에 손글씨·펜·형광펜을 올린다.
-struct DailyPage: View {
-    let date: Date
-    let u: CGFloat
+public struct DailyPage: View {
+    public let date: Date
+    public let u: CGFloat
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
@@ -12,11 +15,16 @@ struct DailyPage: View {
 
     @State private var editingDDay = false
 
+    public init(date: Date, u: CGFloat) {
+        self.date = date
+        self.u = u
+    }
+
     private typealias F = DailyForm
 
     private var concept: ColorConcept { store.concept(date) }
 
-    var body: some View {
+    public var body: some View {
         let day = store.day(date)
         let tasksL = F.taskLayout(day.tasks)
         let memoL = memoLayout(day)
@@ -242,11 +250,16 @@ struct DailyPage: View {
         let item = L.items[k]
         let target = down ? item.row + item.span : item.row - 1
         guard target >= 0, target < L.rows else { return false }
+        #if os(macOS)
         guard let tv = NSApp.keyWindow?.firstResponder as? NSTextView else { return true }
         let ranges = RuledText.lineRanges(tv.string, fontSize: F.taskFont * L.scale * item.fit, width: F.taskWrapWidth)
         let caret = tv.selectedRange().location
         let line = ranges.lastIndex { $0.location <= caret } ?? 0
         return down ? line >= ranges.count - 1 : line == 0
+        #else
+        // iOS: 글자 커서 자리를 알 수 없어서, 한 줄짜리 할 일에서만 ↑ ↓ 로 줄을 옮긴다 (여러 줄이면 글상자에 맡긴다)
+        return item.span <= 1
+        #endif
     }
 
     /// ↑ : 이 할 일 바로 윗줄, ↓ : 이 할 일이 쓰는 줄 바로 아랫줄. 그 줄을 쓰는 할 일이 있으면 그 할 일을,
@@ -324,16 +337,21 @@ struct DailyPage: View {
 
 /// 인쇄된 워드마크 위의 투명한 링크
 private struct WordmarkLink: View {
+    #if !os(macOS)
+    @Environment(\.openURL) private var openURL
+    #endif
+
     var body: some View {
         Color.clear
             .contentShape(Rectangle())
-            .onTapGesture { Links.open(Links.website) }
-            .onContinuousHover { phase in
-                switch phase {
-                case .active: NSCursor.pointingHand.set()
-                case .ended: NSCursor.arrow.set()
-                }
+            .onTapGesture {
+                #if os(macOS)
+                Links.open(Links.website)
+                #else
+                openURL(Links.website)
+                #endif
             }
+            .pointerCursor(.pointingHand)
             .help("spiralday.com 열기")
     }
 }
@@ -369,9 +387,20 @@ private struct RuledEntry: View {
             InlineField(text: $text, font: Fonts.hand(fontSize * u), key: key, lines: max(lines.count, 1) + 1,
                         lineSpacing: max(0, (pitch - lh) * u), onSubmit: onSubmit, onEnd: onEnd)
                 .padding(.top, top * u)
+                #if os(macOS)
                 .background {
                     if let canMoveLine, let moveLine { LineKeyMonitor(canMove: canMoveLine, move: moveLine) }
                 }
+                #else
+                // 하드웨어 키보드의 ↑ ↓ : 윗줄 / 아랫줄로 (canMoveLine 이 false 면 글상자가 받는다)
+                .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                    guard let canMoveLine, let moveLine, press.modifiers.isEmpty else { return .ignored }
+                    let down = press.key == .downArrow
+                    guard canMoveLine(down) else { return .ignored }
+                    moveLine(down)
+                    return .handled
+                }
+                #endif
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
@@ -399,6 +428,7 @@ private struct RuledEntry: View {
     }
 }
 
+#if os(macOS)
 /// 할 일을 쓰는 동안 ↑ ↓ 를 글상자보다 먼저 받는다. canMove 가 true 면 키를 먹고 줄을 옮긴다.
 /// 한글을 조합하는 중이면 키를 글상자로 흘려 보내 조합을 끝내게 하고 (마지막 글자가 남도록) 줄은 바로 뒤에 옮긴다.
 private struct LineKeyMonitor: View {
@@ -444,6 +474,7 @@ private final class LineKeyMonitorBox {
         token = nil
     }
 }
+#endif
 
 // MARK: - COMMENT ▾ (작성하기 · DAY OFF)
 
@@ -502,13 +533,8 @@ private struct CommentModeMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: NSCursor.pointingHand.set()
-            case .ended: NSCursor.arrow.set()
-            }
-        }
-        .onDisappear { if hover { NSCursor.arrow.set() } }
+        .pointerCursor(.pointingHand)
+        .onDisappear { if hover { PointerCursor.arrow.set() } }
         .help(off ? "쉬는 날 (DAY OFF) — 눌러서 작성하기로 돌아가요. 적어 둔 COMMENT 는 그대로 있어요"
                   : "COMMENT — 눌러서 DAY OFF(쉬는 날)로 바꿀 수 있어요")
     }

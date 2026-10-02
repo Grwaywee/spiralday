@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import SpiraldayKit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 도구 팔레트 (1.0.6: 접기 · 자리 고르기)

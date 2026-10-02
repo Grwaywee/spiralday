@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import SpiraldayKit
 
 // MARK: - Window
 
@@ -695,37 +696,8 @@ private enum SettingsBookDefaults {
     }
 }
 
-/// 받침에 따라 ‘을/를’, ‘으로/로’ 같은 조사를 고른다 (한글·숫자로 끝나지 않으면 둘 다 적는다)
-enum SettingsJosa {
-    /// 0–9 를 읽었을 때의 받침 (영 ㅇ, 일 ㄹ, 이, 삼 ㅁ, 사, 오, 육 ㄱ, 칠 ㄹ, 팔 ㄹ, 구)
-    private static let digitBatchim: [Character: UInt32] = ["0": 21, "1": 8, "2": 0, "3": 16, "4": 0,
-                                                            "5": 0, "6": 1, "7": 8, "8": 8, "9": 0]
-
-    static func pick(_ word: String, _ withBatchim: String, _ without: String) -> String {
-        switch batchim(word) {
-        case .some(0): without
-        case .some: withBatchim
-        case .none: "\(withBatchim)(\(without))"
-        }
-    }
-
-    /// ‘으로/로’ (ㄹ 받침 뒤에도 ‘로’)
-    static func ro(_ word: String) -> String {
-        switch batchim(word) {
-        case .some(0), .some(8): "로"
-        case .some: "으로"
-        case .none: "(으)로"
-        }
-    }
-
-    /// 마지막 글자의 받침 번호 (0 = 없음, 8 = ㄹ). 한글·숫자가 아니면 nil
-    private static func batchim(_ word: String) -> UInt32? {
-        guard let last = word.trimmingCharacters(in: .whitespaces).last else { return 0 }
-        if let d = digitBatchim[last] { return d }
-        guard let s = last.unicodeScalars.first, (0xAC00...0xD7A3).contains(s.value) else { return nil }
-        return (s.value - 0xAC00) % 28
-    }
-}
+/// 받침에 따라 조사를 고른다 (SpiraldayKit 의 Josa)
+typealias SettingsJosa = Josa
 
 // MARK: 만들기 / 편집 시트
 

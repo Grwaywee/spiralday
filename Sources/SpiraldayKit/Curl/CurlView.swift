@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import MetalKit
 import QuartzCore
 
@@ -27,6 +31,10 @@ final class CurlMetalView: MTKView {
             metal.isOpaque = true
             metal.maximumDrawableCount = 3
         }
+        #if !os(macOS)
+        isOpaque = true
+        isUserInteractionEnabled = false
+        #endif
         driver.owner = self
         delegate = driver
     }
@@ -34,13 +42,22 @@ final class CurlMetalView: MTKView {
     @available(*, unavailable)
     required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    #if os(macOS)
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override var isOpaque: Bool { true }
     override var acceptsFirstResponder: Bool { false }
+    #else
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
+    #endif
 
     /// Runs the display-synchronised loop at the screen's highest refresh rate.
     func run() {
+        #if os(macOS)
         preferredFramesPerSecond = window?.screen?.maximumFramesPerSecond ?? NSScreen.main?.maximumFramesPerSecond ?? 60
+        #else
+        // ProMotion 아이폰에서 60 을 넘기려면 앱 Info.plist 에 CADisableMinimumFrameDurationOnPhone = YES
+        preferredFramesPerSecond = window?.screen.maximumFramesPerSecond ?? 60
+        #endif
         isPaused = false
     }
 

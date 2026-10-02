@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import Metal
 import QuartzCore
 import simd
@@ -28,29 +32,34 @@ import simd
 // pointer tracking, arc-length glides with a minimum-jerk ease for automatic turns.
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum FlipDirection {
+public enum FlipDirection: Sendable {
     case forward, backward
-    var delta: Int { self == .forward ? 1 : -1 }
+    public var delta: Int { self == .forward ? 1 : -1 }
 }
 
-enum SwipePhase { case began, changed, ended, cancelled }
+public enum SwipePhase: Sendable { case began, changed, ended, cancelled }
 
-struct PageBitmaps {
+public struct PageBitmaps {
     /// The page currently visible (before the turn).
-    let current: CGImage
+    public let current: CGImage
     /// The destination page (next page for forward, previous for backward).
-    let neighbor: CGImage
+    public let neighbor: CGImage
+
+    public init(current: CGImage, neighbor: CGImage) {
+        self.current = current
+        self.neighbor = neighbor
+    }
 }
 
 @MainActor
-final class CurlController: ObservableObject {
+public final class CurlController: ObservableObject {
     /// True while the overlay is visible (a turn / peek is in progress).
-    @Published private(set) var isActive = false
+    @Published public private(set) var isActive = false
 
     /// Binding side of the current page kind. Set by the host before interactions.
-    var edge: BindingEdge = .leading
+    public var edge: BindingEdge = .leading
     /// Page view size in points (screen orientation). Kept up to date by the host.
-    var pageSize: CGSize = .zero {
+    public var pageSize: CGSize = .zero {
         didSet {
             if abs(pageSize.width - oldValue.width) > 0.5 || abs(pageSize.height - oldValue.height) > 0.5 {
                 geometryChanged()
@@ -58,18 +67,20 @@ final class CurlController: ObservableObject {
         }
     }
     /// Backing scale factor of the window (for texture resolution).
-    var backingScale: CGFloat = 2 {
+    public var backingScale: CGFloat = 2 {
         didSet { if abs(backingScale - oldValue) > 0.001 { geometryChanged() } }
     }
 
     /// Host-provided page renderer. Return nil if bitmaps are unavailable (turn is skipped).
-    var snapshot: ((_ delta: Int) -> PageBitmaps?)?
+    public var snapshot: ((_ delta: Int) -> PageBitmaps?)?
     /// Called once when a turn completes; host must advance the page index by `delta`.
-    var commit: ((_ delta: Int) -> Void)?
+    public var commit: ((_ delta: Int) -> Void)?
     /// Called at the start of any interaction (host ends text editing, etc.)
-    var willBegin: (() -> Void)?
+    public var willBegin: (() -> Void)?
 
-    var isIdle: Bool { !isActive }
+    public var isIdle: Bool { !isActive }
+
+    public init() {}
 
     // MARK: Interactions
 
@@ -77,7 +88,7 @@ final class CurlController: ObservableObject {
     /// If a turn is already running, the request is queued (at most one) and the running
     /// turn is accelerated. `landingOffset` (e.g. ±5 for "go to today") shows a single
     /// turn whose destination page is `landingOffset` pages away.
-    func flip(_ direction: FlipDirection, landingOffset: Int? = nil) {
+    public func flip(_ direction: FlipDirection, landingOffset: Int? = nil) {
         let delta = landingOffset ?? direction.delta
         switch phase {
         case .tracking, .gliding:
@@ -101,7 +112,7 @@ final class CurlController: ObservableObject {
     }
 
     /// Pointer entered / left a page corner hot-zone: show / hide a small dog-ear peek.
-    func hover(_ direction: FlipDirection, inside: Bool) {
+    public func hover(_ direction: FlipDirection, inside: Bool) {
         if inside {
             guard !isLiveResizing else { return }
             switch phase {
@@ -120,7 +131,7 @@ final class CurlController: ObservableObject {
     }
 
     /// Pointer pressed on a corner hot-zone and started dragging. `point` in page view coords.
-    func dragBegan(_ direction: FlipDirection, at point: CGPoint) {
+    public func dragBegan(_ direction: FlipDirection, at point: CGPoint) {
         guard !isLiveResizing, phase != .tracking, phase != .gliding,
               acquire(direction, delta: direction.delta), let turn else { return }
         var t = Tracking(input: .pointer, target: F)
@@ -137,7 +148,7 @@ final class CurlController: ObservableObject {
         needsDraw = true
     }
 
-    func dragChanged(to point: CGPoint) {
+    public func dragChanged(to point: CGPoint) {
         guard phase == .tracking, var t = tracking, t.input == .pointer, let turn else { return }
         t.target = pointerTarget(point, t, turn)
         t.history.add(turn.progress(t.target), at: CACurrentMediaTime())
@@ -146,7 +157,7 @@ final class CurlController: ObservableObject {
     }
 
     /// Released. `predictedEnd` is SwiftUI's predictedEndLocation (for fling velocity).
-    func dragEnded(at point: CGPoint, predictedEnd: CGPoint) {
+    public func dragEnded(at point: CGPoint, predictedEnd: CGPoint) {
         guard phase == .tracking, var t = tracking, t.input == .pointer, let turn else { return }
         let now = CACurrentMediaTime()
         t.target = pointerTarget(point, t, turn)
@@ -160,9 +171,15 @@ final class CurlController: ObservableObject {
         release(progress: p, fling: fling)
     }
 
+    /// The drag was cancelled by the system (iOS: gesture interrupted). Settles like a release without fling.
+    public func dragCancelled() {
+        guard phase == .tracking, let t = tracking, t.input == .pointer, let turn else { return }
+        release(progress: turn.progress(t.target), fling: 0)
+    }
+
     /// Trackpad horizontal two-finger swipe. deltaX is already normalised so that
     /// negative = fingers moving left = go forward. Units: points per event.
-    func swipe(_ phase: SwipePhase, deltaX: CGFloat) {
+    public func swipe(_ phase: SwipePhase, deltaX: CGFloat) {
         switch phase {
         case .began:
             let direction: FlipDirection = deltaX < 0 ? .forward : .backward
@@ -188,9 +205,9 @@ final class CurlController: ObservableObject {
 
     /// The persistent overlay view (created once, reused). Must ignore hit-testing and be
     /// hidden while inactive. The host embeds it above the live page.
-    func makeOverlayView() -> NSView {
+    public func makeOverlayView() -> PlatformView {
         if let overlayView { return overlayView }
-        let v: NSView
+        let v: PlatformView
         if let gpu = CurlGPU.shared {
             gpu.warmUp()   // 셰이더를 미리 백그라운드에서 컴파일 → 첫 넘김에 끊김이 없다
             let mv = CurlMetalView(gpu: gpu)
@@ -205,13 +222,13 @@ final class CurlController: ObservableObject {
         return v
     }
 
-    private var overlayView: NSView?
+    private var overlayView: PlatformView?
 
     // MARK: Offscreen rendering (README screenshots / GIF, snapshot tests)
 
     /// Renders `frameCount` frames of an automatic forward (or backward) turn from
     /// `bitmaps.current` to `bitmaps.neighbor`, at `pageSize` points × `scale`.
-    static func renderTurnFrames(_ bitmaps: PageBitmaps, direction: FlipDirection, edge: BindingEdge,
+    public static func renderTurnFrames(_ bitmaps: PageBitmaps, direction: FlipDirection, edge: BindingEdge,
                                  pageSize: CGSize, scale: CGFloat, frameCount: Int) -> [CGImage] {
         let frame = CurlFrame(edge: edge, view: pageSize)
         let forward = direction == .forward
@@ -228,7 +245,7 @@ final class CurlController: ObservableObject {
 
     /// Renders stills with the finger at given points in normalised page space
     /// ((0,0) binding/top … (1,1) held corner K; x < 0 is past the binding).
-    static func renderStills(_ bitmaps: PageBitmaps, direction: FlipDirection, edge: BindingEdge,
+    public static func renderStills(_ bitmaps: PageBitmaps, direction: FlipDirection, edge: BindingEdge,
                              pageSize: CGSize, scale: CGFloat, fingers: [CGPoint]) -> [CGImage] {
         let frame = CurlFrame(edge: edge, view: pageSize)
         guard frame.isValid, let gpu = CurlGPU.shared else { return [] }
@@ -332,7 +349,22 @@ final class CurlController: ObservableObject {
     private var hideWork: DispatchWorkItem?
     private var purgeWork: DispatchWorkItem?
 
-    private var isLiveResizing: Bool { metalView?.inLiveResize ?? false }
+    private var isLiveResizing: Bool {
+        #if os(macOS)
+        metalView?.inLiveResize ?? false
+        #else
+        false
+        #endif
+    }
+
+    /// 마우스 왼쪽 단추를 뗐는지 (macOS). iOS 는 손가락이 멈춰 있을 수 있어서 늘 false — 끝은 dragEnded / dragCancelled 로 온다.
+    private var pointerButtonReleased: Bool {
+        #if os(macOS)
+        NSEvent.pressedMouseButtons & 1 == 0
+        #else
+        false
+        #endif
+    }
 
     // MARK: turn set-up
 
@@ -465,7 +497,7 @@ final class CurlController: ObservableObject {
             if simd_length(F - before) > 1e-4 { needsDraw = true }
             // 끝 신호 없이 사라진 제스처 (창 비활성화 등으로 취소): 놓은 것으로 처리한다
             let silent = CACurrentMediaTime() - t.history.lastTime
-            if (t.input == .pointer && silent > 0.25 && NSEvent.pressedMouseButtons & 1 == 0)
+            if (t.input == .pointer && silent > 0.25 && pointerButtonReleased)
                 || (t.input == .swipe && silent > 2) {
                 release(progress: turn.progress(t.target), fling: 0)
             }
@@ -608,14 +640,31 @@ final class CurlController: ObservableObject {
     }
 }
 
+#if os(macOS)
 /// NSView that never participates in hit-testing.
-final class PassthroughView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+public final class PassthroughView: NSView {
+    public override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
+#else
+/// UIView that never participates in hit-testing.
+public final class PassthroughView: UIView {
+    public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
+}
+#endif
 
 /// SwiftUI wrapper for the controller's persistent overlay.
-struct CurlOverlay: NSViewRepresentable {
-    let controller: CurlController
-    func makeNSView(context: Context) -> NSView { controller.makeOverlayView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+#if os(macOS)
+public struct CurlOverlay: NSViewRepresentable {
+    public let controller: CurlController
+    public init(controller: CurlController) { self.controller = controller }
+    public func makeNSView(context: Context) -> NSView { controller.makeOverlayView() }
+    public func updateNSView(_ nsView: NSView, context: Context) {}
 }
+#else
+public struct CurlOverlay: UIViewRepresentable {
+    public let controller: CurlController
+    public init(controller: CurlController) { self.controller = controller }
+    public func makeUIView(context: Context) -> UIView { controller.makeOverlayView() }
+    public func updateUIView(_ uiView: UIView, context: Context) {}
+}
+#endif

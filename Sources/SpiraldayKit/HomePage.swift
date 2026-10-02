@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 홈 — 전체 통계 한 장. 가로 2000 × 1277 디자인 단위, 스프링은 위쪽.
@@ -16,30 +20,30 @@ import AppKit
 
 // MARK: - Layout (디자인 단위)
 
-enum HM {
-    static let page = PageKind.home.design
-    static let left: CGFloat = 48
-    static let right: CGFloat = 1952
+public enum HM {
+    public static let page = PageKind.home.design
+    public static let left: CGFloat = 48
+    public static let right: CGFloat = 1952
     /// 왼쪽 넓은 칸 | 오른쪽 칸
-    static let leftEnd: CGFloat = 1208
-    static let rightStart: CGFloat = 1256
+    public static let leftEnd: CGFloat = 1208
+    public static let rightStart: CGFloat = 1256
 
     // 머리선 높이 (라벨 대문자의 가운데가 이 선에 걸린다)
-    static let headRule: CGFloat = 100
-    static let rowA: CGFloat = 392
-    static let rowB: CGFloat = 818
-    static let rowC: CGFloat = 1006
-    static let bottom: CGFloat = 1237
+    public static let headRule: CGFloat = 100
+    public static let rowA: CGFloat = 392
+    public static let rowB: CGFloat = 818
+    public static let rowC: CGFloat = 1006
+    public static let bottom: CGFloat = 1237
 
-    static let dateBox = CGRect(x: left, y: 112, width: leftEnd - left, height: 72)
+    public static let dateBox = CGRect(x: left, y: 112, width: leftEnd - left, height: 72)
     /// 날짜 오른쪽: 이번 주 목표 (주간 페이지의 MY GOAL)
-    static let goalBox = CGRect(x: 560, y: 116, width: leftEnd - 560, height: 64)
-    static let ddayBox = CGRect(x: rightStart, y: 112, width: right - rightStart, height: 72)
+    public static let goalBox = CGRect(x: 560, y: 116, width: leftEnd - 560, height: 64)
+    public static let ddayBox = CGRect(x: rightStart, y: 112, width: right - rightStart, height: 72)
 
     // 요약 칸: 왼쪽 4칸 · 오른쪽 2칸
-    static let keyTop: CGFloat = 206
-    static let keyH: CGFloat = 138
-    static func keyCell(_ i: Int) -> CGRect {
+    public static let keyTop: CGFloat = 206
+    public static let keyH: CGFloat = 138
+    public static func keyCell(_ i: Int) -> CGRect {
         if i < 4 {
             let w = (leftEnd - left) / 4
             return CGRect(x: left + CGFloat(i) * w, y: keyTop, width: w, height: keyH)
@@ -49,42 +53,42 @@ enum HM {
     }
 
     // 최근 12주
-    static let weeksAxis: CGFloat = left + 56
-    static let weeksX0: CGFloat = left + 76
-    static var weekSlot: CGFloat { (leftEnd - weeksX0) / CGFloat(HomeStats.weekCount) }
-    static let weeksTop: CGFloat = 462
-    static let weeksBase: CGFloat = 726
-    static let weekBarW: CGFloat = 48
-    static func weekColumn(_ i: Int) -> CGRect {
+    public static let weeksAxis: CGFloat = left + 56
+    public static let weeksX0: CGFloat = left + 76
+    public static var weekSlot: CGFloat { (leftEnd - weeksX0) / CGFloat(HomeStats.weekCount) }
+    public static let weeksTop: CGFloat = 462
+    public static let weeksBase: CGFloat = 726
+    public static let weekBarW: CGFloat = 48
+    public static func weekColumn(_ i: Int) -> CGRect {
         CGRect(x: weeksX0 + CGFloat(i) * weekSlot, y: rowA + 20, width: weekSlot, height: 772 - rowA - 20)
     }
 
     // 형광펜별
-    static let catTop: CGFloat = 414
-    static let catBottom: CGFloat = 772
-    static let catBarX: CGFloat = rightStart + 150
-    static let catBarEnd: CGFloat = right - 146
+    public static let catTop: CGFloat = 414
+    public static let catBottom: CGFloat = 772
+    public static let catBarX: CGFloat = rightStart + 150
+    public static let catBarEnd: CGFloat = right - 146
 
     // 시간대 띠
-    static let heat = CGRect(x: left, y: 846, width: leftEnd - left, height: 52)
+    public static let heat = CGRect(x: left, y: 846, width: leftEnd - left, height: 52)
 
     // 요일별 · 할 일 표시
-    static let weekdayRect = CGRect(x: left, y: 1030, width: 540, height: bottom - 1030)
-    static let marksRect = CGRect(x: 636, y: 1030, width: leftEnd - 636, height: bottom - 1030)
+    public static let weekdayRect = CGRect(x: left, y: 1030, width: 540, height: bottom - 1030)
+    public static let marksRect = CGRect(x: 636, y: 1030, width: leftEnd - 636, height: bottom - 1030)
 
     // 잔디 달력
-    static let calX0: CGFloat = rightStart + 80
-    static let calY0: CGFloat = 874
-    static let calCell: CGFloat = 64
-    static let calGap: CGFloat = 11
-    static func dayCell(_ i: Int) -> CGRect {
+    public static let calX0: CGFloat = rightStart + 80
+    public static let calY0: CGFloat = 874
+    public static let calCell: CGFloat = 64
+    public static let calGap: CGFloat = 11
+    public static func dayCell(_ i: Int) -> CGRect {
         CGRect(x: calX0 + CGFloat(i % 7) * (calCell + calGap), y: calY0 + CGFloat(i / 7) * (calCell + calGap),
                width: calCell, height: calCell)
     }
-    static let legendX: CGFloat = right - 58
+    public static let legendX: CGFloat = right - 58
 
-    static let weekdays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-    static func weekdayColor(_ i: Int) -> Color { i == 5 ? Ink.saturday : i == 6 ? Ink.red : Ink.soft }
+    public static let weekdays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    public static func weekdayColor(_ i: Int) -> Color { i == 5 ? Ink.saturday : i == 6 ? Ink.red : Ink.soft }
 }
 
 private extension View {
@@ -98,8 +102,8 @@ private extension View {
 // MARK: - Page
 
 /// 홈 (디자인 2000 × 1277, 위쪽 스프링). 전체 통계를 보여주는 한 장짜리 표지.
-struct HomePage: View {
-    let u: CGFloat
+public struct HomePage: View {
+    public let u: CGFloat
 
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
@@ -107,7 +111,11 @@ struct HomePage: View {
 
     @State private var editingDDay = false
 
-    var body: some View {
+    public init(u: CGFloat) {
+        self.u = u
+    }
+
+    public var body: some View {
         let today = Dates.day(Date())
         let stats = HomeStats.make(store.data, today: today)
         let concept = ColorConcept.of(store.data.prefs.defaultTheme)
@@ -183,6 +191,93 @@ struct HomePage: View {
     }
 }
 
+// MARK: - Sections (폰: 세로 대시보드)
+
+/// 홈 한 장의 부분들. 폰에서는 이 부분들을 폭에 맞춰 세로로 쌓는다 (같은 그림을 잘라 쓴다).
+/// rect 는 홈 디자인 단위 (2000 × 1277) 의 자리 — 머리줄(라벨 ── 설명)부터 그 칸의 끝까지.
+public enum HomeSection: CaseIterable, Sendable {
+    /// OVERVIEW: 오늘 날짜 · 이번 주 목표 · 요약 4칸 (THIS WEEK · THIS MONTH · DAILY AVERAGE · RECORDED DAYS)
+    case overview
+    /// D-DAY: 오늘의 D-day · STREAK · DONE RATE
+    case dday
+    /// LAST 12 WEEKS: 주간 합계 막대 (HM.weekColumn(i) 가 i 번째 주를 누르는 자리)
+    case weeks
+    /// HIGHLIGHTERS: 이번 달 형광펜별
+    case highlighters
+    /// TIME OF DAY: 지난 4주 시간대 띠
+    case timeOfDay
+    /// LAST 35 DAYS: 잔디 달력 (HM.dayCell(i) 가 i 번째 날을 누르는 자리)
+    case calendar
+    /// WEEKDAYS: 요일별 평균
+    case weekdays
+    /// TASK MARKS: 이번 달 ○△×→
+    case marks
+
+    /// 홈 디자인 단위의 자리
+    public var rect: CGRect {
+        let top: CGFloat = 28   // 머리줄 라벨 위 여백
+        switch self {
+        case .overview:
+            return CGRect(x: HM.left - 12, y: HM.headRule - top, width: HM.leftEnd - HM.left + 24,
+                          height: HM.keyTop + HM.keyH + 18 - (HM.headRule - top))
+        case .dday:
+            return CGRect(x: HM.rightStart - 12, y: HM.headRule - top, width: HM.right - HM.rightStart + 24,
+                          height: HM.keyTop + HM.keyH + 18 - (HM.headRule - top))
+        case .weeks:
+            return CGRect(x: HM.left - 12, y: HM.rowA - top, width: HM.leftEnd - HM.left + 24, height: HM.rowB - HM.rowA - 8)
+        case .highlighters:
+            return CGRect(x: HM.rightStart - 12, y: HM.rowA - top, width: HM.right - HM.rightStart + 24, height: HM.rowB - HM.rowA - 8)
+        case .timeOfDay:
+            return CGRect(x: HM.left - 12, y: HM.rowB - top, width: HM.leftEnd - HM.left + 24, height: HM.rowC - HM.rowB - 8)
+        case .calendar:
+            return CGRect(x: HM.rightStart - 12, y: HM.rowB - top, width: HM.right - HM.rightStart + 24,
+                          height: HM.page.height - 4 - (HM.rowB - top))
+        case .weekdays:
+            return CGRect(x: HM.weekdayRect.minX - 12, y: HM.rowC - top, width: HM.weekdayRect.width + 24,
+                          height: HM.page.height - 4 - (HM.rowC - top))
+        case .marks:
+            return CGRect(x: HM.marksRect.minX - 12, y: HM.rowC - top, width: HM.marksRect.width + 24,
+                          height: HM.page.height - 4 - (HM.rowC - top))
+        }
+    }
+
+    /// 폭 width 에 맞춰 그렸을 때의 높이
+    public func height(forWidth width: CGFloat) -> CGFloat { rect.height * width / rect.width }
+}
+
+/// 홈의 한 부분만 그린다 (인쇄된 양식 + 통계, 그림만). 누르는 자리는 부르는 쪽이 HM 의 자리로 올린다.
+/// 종이 바탕은 그리지 않는다 (부르는 쪽이 Ink.paper 나 PaperSurface 를 깐다).
+public struct HomeSectionView: View {
+    public let section: HomeSection
+    public let width: CGFloat
+
+    @EnvironmentObject private var store: PlannerStore
+    @Environment(\.isPrinting) private var isPrinting
+
+    public init(_ section: HomeSection, width: CGFloat) {
+        self.section = section
+        self.width = width
+    }
+
+    public var body: some View {
+        let r = section.rect
+        let u = width / r.width
+        let today = Dates.day(Date())
+        let stats = HomeStats.make(store.data, today: today)
+        ZStack(alignment: .topLeading) {
+            HomeForm(u: u).equatable()
+            HomeInk(stats: stats, categories: store.categories, defaultTheme: store.data.prefs.defaultTheme,
+                    ddays: store.ddays(today), goal: store.week(Dates.weekStart(today)).goal, today: today,
+                    printing: isPrinting, u: u)
+        }
+        .frame(width: HM.page.width * u, height: HM.page.height * u, alignment: .topLeading)
+        .offset(x: -r.minX * u, y: -r.minY * u)
+        .frame(width: width, height: r.height * u, alignment: .topLeading)
+        .clipped()
+        .allowsHitTesting(false)
+    }
+}
+
 /// 누르는 자리 (투명). 마우스를 올리면 hover 모양을 보여주고 손가락 커서로 바뀐다.
 /// hover 상태를 여기 안에 두어 페이지 전체(통계 계산, 그림)가 다시 그려지지 않게 한다.
 private struct PageTarget<Hover: View>: View {
@@ -199,19 +294,14 @@ private struct PageTarget<Hover: View>: View {
             .onTapGesture(perform: action)
             .onHover { h in withAnimation(.easeOut(duration: 0.15)) { on = h } }
             .pointingHand()
-            .onDisappear { if on { NSCursor.arrow.set() } }
+            .onDisappear { if on { PointerCursor.arrow.set() } }
             .help(help)
     }
 }
 
 private extension View {
     func pointingHand() -> some View {
-        onContinuousHover { phase in
-            switch phase {
-            case .active: NSCursor.pointingHand.set()
-            case .ended: NSCursor.arrow.set()
-            }
-        }
+        pointerCursor(.pointingHand)
     }
 }
 
@@ -243,7 +333,7 @@ private struct HomeForm: View, Equatable {
 
     /// 일간 양식과 같은 "LABEL ──── 설명" 머리줄 (굵은 선, 대문자 가운데가 선 높이)
     private static func drawSections(_ ctx: GraphicsContext) {
-        let cap = NSFont(name: Fonts.PrintWeight.demiBold.postScriptName, size: 19.8)?.capHeight ?? 14
+        let cap = PlatformFont(name: Fonts.PrintWeight.demiBold.postScriptName, size: 19.8)?.capHeight ?? 14
         let gap: CGFloat = 13
         for (label, caption, x0, x1, y) in sections {
             let t = ctx.resolve(Text(label).font(Fonts.print(19.8, .demiBold)).tracking(-0.6).foregroundStyle(Ink.print))

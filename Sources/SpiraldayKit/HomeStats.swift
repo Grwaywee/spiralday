@@ -10,88 +10,88 @@ import Foundation
 // 시간 합계는 TOTAL TIME 과 같이 counts 인 형광펜만 더한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct HomeStats {
-    static let weekCount = 12
+public struct HomeStats {
+    public static let weekCount = 12
     /// 요일별 평균을 내는 기간 (주)
-    static let weekdayWeeks = 8
+    public static let weekdayWeeks = 8
     /// 시간대 분포를 보는 기간 (일)
-    static let heatDays = 28
+    public static let heatDays = 28
     /// 잔디 달력 줄 수 (주, 이번 주가 마지막 줄)
-    static let calendarWeeks = 5
+    public static let calendarWeeks = 5
 
-    struct Week {
-        let start: Date
+    public struct Week {
+        public let start: Date
         /// 0 = 이번 주, -1 = 지난주 …
-        let offset: Int
-        let minutes: Int
+        public let offset: Int
+        public let minutes: Int
         /// 합계에 들어가는 형광펜별 분 (store.categories 순서)
-        let byCategory: [Int]
+        public let byCategory: [Int]
     }
 
-    struct CategoryTotal {
-        let id: Int
-        let minutes: Int
-        let counts: Bool
+    public struct CategoryTotal {
+        public let id: Int
+        public let minutes: Int
+        public let counts: Bool
     }
 
-    struct HeatCell {
+    public struct HeatCell {
         /// 이 칸에 가장 자주 칠한 형광펜 id (없으면 nil)
-        let category: Int?
+        public let category: Int?
         /// 칠한 날 / 본 날 (0...1)
-        let ratio: Double
+        public let ratio: Double
     }
 
-    struct DayCell {
-        let date: Date
-        let minutes: Int
-        let recorded: Bool
-        let theme: Int?
-        let isToday: Bool
-        let isFuture: Bool
+    public struct DayCell {
+        public let date: Date
+        public let minutes: Int
+        public let recorded: Bool
+        public let theme: Int?
+        public let isToday: Bool
+        public let isFuture: Bool
         /// 쉬는 날 (DAY OFF)
-        var dayOff = false
+        public var dayOff = false
     }
 
     // 요약 숫자
-    var weekMinutes = 0
-    var monthMinutes = 0
+    public var weekMinutes = 0
+    public var monthMinutes = 0
     /// 이번 달에 기록한 날
-    var monthDays = 0
-    var daysInMonth = 30
-    var month = 1
-    var streak = 0
+    public var monthDays = 0
+    public var daysInMonth = 30
+    public var month = 1
+    public var streak = 0
     /// 오늘도 기록했는지 (아니면 streak 는 어제까지)
-    var streakIncludesToday = false
+    public var streakIncludesToday = false
     /// 오늘이 쉬는 날인지 (칠하지 않았어도 연속 기록이 이어진다)
-    var todayOff = false
+    public var todayOff = false
 
     // 이번 달 할 일 표시
-    var done = 0, partial = 0, missed = 0, moved = 0, unmarked = 0
-    var marked: Int { done + partial + missed + moved }
+    public var done = 0, partial = 0, missed = 0, moved = 0, unmarked = 0
+    public var marked: Int { done + partial + missed + moved }
     /// 완료 / 표시한 할 일. 표시한 할 일이 없으면 nil
-    var completion: Double? { marked > 0 ? Double(done) / Double(marked) : nil }
+    public var completion: Double? { marked > 0 ? Double(done) / Double(marked) : nil }
 
     /// 기록한 날 평균 (분)
-    var dailyAverage: Int { monthDays > 0 ? monthMinutes / monthDays : 0 }
+    public var dailyAverage: Int { monthDays > 0 ? monthMinutes / monthDays : 0 }
 
-    var weeks: [Week] = []
+    public var weeks: [Week] = []
     /// 이번 달 형광펜별 합계, 많은 순
-    var categories: [CategoryTotal] = []
+    public var categories: [CategoryTotal] = []
     /// 월 … 일 평균 (분)
-    var weekdayAverage = [Int](repeating: 0, count: 7)
+    public var weekdayAverage = [Int](repeating: 0, count: 7)
     /// 06:00 → 다음날 05:50, 10분 칸 144개
-    var heat = [HeatCell](repeating: HeatCell(category: nil, ratio: 0), count: DayRecord.slotCount)
+    public var heat = [HeatCell](repeating: HeatCell(category: nil, ratio: 0), count: DayRecord.slotCount)
     /// 가장 자주 칠한 한 시간 (0 = 06시 줄), 기록이 없으면 nil
-    var peakHour: Int? = nil
+    public var peakHour: Int? = nil
     /// 잔디: 5주 × 7일, 월요일부터
-    var calendar: [DayCell] = []
+    public var calendar: [DayCell] = []
 
     /// 타임테이블을 한 번이라도 칠했는지 (빈 페이지 안내용)
-    var hasTime = false
+    public var hasTime = false
 
     // MARK: - Build
 
-    static func make(_ data: PlannerData, today now: Date) -> HomeStats {
+    public static func make(_ data: PlannerData, today now: Date) -> HomeStats {
         var s = HomeStats()
         let cats = data.prefs.categories
         let nc = cats.count
@@ -251,7 +251,7 @@ struct HomeStats {
     // MARK: - Day numbers
 
     /// "yyyy-MM-dd" → 1970-01-01 부터 센 날 수
-    static func ordinal(_ key: String) -> Int? {
+    public static func ordinal(_ key: String) -> Int? {
         var n = (0, 0, 0), part = 0
         for b in key.utf8 {
             if b == 45 {
@@ -272,7 +272,7 @@ struct HomeStats {
     }
 
     /// 그레고리력 날짜 → 일련번호 (H. Hinnant, days_from_civil)
-    static func civilOrdinal(_ year: Int, _ m: Int, _ d: Int) -> Int {
+    public static func civilOrdinal(_ year: Int, _ m: Int, _ d: Int) -> Int {
         let y = m <= 2 ? year - 1 : year
         let era = (y >= 0 ? y : y - 399) / 400
         let yoe = y - era * 400
@@ -282,5 +282,5 @@ struct HomeStats {
     }
 
     /// 월 = 0 … 일 = 6 (1970-01-01 은 목요일)
-    static func weekday(_ ordinal: Int) -> Int { ((ordinal + 3) % 7 + 7) % 7 }
+    public static func weekday(_ ordinal: Int) -> Int { ((ordinal + 3) % 7 + 7) % 7 }
 }

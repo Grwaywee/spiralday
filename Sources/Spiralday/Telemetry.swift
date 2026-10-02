@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SpiraldayKit
 
 /// 익명 사용 통계. 하루 한 번 앱 버전 · macOS 버전 · 칩 종류 · 언어와 무작위 설치 번호만 보낸다.
 /// 플래너 기록은 보내지 않는다. 설정 → 데이터에서 끌 수 있다 (https://spiralday.com/privacy.html).

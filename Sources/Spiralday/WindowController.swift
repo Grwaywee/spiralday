@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import SpiraldayKit
 
 /// 창 = 종이 한 장.
 /// - 제목 막대는 투명, 빨강/노랑/초록 버튼이 종이 왼쪽 위에 그대로 올라간다.

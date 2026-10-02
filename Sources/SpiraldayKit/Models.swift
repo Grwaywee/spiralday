@@ -1,15 +1,19 @@
 import Foundation
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 // MARK: - Data
 
-enum Mark: Int, Codable, CaseIterable {
+public enum Mark: Int, Codable, CaseIterable, Sendable {
     case none, done, partial, missed, moved
 
-    var next: Mark { Mark(rawValue: (rawValue + 1) % Mark.allCases.count)! }
+    public var next: Mark { Mark(rawValue: (rawValue + 1) % Mark.allCases.count)! }
 
-    var label: String {
+    public var label: String {
         switch self {
         case .none: "표시 없음"
         case .done: "완료  ○"
@@ -20,59 +24,76 @@ enum Mark: Int, Codable, CaseIterable {
     }
 }
 
-struct PlanTask: Identifiable, Codable, Equatable {
-    var id = UUID()
-    var text = ""
-    var mark: Mark = .none
-    var cat: Int? = nil
+public struct PlanTask: Identifiable, Codable, Equatable, Sendable {
+    public var id = UUID()
+    public var text = ""
+    public var mark: Mark = .none
+    public var cat: Int? = nil
     /// → (미룸) 으로 전날에서 넘어온 할 일이면: 전날 할 일의 id (1.0.4).
     /// 없으면 nil — 예전 파일에는 없는 키라 nil 로 읽고, nil 이면 JSON 에 적지 않는다 (자동 Codable 의 Optional 규칙).
-    var carriedFrom: UUID? = nil
+    public var carriedFrom: UUID? = nil
     /// 일간 TASKS 의 몇째 줄에 적었는지 (0 부터, 1.0.5). 할 일은 적은 줄에 그대로 있고 저절로 모이거나 옮겨지지 않는다.
     /// 예전 파일에는 없는 키라 nil 로 읽고, 처음 열 때 그때 보이던 줄을 매긴다 (DayRecord.assignTaskRows).
-    var row: Int? = nil
+    public var row: Int? = nil
+
+    public init(id: UUID = UUID(), text: String = "", mark: Mark = .none, cat: Int? = nil, carriedFrom: UUID? = nil, row: Int? = nil) {
+        self.id = id
+        self.text = text
+        self.mark = mark
+        self.cat = cat
+        self.carriedFrom = carriedFrom
+        self.row = row
+    }
 }
 
 /// 타임테이블 위에 쓰는 것: 손글씨 메모, 밥시간(아이콘 → 화살표)
-struct TimeNote: Codable, Identifiable, Equatable {
-    enum Kind: String, Codable { case text, meal }
-    var id = UUID()
-    var kind: Kind
+public struct TimeNote: Codable, Identifiable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable { case text, meal }
+    public var id = UUID()
+    public var kind: Kind
     /// 시작 / 끝 칸 (0...143, 끝 칸 포함)
-    var start: Int
-    var end: Int
-    var text = ""
+    public var start: Int
+    public var end: Int
+    public var text = ""
+
+    public init(id: UUID = UUID(), kind: Kind, start: Int, end: Int, text: String = "") {
+        self.id = id
+        self.kind = kind
+        self.start = start
+        self.end = end
+        self.text = text
+    }
 }
 
-struct DayRecord: Codable, Equatable {
-    static let slotCount = 144 // 24 rows (06시 시작) × 6 칸(10분)
-    static let memoCount = 3
+public struct DayRecord: Codable, Equatable, Sendable {
+    public static let slotCount = 144 // 24 rows (06시 시작) × 6 칸(10분)
+    public static let memoCount = 3
 
-    var tasks: [PlanTask] = []
-    var slots: [Int] = Array(repeating: -1, count: DayRecord.slotCount)
+    public var tasks: [PlanTask] = []
+    public var slots: [Int] = Array(repeating: -1, count: DayRecord.slotCount)
     /// COMMENT 칸
-    var comment = ""
+    public var comment = ""
     /// MEMO 3줄 (왼쪽 작은 칸 + 본문)
-    var memoTags: [String] = Array(repeating: "", count: DayRecord.memoCount)
-    var memos: [String] = Array(repeating: "", count: DayRecord.memoCount)
+    public var memoTags: [String] = Array(repeating: "", count: DayRecord.memoCount)
+    public var memos: [String] = Array(repeating: "", count: DayRecord.memoCount)
     /// 이 날의 컬러 컨셉 (nil = 기본값 따르기)
-    var theme: Int? = nil
+    public var theme: Int? = nil
     /// 타임테이블 메모 · 밥시간
-    var notes: [TimeNote] = []
+    public var notes: [TimeNote] = []
     /// 이 날에 붙인 D-day (최대 Prefs.maxDDays 개). 저장한 D-day 를 복사해 둔 것이라
     /// 목록에서 고치거나 지워도, 다른 날에 붙인 것을 바꿔도 이 날은 그대로다.
-    var ddays: [DDay] = []
+    public var ddays: [DDay] = []
     /// 쉬는 날 (1.0.4). COMMENT 칸에 DAY OFF 가 찍히고, 연속 기록을 끊지 않는다.
     /// 적어 둔 COMMENT 는 지우지 않고 그대로 둔다 (작성하기로 돌아오면 다시 보인다).
-    var dayOff = false
+    public var dayOff = false
 
     private enum CodingKeys: String, CodingKey {
         case tasks, slots, comment, memoTags, memos, theme, notes, ddays, dayOff
     }
 
-    init() {}
+    public init() {}
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         tasks = try c.decodeIfPresent([PlanTask].self, forKey: .tasks) ?? []
         let s = try c.decodeIfPresent([Int].self, forKey: .slots) ?? []
@@ -86,7 +107,7 @@ struct DayRecord: Codable, Equatable {
         dayOff = try c.decodeIfPresent(Bool.self, forKey: .dayOff) ?? false
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(tasks, forKey: .tasks)
         try c.encode(slots, forKey: .slots)
@@ -107,13 +128,13 @@ struct DayRecord: Codable, Equatable {
 
     /// D-day 말고 적거나 칠하거나 고른 것이 있는지. "기록한 날" 은 이것으로 센다
     /// (D-day 만 붙인 날, DAY OFF 만 고른 날은 기록이 아니다).
-    var hasRecord: Bool {
+    public var hasRecord: Bool {
         !(tasks.isEmpty && slots.allSatisfy { $0 < 0 } && comment.isEmpty
             && memos.allSatisfy(\.isEmpty) && memoTags.allSatisfy(\.isEmpty) && theme == nil && notes.isEmpty)
     }
 
     /// 저장할 것이 하나도 없는지. D-day 만 붙인 날, DAY OFF 만 고른 날도 비어 있지 않다 (지우지 않고 저장한다).
-    var isEmpty: Bool { !hasRecord && ddays.isEmpty && !dayOff }
+    public var isEmpty: Bool { !hasRecord && ddays.isEmpty && !dayOff }
 }
 
 // MARK: - 할 일 줄 (1.0.5)
@@ -122,7 +143,7 @@ struct DayRecord: Codable, Equatable {
 
 extension DayRecord {
     /// 모든 할 일에 줄이 있고, 줄 순서대로 놓여 있고, 겹치지 않는지
-    var taskRowsReady: Bool {
+    public var taskRowsReady: Bool {
         var last = -1
         for t in tasks {
             guard let r = t.row, r > last else { return false }
@@ -135,7 +156,7 @@ extension DayRecord {
     /// - 모두 없으면 (1.0.4 까지의 기록): 그때 보이던 그대로 — 같은 형광펜끼리 모은 순서로, 긴 할 일이 이어 쓰던 줄까지.
     ///   (한 줄짜리만 있으면 0, 1, 2, …) 백업 없이 메모리에서 바꾸고 다음 저장 때 파일에 적힌다 (키만 늘어난다).
     /// - 일부만 없거나 같은 줄에 둘이면: 줄이 있는 것은 그대로, 나머지는 위에서부터 빈 줄에.
-    mutating func assignTaskRows() {
+    public mutating func assignTaskRows() {
         guard !taskRowsReady else { return }
         if tasks.allSatisfy({ $0.row == nil }) {
             let g = PlannerStore.grouped(tasks)
@@ -164,17 +185,17 @@ extension DayRecord {
     }
 
     /// 할 일을 제 줄에 놓은 모양 (긴 할 일이 이어 쓴 줄, 막혀서 줄인 글자, 늘어난 칸 수). 일간 페이지와 같은 계산.
-    var taskLayout: RuledText.RowLayout { DailyForm.taskLayout(tasks) }
+    public var taskLayout: RuledText.RowLayout { DailyForm.taskLayout(tasks) }
 
     /// 할 일이 쓰고 있는 마지막 줄 (긴 할 일이 이어 쓴 줄까지). which 에 맞는 할 일이 없으면 nil.
-    func lastTaskLine(where which: (PlanTask) -> Bool) -> Int? {
+    public func lastTaskLine(where which: (PlanTask) -> Bool) -> Int? {
         let L = taskLayout
         return tasks.indices.last(where: { which(tasks[$0]) }).map { L.items[$0].row + L.items[$0].span - 1 }
     }
 
     /// 새 할 일을 놓을 줄: after 보다 아래의 첫 빈 줄 → 없으면 맨 위부터 첫 빈 줄 →
     /// 그래도 없으면 맨 끝에 한 줄 더 (그만큼 TASKS 칸 수가 늘고 모든 줄이 같은 비율로 조금 작아진다).
-    func freeTaskRow(after: Int) -> Int {
+    public func freeTaskRow(after: Int) -> Int {
         let L = taskLayout
         if let r = L.emptyRows.first(where: { $0 > after }) ?? L.emptyRows.first { return r }
         return L.rows
@@ -182,7 +203,7 @@ extension DayRecord {
 
     /// 할 일 하나를 row 줄에 넣는다 (그 줄을 이미 다른 할 일이 쓰고 있으면 그 아래 빈 줄에). 넣은 줄을 돌려준다.
     @discardableResult
-    mutating func insertTask(_ t: PlanTask, row: Int) -> Int {
+    public mutating func insertTask(_ t: PlanTask, row: Int) -> Int {
         assignTaskRows()
         var t = t
         let r = row < 0 || taskLayout.owner(row) != nil ? freeTaskRow(after: row) : row
@@ -198,7 +219,7 @@ extension DayRecord {
     /// 보이게 하려는 것. TASKS 칸 수가 하나 늘고 모든 줄이 같은 비율로 조금 작아진다 (1.0.4 에서 넘칠 때와 같은 모양).
     /// 앱의 → (PlannerStore.setMark) 와 예시 플래너가 같이 쓴다.
     @discardableResult
-    mutating func insertCarried(_ t: PlanTask) -> Int {
+    public mutating func insertCarried(_ t: PlanTask) -> Int {
         assignTaskRows()
         // 같은 형광펜 묶음이 있으면 그 바로 아래로 (아래 할 일들은 빈 줄이 나올 때까지 한 줄씩 내려간다)
         if t.cat != nil, let end = lastTaskLine(where: { $0.cat == t.cat }) {
@@ -211,7 +232,7 @@ extension DayRecord {
     /// row 줄에 할 일을 끼워 넣는다. 그 줄부터 이어진 할 일들은 빈 줄이 나올 때까지 한 줄씩 아래로 밀린다
     /// (빈 줄이 없으면 맨 끝에 한 줄 더). 1.0.4 까지처럼 같은 형광펜끼리 붙여 두려고 쓴다.
     @discardableResult
-    mutating func insertShifting(_ t: PlanTask, at row: Int) -> Int {
+    public mutating func insertShifting(_ t: PlanTask, at row: Int) -> Int {
         assignTaskRows()
         var cursor = row + 1
         for k in tasks.indices where tasks[k].row! >= row {
@@ -228,7 +249,7 @@ extension DayRecord {
 
     /// 형광펜을 고른 할 일을 같은 형광펜 묶음으로 옮긴다: 그 형광펜을 쓰는 다른 할 일이 있고
     /// 이미 그 묶음에 붙어 있지 않으면, 묶음의 마지막 줄 바로 아래로 (insertShifting). 없으면 제 줄에 그대로.
-    mutating func joinCategoryGroup(_ id: UUID) {
+    public mutating func joinCategoryGroup(_ id: UUID) {
         assignTaskRows()
         guard let i = tasks.firstIndex(where: { $0.id == id }), let cat = tasks[i].cat else { return }
         let L = taskLayout
@@ -243,45 +264,62 @@ extension DayRecord {
     }
 }
 
-struct WeekRecord: Codable, Equatable {
-    var goal = ""
-    var review = ""
-    var stars = 0
+public struct WeekRecord: Codable, Equatable, Sendable {
+    public var goal = ""
+    public var review = ""
+    public var stars = 0
+
+    public init(goal: String = "", review: String = "", stars: Int = 0) {
+        self.goal = goal
+        self.review = review
+        self.stars = stars
+    }
 }
 
-struct Category: Codable, Identifiable, Equatable {
-    var id: Int
-    var name: String
-    var hex: String
-    var counts: Bool
+/// 형광펜 하나 (이름 · 색 · TOTAL TIME 에 넣는지). UIKit · AppKit 을 함께 import 하면 ObjectiveC.Category 와 이름이 겹치므로
+/// 앱에서는 `Highlighter` (같은 타입) 로 부르면 편하다.
+public typealias Highlighter = Category
 
-    var color: Color { Color(hex: hex) }
+public struct Category: Codable, Identifiable, Equatable, Sendable {
+    public var id: Int
+    public var name: String
+    public var hex: String
+    public var counts: Bool
+
+    public init(id: Int, name: String, hex: String, counts: Bool) {
+        self.id = id
+        self.name = name
+        self.hex = hex
+        self.counts = counts
+    }
+
+    public var color: Color { Color(hex: hex) }
 }
 
-struct Prefs: Codable, Equatable {
-    var categories: [Category] = Prefs.defaultCategories
-    var lastKind: PageKind = .daily
+public struct Prefs: Codable, Equatable, Sendable {
+    public var categories: [Category] = Prefs.defaultCategories
+    public var lastKind: PageKind = .daily
     /// 저장한 D-day 목록 (개수 제한 없음). 날마다 여기서 골라 그날에 복사해 붙인다 (DayRecord.ddays).
     /// 목록을 고치거나 지워도 이미 붙인 날은 바뀌지 않는다.
-    var ddays: [DDay] = []
+    public var ddays: [DDay] = []
     /// 따로 고르지 않은 날의 컬러 컨셉
-    var defaultTheme = 0
+    public var defaultTheme = 0
     /// D-day 를 날마다 따로 붙이는 파일인지. 1.0.2 까지의 파일은 false 로 읽혀서 처음 열 때 한 번 옮긴다.
-    var ddaysPerDay = true
+    public var ddaysPerDay = true
     /// 첫 장(표지 다음 장)에 적는 말. 비어 있으면 파일에 남기지 않는다.
-    var motto: String {
+    public var motto: String {
         get { mottoText ?? "" }
         set { mottoText = newValue.isEmpty ? nil : newValue }
     }
     private var mottoText: String?
 
     /// 하루에 붙일 수 있는 D-day 수
-    static let maxDDays = 2
-    static let maxCategories = 12
+    public static let maxDDays = 2
+    public static let maxCategories = 12
 
     private enum LegacyKeys: String, CodingKey { case ddayTitle, ddayDate }
 
-    static let defaultCategories: [Category] = [
+    public static let defaultCategories: [Category] = [
         Category(id: 0, name: "집중 업무", hex: "8EDCD2", counts: true),
         Category(id: 1, name: "미팅", hex: "F8B38A", counts: true),
         Category(id: 2, name: "소통·메일", hex: "A9CFF3", counts: true),
@@ -291,9 +329,9 @@ struct Prefs: Codable, Equatable {
         Category(id: 6, name: "휴식·이동", hex: "CFCFD4", counts: false),
     ]
 
-    init() {}
+    public init() {}
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let cats = try c.decodeIfPresent([Category].self, forKey: .categories) ?? []
         categories = (1...Prefs.maxCategories).contains(cats.count) ? cats : Prefs.defaultCategories
@@ -310,30 +348,43 @@ struct Prefs: Codable, Equatable {
     }
 }
 
-struct DDay: Codable, Identifiable, Equatable {
-    var id = UUID()
-    var title = ""
-    var date: Date
+public struct DDay: Codable, Identifiable, Equatable, Sendable {
+    public var id = UUID()
+    public var title = ""
+    public var date: Date
     /// 날에 붙인 복사본이면: 복사해 온 저장한 D-day 의 id (새로 만들어 목록에 저장하지 않았으면 nil)
-    var source: UUID? = nil
+    public var source: UUID? = nil
+
+    public init(id: UUID = UUID(), title: String = "", date: Date, source: UUID? = nil) {
+        self.id = id
+        self.title = title
+        self.date = date
+        self.source = source
+    }
 
     /// 기준 날에서 센 "D-3" / "D-DAY" / "D+2"
-    func count(from day: Date) -> String {
+    public func count(from day: Date) -> String {
         let n = Dates.daysBetween(day, date)
         return n > 0 ? "D-\(n)" : n == 0 ? "D-DAY" : "D+\(-n)"
     }
 }
 
-struct PlannerData: Codable {
-    var days: [String: DayRecord] = [:]
-    var weeks: [String: WeekRecord] = [:]
-    var prefs = Prefs()
+public struct PlannerData: Codable, Sendable {
+    public var days: [String: DayRecord] = [:]
+    public var weeks: [String: WeekRecord] = [:]
+    public var prefs = Prefs()
+
+    public init(days: [String: DayRecord] = [:], weeks: [String: WeekRecord] = [:], prefs: Prefs = Prefs()) {
+        self.days = days
+        self.weeks = weeks
+        self.prefs = prefs
+    }
 }
 
 // MARK: - Dates
 
-enum Dates {
-    static let cal: Calendar = {
+public enum Dates {
+    public static let cal: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.firstWeekday = 2
         c.locale = Locale(identifier: "ko_KR")
@@ -350,59 +401,69 @@ enum Dates {
         return f
     }()
 
-    static func key(_ d: Date) -> String { keyFormatter.string(from: d) }
-    static func parse(_ key: String) -> Date? { keyFormatter.date(from: key) }
-    static func day(_ d: Date) -> Date { cal.startOfDay(for: d) }
-    static func weekStart(_ d: Date) -> Date {
+    public static func key(_ d: Date) -> String { keyFormatter.string(from: d) }
+    public static func parse(_ key: String) -> Date? { keyFormatter.date(from: key) }
+    public static func day(_ d: Date) -> Date { cal.startOfDay(for: d) }
+    public static func weekStart(_ d: Date) -> Date {
         cal.dateInterval(of: .weekOfYear, for: d)?.start ?? day(d)
     }
-    static func add(days n: Int, to d: Date) -> Date { cal.date(byAdding: .day, value: n, to: d)! }
-    static func daysBetween(_ a: Date, _ b: Date) -> Int {
+    public static func add(days n: Int, to d: Date) -> Date { cal.date(byAdding: .day, value: n, to: d)! }
+    public static func daysBetween(_ a: Date, _ b: Date) -> Int {
         cal.dateComponents([.day], from: day(a), to: day(b)).day ?? 0
     }
-    static func isToday(_ d: Date) -> Bool { cal.isDateInToday(d) }
-    static func comp(_ d: Date) -> DateComponents {
+    public static func isToday(_ d: Date) -> Bool { cal.isDateInToday(d) }
+    public static func comp(_ d: Date) -> DateComponents {
         cal.dateComponents([.year, .month, .day, .weekday, .weekOfYear], from: d)
     }
 
-    static let weekdayEN = ["", "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
-    static let monthEN = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
-    static let monthFull = ["", "January", "February", "March", "April", "May", "June", "July",
+    public static let weekdayEN = ["", "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+    public static let monthEN = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+    public static let monthFull = ["", "January", "February", "March", "April", "May", "June", "July",
                             "August", "September", "October", "November", "December"]
 }
 
-func formatHM(_ minutes: Int) -> (String, String) {
+public func formatHM(_ minutes: Int) -> (String, String) {
     (String(minutes / 60), String(format: "%02d", minutes % 60))
 }
 
 // MARK: - Store
 
 /// 플래너 한 권 (책). 기록은 권마다 따로 저장된다.
-struct BookInfo: Codable, Identifiable, Equatable {
-    var id = UUID()
-    var name: String
+public struct BookInfo: Codable, Identifiable, Equatable, Sendable {
+    public var id = UUID()
+    public var name: String
     /// 첫 장 (반드시 있다). 이 날 이전으로는 넘어가지 않는다.
-    var start: Date
+    public var start: Date
     /// 마지막 장 (없으면 끝없이 넘어간다)
-    var end: Date? = nil
+    public var end: Date? = nil
     /// 표지 색 (ColorConcept id)
-    var cover = 0
-    var created = Date()
+    public var cover = 0
+    public var created = Date()
     /// 앱이 꽂아 둔 예시 플래너인지 (1.0.4). 다른 책과 똑같이 쓰고 지울 수 있고, 표시만 다르다.
     /// "플래너가 없다(첫 실행)" 를 셀 때는 빼고 센다 (PlannerStore.userBooks).
-    var isSample = false
+    public var isSample = false
+
+    public init(id: UUID = UUID(), name: String, start: Date, end: Date? = nil, cover: Int = 0, created: Date = Date(), isSample: Bool = false) {
+        self.id = id
+        self.name = name
+        self.start = start
+        self.end = end
+        self.cover = cover
+        self.created = created
+        self.isSample = isSample
+    }
 
     private enum CodingKeys: String, CodingKey { case id, name, start, end, cover, created, isSample }
 
     /// 날짜가 이 책 안에 있는지
-    func contains(_ d: Date) -> Bool {
+    public func contains(_ d: Date) -> Bool {
         let day = Dates.day(d)
         if day < Dates.day(start) { return false }
         if let end, day > Dates.day(end) { return false }
         return true
     }
 
-    var periodText: String {
+    public var periodText: String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ko_KR")
         f.dateFormat = "yyyy. M. d."
@@ -412,7 +473,7 @@ struct BookInfo: Codable, Identifiable, Equatable {
 
 // 예시 표시는 1.0.4 부터: 예전 파일은 false 로 읽고, 예시가 아닌 책은 예전 모양 그대로 적는다
 extension BookInfo {
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
@@ -423,7 +484,7 @@ extension BookInfo {
         isSample = try c.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(name, forKey: .name)
@@ -435,18 +496,24 @@ extension BookInfo {
     }
 }
 
-struct Library: Codable {
-    var books: [BookInfo] = []
-    var activeID: UUID? = nil
+public struct Library: Codable, Sendable {
+    public var books: [BookInfo] = []
+    public var activeID: UUID? = nil
     /// 예시 플래너를 한 번 꽂아 뒀는지 (1.0.4). 사용자가 지운 뒤에 저절로 다시 만들지 않으려고
     /// 책 목록과 같은 파일에 적는다 (책과 표시가 한 번에 같이 저장되고, 데이터 폴더를 따라다닌다).
-    var sampleSeeded = false
+    public var sampleSeeded = false
+
+    public init(books: [BookInfo] = [], activeID: UUID? = nil, sampleSeeded: Bool = false) {
+        self.books = books
+        self.activeID = activeID
+        self.sampleSeeded = sampleSeeded
+    }
 }
 
 extension Library {
     private enum Keys: String, CodingKey { case books, activeID, sampleSeeded }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         books = try c.decodeIfPresent([BookInfo].self, forKey: .books) ?? []
         activeID = try c.decodeIfPresent(UUID.self, forKey: .activeID)
@@ -457,54 +524,62 @@ extension Library {
 /// 있는데 읽지 못한 저장 파일 (책 파일 또는 library.json).
 /// 원본은 손대지 않고 같은 내용의 복사본("<파일>.unreadable-yyyyMMdd-HHmmss.json")을 옆에 남기며,
 /// 앱이 도는 동안 그 원본에는 아무것도 쓰지 않는다 (PlannerStore.saveNow · writeLibrary 가 건너뛴다).
-struct UnreadableFile: Equatable {
-    enum Kind: Equatable {
+public struct UnreadableFile: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
         case library
         case book(UUID)
     }
-    var kind: Kind
+    public var kind: Kind
     /// 원본 (그대로 둔다)
-    var url: URL
+    public var url: URL
     /// 원본을 그대로 복사해 둔 파일. 복사하지 못했으면 (읽기 권한이 없을 때 등) nil — 원본은 그래도 그대로 둔다.
-    var copy: URL?
+    public var copy: URL?
     /// 책 이름 (library.json 이면 nil)
-    var name: String?
+    public var name: String?
     /// 왜 읽지 못했는지 (알림에 그대로 보인다)
-    var reason: String
+    public var reason: String
+
+    public init(kind: Kind, url: URL, copy: URL? = nil, name: String? = nil, reason: String) {
+        self.kind = kind
+        self.url = url
+        self.copy = copy
+        self.name = name
+        self.reason = reason
+    }
 }
 
 @MainActor
-final class PlannerStore: ObservableObject {
+public final class PlannerStore: ObservableObject {
     /// 지금 펼친 책의 내용
-    @Published var data: PlannerData
+    @Published public var data: PlannerData
     /// 모든 책 목록과 펼친 책
-    @Published private(set) var library = Library()
+    @Published public private(set) var library = Library()
     /// 데이터가 바뀔 때마다 올라간다 (페이지 스냅샷 캐시 무효화용)
-    private(set) var version = 0
+    public private(set) var version = 0
 
     /// 저장 폴더 (메모리 전용이면 nil)
-    let folder: URL?
+    public let folder: URL?
     private var saveWork: DispatchWorkItem?
     /// library.json 이 있는데 읽지 못했다 → 앱이 도는 동안 library.json 에 아무것도 쓰지 않는다 (예시 플래너도 꽂지 않는다).
     /// 책장은 books 폴더의 읽을 수 있는 책 파일로 메모리에서만 다시 꾸민다 (recoveredLibrary).
-    private(set) var libraryUnreadable = false
+    public private(set) var libraryUnreadable = false
     /// 파일이 있는데 읽지 못한 책. 앱이 도는 동안 그 책 파일에는 쓰지 않고 (saveNow 가 건너뛴다) 펼치지도 않는다.
-    private(set) var unreadableBooks: [UUID: UnreadableFile] = [:]
+    public private(set) var unreadableBooks: [UUID: UnreadableFile] = [:]
     /// 켤 때 읽지 못한 파일. 앱이 첫 창을 열기 전에 한 번 알린다 (DataSafetyAlert.presentLaunchNotices).
-    private(set) var launchNotices: [UnreadableFile] = []
+    public private(set) var launchNotices: [UnreadableFile] = []
     /// 앱을 쓰다가 읽지 못하는 책을 펼치려 했을 때 (펼치지 않고 지금 책 그대로). AppDelegate 가 알림을 띄운다.
-    var onUnreadableBook: ((UnreadableFile) -> Void)?
+    public var onUnreadableBook: ((UnreadableFile) -> Void)?
     /// 메모리 전용일 때 펼치지 않은 책의 내용 (파일 대신)
     private var memoryBooks: [UUID: PlannerData] = [:]
 
-    var books: [BookInfo] { library.books }
-    var activeBook: BookInfo? { library.books.first { $0.id == library.activeID } }
+    public var books: [BookInfo] { library.books }
+    public var activeBook: BookInfo? { library.books.first { $0.id == library.activeID } }
     /// 사용자가 만든 책 (예시 플래너는 뺀다). "플래너가 한 권도 없다 = 처음" 은 이것으로 센다.
-    var userBooks: [BookInfo] { library.books.filter { !$0.isSample } }
-    var hasSampleBook: Bool { library.books.contains(where: \.isSample) }
+    public var userBooks: [BookInfo] { library.books.filter { !$0.isSample } }
+    public var hasSampleBook: Bool { library.books.contains(where: \.isSample) }
 
     /// 이 책 말고 펼칠 책: 사용자가 만든 책이 먼저, 없으면 예시 플래너 (읽지 못한 책은 건너뛴다)
-    func fallbackBook(excluding id: UUID?) -> BookInfo? {
+    public func fallbackBook(excluding id: UUID?) -> BookInfo? {
         let rest = library.books.filter { $0.id != id && unreadableBooks[$0.id] == nil }
         return rest.first { !$0.isSample } ?? rest.first
     }
@@ -521,20 +596,46 @@ final class PlannerStore: ObservableObject {
         return d
     }()
 
-    /// 앱의 저장 폴더(~/Library/Application Support/Spiralday)를 쓰거나, 메모리에서만 쓴다
-    convenience init(inMemory: Bool = false) {
+    /// 앱의 저장 폴더를 쓰거나, 메모리에서만 쓴다.
+    /// macOS: ~/Library/Application Support/Spiralday (예전 이름 PaperPlanner 폴더가 있으면 복사해 온다)
+    /// iOS: 앱 그룹 컨테이너(group.com.spiralday.app)의 Library/Application Support/Spiralday — 위젯이 같은 파일을 읽는다
+    public convenience init(inMemory: Bool = false) {
         guard !inMemory else {
             self.init(folder: nil)
             return
         }
+        #if os(macOS)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = support.appendingPathComponent("Spiralday", isDirectory: true)
         PlannerStore.migrateFolder(from: support.appendingPathComponent("PaperPlanner", isDirectory: true), to: dir)
         self.init(folder: dir)
+        #else
+        self.init(folder: Self.sharedFolder)
+        #endif
+    }
+
+    /// 앱 그룹 (iOS 앱 · 위젯이 같이 쓰는 저장 공간)
+    public nonisolated static let appGroupID = "group.com.spiralday.app"
+
+    /// 앱의 저장 폴더. macOS: ~/Library/Application Support/Spiralday.
+    /// iOS: 앱 그룹 컨테이너/Library/Application Support/Spiralday (앱 그룹을 쓸 수 없으면 앱의 Application Support/Spiralday).
+    /// 폴더를 만들지는 않는다 (PlannerStore 가 열 때 만든다).
+    public nonisolated static var sharedFolder: URL {
+        let fm = FileManager.default
+        #if os(macOS)
+        return fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Spiralday", isDirectory: true)
+        #else
+        if let group = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
+            return group.appendingPathComponent("Library/Application Support/Spiralday", isDirectory: true)
+        }
+        return fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Spiralday", isDirectory: true)
+        #endif
     }
 
     /// folder 에 저장하는 저장소 (nil = 메모리 전용). `--sample-book-test` 는 임시 폴더로 첫 실행 · 업데이트를 흉내 낸다.
-    init(folder dir: URL?) {
+    public init(folder dir: URL?) {
         data = PlannerData()
         folder = dir
         guard let dir else { return }
@@ -545,10 +646,19 @@ final class PlannerStore: ObservableObject {
         // 튜토리얼에서 만든 책이 펼쳐지게 둔다.
         if activeBook == nil { library.activeID = userBooks.first?.id }
         openActiveBook(notifying: false)
+        #if os(macOS)
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveNow() }
         }
+        #else
+        // iOS 는 끝내기 알림 없이 끝날 때가 많다: 뒤로 갈 때마다 바로 저장한다
+        for name in [UIApplication.didEnterBackgroundNotification, UIApplication.willTerminateNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.saveNow() }
+            }
+        }
+        #endif
     }
 
     /// library.json 을 읽는다.
@@ -625,7 +735,7 @@ final class PlannerStore: ObservableObject {
     /// 새 플래너를 한 권 만들어 편다. 아무 책도 펼치지 않은 채로 쓰면 적은 것이 어느 파일에도 저장되지 않기 때문이다.
     /// 읽지 못한 책 파일은 그대로 둔다. 만든 책의 id 를 돌려준다 (할 일이 없으면 nil).
     @discardableResult
-    func openFreshBookIfNothingReadable(today: Date = Date()) -> UUID? {
+    public func openFreshBookIfNothingReadable(today: Date = Date()) -> UUID? {
         guard folder != nil, activeBook == nil, !unreadableBooks.isEmpty else { return nil }
         let taken = Set(library.books.map(\.name))
         let name = (["새 플래너"] + (2...99).map { "새 플래너 \($0)" }).first { !taken.contains($0) } ?? "새 플래너"
@@ -634,7 +744,7 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 읽지 못한 파일의 복사본 이름: "<파일>.unreadable-yyyyMMdd-HHmmss.json"
-    static func unreadableCopyName(_ url: URL, at date: Date) -> String {
+    public static func unreadableCopyName(_ url: URL, at date: Date) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
@@ -642,7 +752,7 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 이 파일을 읽지 못했을 때 남긴 복사본들 (이름 순 = 오래된 것부터)
-    static func unreadableCopies(of url: URL) -> [URL] {
+    public static func unreadableCopies(of url: URL) -> [URL] {
         let dir = url.deletingLastPathComponent()
         let prefix = url.lastPathComponent + ".unreadable-"
         return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
@@ -654,7 +764,7 @@ final class PlannerStore: ObservableObject {
     /// 읽지 못한 파일을 손대지 않고 옆에 그대로 복사해 둔다. 같은 내용의 복사본이 이미 있으면 그것을 돌려준다
     /// (켤 때마다 복사본이 늘지 않게). 임시 이름으로 복사한 뒤 이름을 바꾸므로 반쯤 복사된 파일이 복사본 이름으로 남지 않고,
     /// 있는 파일은 덮어쓰지 않는다. 복사하지 못하면 (읽기 권한이 없을 때 등) nil.
-    static func preserveUnreadable(_ url: URL, now: Date = Date()) -> URL? {
+    public static func preserveUnreadable(_ url: URL, now: Date = Date()) -> URL? {
         let fm = FileManager.default
         if let raw = try? Data(contentsOf: url),
            let same = unreadableCopies(of: url).first(where: { (try? Data(contentsOf: $0)) == raw }) {
@@ -680,14 +790,14 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 알림에 보일 까닭
-    static func reason(_ error: Error) -> String {
+    public static func reason(_ error: Error) -> String {
         error is DecodingError
             ? "내용이 깨졌거나 이 버전의 Spiralday 가 읽을 수 없는 형식이에요."
             : "파일을 읽지 못했어요 (읽기 권한이 없거나 디스크에서 읽을 수 없어요)."
     }
 
     /// 새 파일을 원자적으로 만든다: 같은 폴더의 임시 파일에 다 쓴 뒤 이름을 바꾼다. 그 이름에 파일이 이미 있으면 실패한다 (덮어쓰지 않는다).
-    static func writeNewFile(_ raw: Data, to url: URL) throws {
+    public static func writeNewFile(_ raw: Data, to url: URL) throws {
         let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         try raw.write(to: tmp)
         do {
@@ -708,7 +818,7 @@ final class PlannerStore: ObservableObject {
     private var libraryURL: URL? { folder?.appendingPathComponent("library.json") }
     private func bookURL(_ id: UUID) -> URL? { folder?.appendingPathComponent("books/\(id.uuidString).json") }
     /// 펼친 책의 저장 파일
-    var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
+    public var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
 
     /// 책 내용을 읽는다. 파일이 아직 없으면 (막 만든 책) 빈 내용.
     /// 파일이 있는데 읽지 못하면 nil: 원본은 손대지 않고 복사본을 남기며, 앱이 도는 동안 그 파일에 쓰지 않도록
@@ -738,32 +848,32 @@ final class PlannerStore: ObservableObject {
     // MARK: D-day 옮기기 (1.0.3: 모든 날에 같은 D-day → 날마다 따로)
 
     /// 옮긴 결과 요약
-    struct DDayMigration {
+    public struct DDayMigration {
         /// 저장한 D-day 목록에 남은 개수
-        var library = 0
+        public var library = 0
         /// D-day 를 복사해 붙인 날 (yyyy-MM-dd)
-        var stampedDays: [String] = []
-        var todayKey = ""
+        public var stampedDays: [String] = []
+        public var todayKey = ""
         /// 옮긴 뒤 오늘 붙어 있는 D-day
-        var today: [DDay] = []
+        public var today: [DDay] = []
         /// 옮기기 전 원본을 남긴 파일 (이번에 새로 만들었으면 true)
-        var backup: URL? = nil
-        var backupCreated = false
+        public var backup: URL? = nil
+        public var backupCreated = false
     }
 
     /// 옮기기 전 원본을 남기는 파일: "<책 파일>.before-per-day-dday.json"
     /// 옮기기 코드는 지우지 않는다. 사용자가 그 책을 지울 때만 같이 지운다 (deleteBook).
-    static func ddayBackupURL(_ url: URL) -> URL { URL(fileURLWithPath: url.path + ".before-per-day-dday.json") }
+    public static func ddayBackupURL(_ url: URL) -> URL { URL(fileURLWithPath: url.path + ".before-per-day-dday.json") }
 
     /// 책 파일을 읽는다. D-day 를 날마다 따로 붙이기 전(1.0.2 까지)의 파일이면
     /// 원본을 옆에 백업으로 남기고 → 옮기고 → 그 파일에 저장한다. 이미 옮긴 파일이면 읽기만 한다.
     /// loadBook 과 `--dday-migrate-test` 가 같이 쓴다.
-    static func openBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) -> (data: PlannerData, migration: DDayMigration?)? {
+    public static func openBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) -> (data: PlannerData, migration: DDayMigration?)? {
         try? readBookFile(url, book: book, today: today)
     }
 
     /// openBookFile 과 같고, 읽지 못하면 그 까닭(읽기 오류 / DecodingError)을 던진다. 읽지 못한 파일에는 아무것도 쓰지 않는다.
-    static func readBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) throws -> (data: PlannerData, migration: DDayMigration?) {
+    public static func readBookFile(_ url: URL, book: BookInfo?, today: Date = Date()) throws -> (data: PlannerData, migration: DDayMigration?) {
         let raw = try Data(contentsOf: url)
         var d = try dec.decode(PlannerData.self, from: raw)
         guard !d.prefs.ddaysPerDay else { return (d, nil) }
@@ -785,7 +895,7 @@ final class PlannerStore: ObservableObject {
     /// 이미 쓴 날(기록이 있는 날)과 오늘에는 그 D-day 를 복사해 붙여서 전과 똑같이 보이게 하고,
     /// 나머지 날은 비워 둔다. 목록은 "저장한 D-day" 로 그대로 남긴다.
     /// 이미 D-day 가 붙은 날은 건드리지 않고, 옮긴 뒤에는 ddaysPerDay = true 라서 두 번 붙이지 않는다.
-    static func migrateDDaysPerDay(_ d: inout PlannerData, today: Date, book: BookInfo?) -> DDayMigration {
+    public nonisolated static func migrateDDaysPerDay(_ d: inout PlannerData, today: Date, book: BookInfo?) -> DDayMigration {
         let lib = d.prefs.ddays
         let tk = Dates.key(today)
         var m = DDayMigration(library: lib.count, todayKey: tk)
@@ -828,7 +938,7 @@ final class PlannerStore: ObservableObject {
     /// 새 책을 만들고 펼친다. 형광펜 구성과 기본 컬러는 지금 책에서 이어받는다.
     /// 지금 펼친 책이 예시 플래너면 예시의 형광펜 대신 내가 만든 첫 책의 것을 (없으면 기본값을) 쓴다.
     @discardableResult
-    func createBook(name: String, start: Date, end: Date?, cover: Int = 0) -> UUID {
+    public func createBook(name: String, start: Date, end: Date?, cover: Int = 0) -> UUID {
         var book = BookInfo(name: name, start: Dates.day(start), end: end.map(Dates.day), cover: cover)
         if let e = book.end, e < book.start { book.end = book.start }
         var fresh = PlannerData()
@@ -855,7 +965,7 @@ final class PlannerStore: ObservableObject {
         return book.id
     }
 
-    func updateBook(_ id: UUID, _ f: (inout BookInfo) -> Void) {
+    public func updateBook(_ id: UUID, _ f: (inout BookInfo) -> Void) {
         guard let i = library.books.firstIndex(where: { $0.id == id }) else { return }
         f(&library.books[i])
         library.books[i].start = Dates.day(library.books[i].start)
@@ -867,7 +977,7 @@ final class PlannerStore: ObservableObject {
     /// 다른 책을 펼친다. 이미 펼친 책이면 그대로 true.
     /// 그 책 파일을 읽지 못하면 펼치지 않고 (지금 책 그대로, 읽지 못한 파일은 손대지 않고) onUnreadableBook 으로 알린 뒤 false.
     @discardableResult
-    func activate(_ id: UUID) -> Bool {
+    public func activate(_ id: UUID) -> Bool {
         guard id != library.activeID else { return true }
         guard library.books.contains(where: { $0.id == id }) else { return false }
         // 지금 책을 저장하기 전에 먼저 읽어 본다 (읽지 못하면 아무것도 바꾸지 않는다)
@@ -887,7 +997,7 @@ final class PlannerStore: ObservableObject {
     /// 책을 지운다 (파일도, D-day 옮기기 백업 사본도). 펼친 책이면 남은 책 가운데 사용자가 만든 첫 책을
     /// (없으면 예시 플래너를) 펼친다.
     /// 읽지 못한 책도 사용자가 고르면 지운다. 그때 남긴 복사본(.unreadable-…)은 지우지 않는다.
-    func deleteBook(_ id: UUID) {
+    public func deleteBook(_ id: UUID) {
         let next = fallbackBook(excluding: id)?.id
         library.books.removeAll { $0.id == id }
         memoryBooks[id] = nil
@@ -919,7 +1029,7 @@ final class PlannerStore: ObservableObject {
     /// (책이 한 권도 없던 첫 실행이면 튜토리얼에서 만든 책이 펼쳐진다).
     /// 한 번 꽂은 뒤에는 사용자가 지워도 다시 만들지 않는다 (library.sampleSeeded).
     /// 일반 실행에서 책장을 읽고 옮기기까지 끝난 뒤에 부른다. 메모리 전용 저장소에서는 아무것도 하지 않는다.
-    func seedSampleBookIfNeeded(today: Date = Date()) {
+    public func seedSampleBookIfNeeded(today: Date = Date()) {
         guard folder != nil, !libraryUnreadable, !library.sampleSeeded else { return }
         if hasSampleBook {
             library.sampleSeeded = true
@@ -932,7 +1042,7 @@ final class PlannerStore: ObservableObject {
     /// 오늘까지 14일치 예시 플래너를 새로 만들어 책장 끝에 꽂는다 (펼치지는 않는다).
     /// 이미 예시 플래너가 있거나 책 파일을 쓰지 못하면 nil. 설정의 ‘예시 플래너 다시 넣기’도 이것을 쓴다.
     @discardableResult
-    func addSampleBook(today: Date = Date()) -> UUID? {
+    public func addSampleBook(today: Date = Date()) -> UUID? {
         guard !hasSampleBook else { return nil }
         let sample = Self.makeSampleBook(today: today)
         if folder == nil {
@@ -949,7 +1059,7 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 메모리 전용(스냅샷/QA)에서 이 책 한 권만 꽂고 펼친다
-    func useBook(_ book: BookInfo, data: PlannerData) {
+    public func useBook(_ book: BookInfo, data: PlannerData) {
         guard folder == nil else { return }
         library = Library(books: [book], activeID: book.id)
         self.data = data
@@ -958,7 +1068,7 @@ final class PlannerStore: ObservableObject {
 
     // MARK: saving
 
-    func scheduleSave() {
+    public func scheduleSave() {
         version &+= 1
         guard folder != nil else { return }
         saveWork?.cancel()
@@ -969,7 +1079,7 @@ final class PlannerStore: ObservableObject {
 
     /// 펼친 책과 책장을 저장한다 (임시 파일에 다 쓴 뒤 이름을 바꾸는 원자적 쓰기).
     /// 읽지 못한 책 파일에는 쓰지 않는다 (그 책은 펼쳐지지 않지만, 혹시라도 펼친 책이면 건너뛴다).
-    func saveNow() {
+    public func saveNow() {
         saveWork?.cancel()
         guard folder != nil else { return }
         if let id = library.activeID, unreadableBooks[id] == nil,
@@ -986,20 +1096,20 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 메모리 전용(데모/스냅샷)에서 쓸 책
-    func useDemoBook(start: Date, end: Date? = nil) {
+    public func useDemoBook(start: Date, end: Date? = nil) {
         let book = BookInfo(name: "데모 플래너", start: Dates.day(start), end: end)
         library = Library(books: [book], activeID: book.id)
     }
 
     // Days
     /// 그날 기록. 할 일은 늘 줄이 매겨져 줄 순서로 온다 (가져온 예전 백업처럼 줄이 없는 기록도 보이던 줄로).
-    func day(_ d: Date) -> DayRecord {
+    public func day(_ d: Date) -> DayRecord {
         var r = data.days[Dates.key(d)] ?? DayRecord()
         if !r.taskRowsReady { r.assignTaskRows() }
         return r
     }
 
-    func editDay(_ d: Date, _ f: (inout DayRecord) -> Void) {
+    public func editDay(_ d: Date, _ f: (inout DayRecord) -> Void) {
         let k = Dates.key(d)
         var r = data.days[k] ?? DayRecord()
         // 고치기 전후로 할 일 줄을 맞춘다 (줄 없이 더한 할 일은 위에서부터 빈 줄에)
@@ -1011,16 +1121,16 @@ final class PlannerStore: ObservableObject {
     }
 
     // Weeks
-    func week(_ start: Date) -> WeekRecord { data.weeks[Dates.key(start)] ?? WeekRecord() }
+    public func week(_ start: Date) -> WeekRecord { data.weeks[Dates.key(start)] ?? WeekRecord() }
 
-    func editWeek(_ start: Date, _ f: (inout WeekRecord) -> Void) {
+    public func editWeek(_ start: Date, _ f: (inout WeekRecord) -> Void) {
         var r = week(start)
         f(&r)
         data.weeks[Dates.key(start)] = r
         scheduleSave()
     }
 
-    func editPrefs(_ f: (inout Prefs) -> Void) {
+    public func editPrefs(_ f: (inout Prefs) -> Void) {
         f(&data.prefs)
         scheduleSave()
     }
@@ -1030,14 +1140,14 @@ final class PlannerStore: ObservableObject {
     // 날에 붙이거나 떼거나 고치면 그 날만 바뀌고, 목록을 고치거나 지워도 이미 붙인 날은 그대로다.
 
     /// 저장한 D-day
-    var ddayLibrary: [DDay] { data.prefs.ddays }
+    public var ddayLibrary: [DDay] { data.prefs.ddays }
 
     /// 이 날에 붙인 D-day
-    func ddays(_ d: Date) -> [DDay] { day(d).ddays }
+    public func ddays(_ d: Date) -> [DDay] { day(d).ddays }
 
     /// 저장한 D-day 를 이 날에 복사해 붙인다. 이미 붙였거나 두 개가 다 찼으면 false.
     @discardableResult
-    func applyDDay(_ libraryID: UUID, to d: Date) -> Bool {
+    public func applyDDay(_ libraryID: UUID, to d: Date) -> Bool {
         guard let item = ddayLibrary.first(where: { $0.id == libraryID }) else { return false }
         let now = ddays(d)
         guard now.count < Prefs.maxDDays, !now.contains(where: { $0.source == libraryID }) else { return false }
@@ -1047,7 +1157,7 @@ final class PlannerStore: ObservableObject {
 
     /// 새 D-day 를 이 날에 붙인다. save 면 저장한 D-day 목록에도 더한다. 두 개가 다 찼으면 nil.
     @discardableResult
-    func addDDay(title: String, date: Date, to d: Date, save: Bool = true) -> UUID? {
+    public func addDDay(title: String, date: Date, to d: Date, save: Bool = true) -> UUID? {
         guard ddays(d).count < Prefs.maxDDays else { return nil }
         let day = Dates.day(date)
         var source: UUID? = nil
@@ -1058,12 +1168,12 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 이 날에서만 뗀다 (다른 날, 저장한 목록은 그대로)
-    func removeDDay(_ id: UUID, from d: Date) {
+    public func removeDDay(_ id: UUID, from d: Date) {
         editDay(d) { $0.ddays.removeAll { $0.id == id } }
     }
 
     /// 이 날에 붙인 것만 고친다
-    func editDDay(_ id: UUID, on d: Date, _ f: (inout DDay) -> Void) {
+    public func editDDay(_ id: UUID, on d: Date, _ f: (inout DDay) -> Void) {
         editDay(d) { r in
             guard let i = r.ddays.firstIndex(where: { $0.id == id }) else { return }
             f(&r.ddays[i])
@@ -1072,7 +1182,7 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 어제와 같게: 전날 붙인 D-day 를 이 날에도 복사해 붙인다 (이미 있는 것은 건너뛴다)
-    func copyPreviousDDays(to d: Date) {
+    public func copyPreviousDDays(to d: Date) {
         let prev = ddays(Dates.add(days: -1, to: d))
         guard !prev.isEmpty else { return }
         editDay(d) { r in
@@ -1085,14 +1195,14 @@ final class PlannerStore: ObservableObject {
 
     /// 저장한 D-day 목록에 더한다 (어느 날에도 붙이지 않는다)
     @discardableResult
-    func addLibraryDDay(title: String = "", date: Date) -> UUID {
+    public func addLibraryDDay(title: String = "", date: Date) -> UUID {
         let item = DDay(title: title, date: Dates.day(date))
         editPrefs { $0.ddays.append(item) }
         return item.id
     }
 
     /// 목록에서만 고친다 (이미 붙인 날은 그대로)
-    func editLibraryDDay(_ id: UUID, _ f: (inout DDay) -> Void) {
+    public func editLibraryDDay(_ id: UUID, _ f: (inout DDay) -> Void) {
         editPrefs { p in
             guard let i = p.ddays.firstIndex(where: { $0.id == id }) else { return }
             f(&p.ddays[i])
@@ -1101,62 +1211,62 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 목록에서만 지운다 (이미 붙인 날은 그대로)
-    func removeLibraryDDay(_ id: UUID) {
+    public func removeLibraryDDay(_ id: UUID) {
         editPrefs { $0.ddays.removeAll { $0.id == id } }
     }
 
     /// "기록한 날" 수: D-day 만 붙인 날은 빼고 센다
-    var recordedDayCount: Int { data.days.values.lazy.filter(\.hasRecord).count }
+    public var recordedDayCount: Int { data.days.values.lazy.filter(\.hasRecord).count }
 
     // Time-table notes
     @discardableResult
-    func addNote(_ d: Date, _ note: TimeNote) -> UUID {
+    public func addNote(_ d: Date, _ note: TimeNote) -> UUID {
         editDay(d) { $0.notes.append(note) }
         return note.id
     }
 
-    func updateNote(_ d: Date, _ id: UUID, _ f: (inout TimeNote) -> Void) {
+    public func updateNote(_ d: Date, _ id: UUID, _ f: (inout TimeNote) -> Void) {
         editDay(d) { r in if let i = r.notes.firstIndex(where: { $0.id == id }) { f(&r.notes[i]) } }
     }
 
-    func removeNote(_ d: Date, _ id: UUID) {
+    public func removeNote(_ d: Date, _ id: UUID) {
         editDay(d) { $0.notes.removeAll { $0.id == id } }
     }
 
     /// 지우개: 범위와 겹치는 메모/밥시간을 지운다
-    func removeNotes(_ d: Date, overlapping range: ClosedRange<Int>) {
+    public func removeNotes(_ d: Date, overlapping range: ClosedRange<Int>) {
         guard day(d).notes.contains(where: { range.overlaps($0.start...$0.end) }) else { return }
         editDay(d) { $0.notes.removeAll { range.overlaps($0.start...$0.end) } }
     }
 
     /// 편집을 마쳤는데 비어 있는 글씨 메모는 지운다
-    func cleanupNotes(_ d: Date) {
+    public func cleanupNotes(_ d: Date) {
         guard day(d).notes.contains(where: { $0.kind == .text && $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) else { return }
         editDay(d) { $0.notes.removeAll { $0.kind == .text && $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
     }
 
     // Color concept
-    func concept(_ d: Date) -> ColorConcept { ColorConcept.of(day(d).theme ?? data.prefs.defaultTheme) }
+    public func concept(_ d: Date) -> ColorConcept { ColorConcept.of(day(d).theme ?? data.prefs.defaultTheme) }
 
-    func setTheme(_ d: Date, _ theme: Int?) { editDay(d) { $0.theme = theme } }
+    public func setTheme(_ d: Date, _ theme: Int?) { editDay(d) { $0.theme = theme } }
 
     // Categories
-    var categories: [Category] { data.prefs.categories }
+    public var categories: [Category] { data.prefs.categories }
 
-    func category(_ id: Int?) -> Category? {
+    public func category(_ id: Int?) -> Category? {
         guard let id else { return nil }
         return categories.first { $0.id == id }
     }
 
     /// 형광펜 편집 (설정 창 / 팔레트)
-    func updateCategory(_ id: Int, _ f: (inout Category) -> Void) {
+    public func updateCategory(_ id: Int, _ f: (inout Category) -> Void) {
         editPrefs { p in
             if let i = p.categories.firstIndex(where: { $0.id == id }) { f(&p.categories[i]) }
         }
     }
 
     @discardableResult
-    func addCategory(name: String = "새 형광펜", hex: String = "B9E4A8") -> Int? {
+    public func addCategory(name: String = "새 형광펜", hex: String = "B9E4A8") -> Int? {
         guard categories.count < Prefs.maxCategories else { return nil }
         let id = (categories.map(\.id).max() ?? -1) + 1
         editPrefs { $0.categories.append(Category(id: id, name: name, hex: hex, counts: true)) }
@@ -1164,16 +1274,16 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 지운 형광펜으로 칠한 칸은 빈 칸으로 보이고, 그 색이던 할 일은 색 없음이 된다.
-    func removeCategory(_ id: Int) {
+    public func removeCategory(_ id: Int) {
         guard categories.count > 1 else { return }
         editPrefs { $0.categories.removeAll { $0.id == id } }
     }
 
-    func moveCategories(from: IndexSet, to: Int) {
+    public func moveCategories(from: IndexSet, to: Int) {
         editPrefs { $0.categories.move(fromOffsets: from, toOffset: to) }
     }
 
-    func minutes(_ d: Date, cat: Int? = nil) -> Int {
+    public func minutes(_ d: Date, cat: Int? = nil) -> Int {
         let slots = day(d).slots
         let n: Int
         if let cat {
@@ -1188,7 +1298,7 @@ final class PlannerStore: ObservableObject {
     // Bindings
     /// 같은 형광펜(카테고리)끼리 모은다. 묶음 순서는 처음 나온 순서, 묶음 안 순서는 그대로.
     /// 1.0.4 까지 할 일을 보여 주던 순서라서, 이제는 줄이 없는 예전 기록에 줄을 매길 때만 쓴다 (assignTaskRows).
-    nonisolated static func grouped(_ tasks: [PlanTask]) -> [PlanTask] {
+    public nonisolated static func grouped(_ tasks: [PlanTask]) -> [PlanTask] {
         var order: [Int?] = []
         var buckets: [Int?: [PlanTask]] = [:]
         for t in tasks {
@@ -1201,7 +1311,7 @@ final class PlannerStore: ObservableObject {
     /// 빈 할 일을 row 줄에 만들어 그 id 를 돌려준다 (그 줄을 이미 다른 할 일이 쓰고 있으면 그 아래 빈 줄에).
     /// 형광펜(분류)은 보통 없이 만들고, 다 쓴 뒤에 왼쪽 칸을 눌러 고른다.
     @discardableResult
-    func addTask(_ d: Date, row: Int, cat: Int? = nil) -> UUID {
+    public func addTask(_ d: Date, row: Int, cat: Int? = nil) -> UUID {
         let t = PlanTask(text: "", cat: cat)
         editDay(d) { $0.insertTask(t, row: row) }
         return t.id
@@ -1210,25 +1320,25 @@ final class PlannerStore: ObservableObject {
     /// 빈 할 일을 마지막으로 쓴 줄 다음의 빈 줄에 만든다 (주간 페이지의 빈 줄을 눌렀을 때).
     /// 아래에 빈 줄이 없으면 위에서부터 첫 빈 줄, 그것도 없으면 맨 끝에 한 줄 더.
     @discardableResult
-    func addTaskAfterLast(_ d: Date, cat: Int? = nil) -> UUID {
+    public func addTaskAfterLast(_ d: Date, cat: Int? = nil) -> UUID {
         let t = PlanTask(text: "", cat: cat)
         editDay(d) { r in r.insertTask(t, row: r.freeTaskRow(after: r.lastTaskLine { _ in true } ?? -1)) }
         return t.id
     }
 
-    func taskText(_ d: Date, id: UUID) -> Binding<String> {
+    public func taskText(_ d: Date, id: UUID) -> Binding<String> {
         Binding(
             get: { self.day(d).tasks.first { $0.id == id }?.text ?? "" },
             set: { v in self.editDay(d) { r in if let i = r.tasks.firstIndex(where: { $0.id == id }) { r.tasks[i].text = v } } }
         )
     }
 
-    func dayField(_ d: Date, _ kp: WritableKeyPath<DayRecord, String>) -> Binding<String> {
+    public func dayField(_ d: Date, _ kp: WritableKeyPath<DayRecord, String>) -> Binding<String> {
         Binding(get: { self.day(d)[keyPath: kp] }, set: { v in self.editDay(d) { $0[keyPath: kp] = v } })
     }
 
     /// 메모는 3칸이 기본이고, 넘치면 늘어난다
-    func memoTag(_ d: Date, _ i: Int) -> Binding<String> {
+    public func memoTag(_ d: Date, _ i: Int) -> Binding<String> {
         Binding(get: { let t = self.day(d).memoTags; return i < t.count ? t[i] : "" },
                 set: { v in self.editDay(d) { r in
                     while r.memoTags.count <= i { r.memoTags.append("") }
@@ -1236,7 +1346,7 @@ final class PlannerStore: ObservableObject {
                 } })
     }
 
-    func memo(_ d: Date, _ i: Int) -> Binding<String> {
+    public func memo(_ d: Date, _ i: Int) -> Binding<String> {
         Binding(get: { let m = self.day(d).memos; return i < m.count ? m[i] : "" },
                 set: { v in self.editDay(d) { r in
                     while r.memos.count <= i { r.memos.append("") }
@@ -1244,26 +1354,26 @@ final class PlannerStore: ObservableObject {
                 } })
     }
 
-    func weekField(_ s: Date, _ kp: WritableKeyPath<WeekRecord, String>) -> Binding<String> {
+    public func weekField(_ s: Date, _ kp: WritableKeyPath<WeekRecord, String>) -> Binding<String> {
         Binding(get: { self.week(s)[keyPath: kp] }, set: { v in self.editWeek(s) { $0[keyPath: kp] = v } })
     }
 
     /// 비어 있는 할 일을 지운다 (지금 쓰고 있는 것은 남긴다). 글을 다 지운 할 일은 이렇게 없어진다.
     /// 남은 할 일은 제 줄에 그대로 있다 (모으거나 당기지 않는다).
-    func cleanup(_ d: Date, keep: UUID? = nil) {
+    public func cleanup(_ d: Date, keep: UUID? = nil) {
         guard day(d).tasks.contains(where: { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty }) else { return }
         editDay(d) { $0.tasks.removeAll { $0.id != keep && $0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
     }
 
     /// 펜 클릭: ○ → △ → × → → → 없음
-    func cycleMark(_ d: Date, _ id: UUID) {
+    public func cycleMark(_ d: Date, _ id: UUID) {
         guard let t = day(d).tasks.first(where: { $0.id == id }) else { return }
         setMark(d, id, t.mark.next)
     }
 
     /// 체크 표시를 바꾼다. 일간 · 주간의 펜 클릭, 오른쪽 클릭 메뉴, 내일로 미루기가 모두 여기를 지난다.
     /// → (미룸) 이 되면 다음 날로 넘기고, → 를 떼면 다음 날에 넘긴 것을 손대지 않았을 때만 거둔다.
-    func setMark(_ d: Date, _ id: UUID, _ m: Mark) {
+    public func setMark(_ d: Date, _ id: UUID, _ m: Mark) {
         guard let t = day(d).tasks.first(where: { $0.id == id }) else { return }
         if t.mark != m {
             editDay(d) { r in
@@ -1278,7 +1388,7 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 다음 날에 이 할 일에서 넘어온 할 일 (없으면 nil)
-    func carriedCopy(of id: UUID, from d: Date) -> PlanTask? {
+    public func carriedCopy(of id: UUID, from d: Date) -> PlanTask? {
         day(Dates.add(days: 1, to: d)).tasks.first { $0.carriedFrom == id }
     }
 
@@ -1303,7 +1413,7 @@ final class PlannerStore: ObservableObject {
 
     /// 할 일의 형광펜(분류)을 고른다 (nil = 없음). 같은 형광펜을 쓰는 할 일이 이미 있으면
     /// 그 묶음 바로 아래로 옮겨 1.0.4 까지처럼 같은 형광펜끼리 모아 둔다. 처음 쓰는 형광펜이면 제 줄에 그대로.
-    func setCategory(_ d: Date, _ id: UUID, _ cat: Int?) {
+    public func setCategory(_ d: Date, _ id: UUID, _ cat: Int?) {
         guard let t = day(d).tasks.first(where: { $0.id == id }), t.cat != cat else { return }
         editDay(d) { r in
             guard let i = r.tasks.firstIndex(where: { $0.id == id }) else { return }
@@ -1313,25 +1423,25 @@ final class PlannerStore: ObservableObject {
     }
 
     /// 할 일을 지운다. 이미 다음 날로 넘긴 할 일은 그날의 할 일이라 그대로 둔다.
-    func delete(_ d: Date, _ id: UUID) {
+    public func delete(_ d: Date, _ id: UUID) {
         editDay(d) { $0.tasks.removeAll { $0.id == id } }
     }
 
     /// 내일로 미루기 = → 표시 (다음 날로 한 번만 넘어간다)
-    func postpone(_ d: Date, _ id: UUID) { setMark(d, id, .moved) }
+    public func postpone(_ d: Date, _ id: UUID) { setMark(d, id, .moved) }
 
     // MARK: DAY OFF
 
-    func isDayOff(_ d: Date) -> Bool { day(d).dayOff }
+    public func isDayOff(_ d: Date) -> Bool { day(d).dayOff }
 
     /// 쉬는 날로 두거나 되돌린다. COMMENT 글은 그대로 남는다.
-    func setDayOff(_ d: Date, _ on: Bool) {
+    public func setDayOff(_ d: Date, _ on: Bool) {
         guard isDayOff(d) != on else { return }
         editDay(d) { $0.dayOff = on }
     }
 
     // Sample content for previews / snapshots
-    func fillSample(around today: Date) {
+    public func fillSample(around today: Date) {
         let ws = Dates.weekStart(today)
         fillSampleHistory(before: ws, weeks: 6)
         editWeek(ws) { $0.goal = "런칭 전 QA 끝내고 금요일 전에 배포 준비 완료하기"; $0.review = "집중 시간이 늘었다!"; $0.stars = 4 }

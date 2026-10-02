@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Sparkle
+import SpiraldayKit
 
 @main
 struct SpiraldayApp: App {
@@ -66,18 +67,6 @@ extension SpiraldayApp {
         guard !TourController.shared.isRunning else { return }
         f(delegate.state)
     }
-}
-
-/// 밖으로 나가는 링크 (사이트 푸터와 같은 곳)
-enum Links {
-    static let website = URL(string: "https://spiralday.com")!
-    static let github = URL(string: "https://github.com/Grwaywee/spiralday")!
-    static let company = URL(string: "https://leanagilehungry.com")!
-    static let privacy = URL(string: "https://spiralday.com/privacy.html")!
-    /// 버그 신고·기능 제안 (구글 설문지가 생기면 그 주소로 바꾼다)
-    static let feedback = URL(string: "mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0%20%C2%B7%20%EA%B8%B0%EB%8A%A5%20%EC%A0%9C%EC%95%88")!
-
-    static func open(_ url: URL) { NSWorkspace.shared.open(url) }
 }
 
 @MainActor

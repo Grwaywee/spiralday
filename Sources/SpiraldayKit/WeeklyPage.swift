@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 주간 페이지 — 가로 2000 × 1277 디자인 단위, 스프링은 위쪽.
@@ -17,13 +21,13 @@ import AppKit
 
 // MARK: - Layout (디자인 단위)
 
-enum WK {
-    static let page = PageKind.weekly.design
+public enum WK {
+    public static let page = PageKind.weekly.design
     // 2 × 42 + 7 × 260 + 6 × 16 = 2000
-    static let margin: CGFloat = 42
-    static let gap: CGFloat = 16
-    static let colW: CGFloat = 260
-    static func colX(_ i: Int) -> CGFloat { margin + CGFloat(i) * (colW + gap) }
+    public static let margin: CGFloat = 42
+    public static let gap: CGFloat = 16
+    public static let colW: CGFloat = 260
+    public static func colX(_ i: Int) -> CGFloat { margin + CGFloat(i) * (colW + gap) }
 
     // 세로 배치 (1.0.5 에서 위아래 여백을 48 줄이고 그만큼 타임테이블 행을 24 → 26 으로 키웠다)
     //   0–60     위 여백 (스프링 구멍 9–21, 가장 작은 창에서도 창 버튼 아래)
@@ -32,59 +36,59 @@ enum WK {
     //   1218     합계 줄 — 그 아래 59 는 넘김 모서리 자리
 
     // 머리줄: 칸 하나를 세로선으로 나눈 모양 두 개
-    static let headTop: CGFloat = 60
-    static let headH: CGFloat = 38
+    public static let headTop: CGFloat = 60
+    public static let headH: CGFloat = 38
     /// MY GOAL │ 목표 — 월요일 왼쪽부터 금요일 오른쪽까지
-    static let goalFrame = CGRect(x: margin, y: headTop, width: colX(4) + colW - margin, height: headH)
-    static let goalSplit: CGFloat = margin + 130
+    public static let goalFrame = CGRect(x: margin, y: headTop, width: colX(4) + colW - margin, height: headH)
+    public static let goalSplit: CGFloat = margin + 130
     /// 목표 글 시작 (앞에 ┌ 강조 표시 자리)
-    static let goalTextX: CGFloat = goalSplit + 34
+    public static let goalTextX: CGFloat = goalSplit + 34
     /// REVIEW OF THE WEEK │ 별 — 토요일 · 일요일 위, 가운데 세로선은 두 칸 사이
-    static let reviewFrame = CGRect(x: colX(5), y: headTop, width: colX(6) + colW - colX(5), height: headH)
-    static let reviewSplit: CGFloat = colX(6) - gap / 2
-    static let starsBox = CGRect(x: reviewSplit, y: headTop, width: reviewFrame.maxX - reviewSplit, height: headH)
+    public static let reviewFrame = CGRect(x: colX(5), y: headTop, width: colX(6) + colW - colX(5), height: headH)
+    public static let reviewSplit: CGFloat = colX(6) - gap / 2
+    public static let starsBox = CGRect(x: reviewSplit, y: headTop, width: reviewFrame.maxX - reviewSplit, height: headH)
 
     // 요일 칸 — 아래 값은 칸 왼쪽 위 기준
-    static let colTop: CGFloat = headTop + headH + 18
-    static let dayHeadH: CGFloat = 56
-    static let taskH: CGFloat = 35
-    static let taskLines = 10
-    static let ttTop: CGFloat = dayHeadH + taskH * CGFloat(taskLines) + 16
-    static let rowH: CGFloat = 26
-    static let ttBottom: CGFloat = ttTop + rowH * 24
-    static let boxBottom: CGFloat = ttBottom + 12
+    public static let colTop: CGFloat = headTop + headH + 18
+    public static let dayHeadH: CGFloat = 56
+    public static let taskH: CGFloat = 35
+    public static let taskLines = 10
+    public static let ttTop: CGFloat = dayHeadH + taskH * CGFloat(taskLines) + 16
+    public static let rowH: CGFloat = 26
+    public static let ttBottom: CGFloat = ttTop + rowH * 24
+    public static let boxBottom: CGFloat = ttBottom + 12
     /// 합계 아래 줄. 종이 아래 모서리의 넘김 영역(1219 부터 아래 58 단위) 보다 위에 둔다.
-    static let footRule: CGFloat = 1218 - colTop
-    static let pad: CGFloat = 12
-    static let hourW: CGFloat = 26
-    static let cellsX: CGFloat = pad + hourW
+    public static let footRule: CGFloat = 1218 - colTop
+    public static let pad: CGFloat = 12
+    public static let hourW: CGFloat = 26
+    public static let cellsX: CGFloat = pad + hourW
     /// (260 − 38 − 12) / 6 = 35
-    static let cellW: CGFloat = (colW - cellsX - pad) / 6
+    public static let cellW: CGFloat = (colW - cellsX - pad) / 6
 
     // 할 일 줄 안쪽
-    static let tickX: CGFloat = 14
-    static let textX: CGFloat = 24
-    static let markSize: CGFloat = 19
-    static let markMidX: CGFloat = colW - 26
-    static let textEnd: CGFloat = colW - 44
+    public static let tickX: CGFloat = 14
+    public static let textX: CGFloat = 24
+    public static let markSize: CGFloat = 19
+    public static let markMidX: CGFloat = colW - 26
+    public static let textEnd: CGFloat = colW - 44
 
     // 합계: 인쇄된 H / M 의 가운데, 손글씨는 그 앞 빈칸 가운데에 쓴다
-    static let hX: CGFloat = 120
-    static let mX: CGFloat = colW - 20
-    static let hourSlot = CGRect(x: pad, y: footRule - 40, width: hX - 9 - pad, height: 44)
-    static let minuteSlot = CGRect(x: hX + 9, y: footRule - 40, width: mX - 9 - (hX + 9), height: 44)
+    public static let hX: CGFloat = 120
+    public static let mX: CGFloat = colW - 20
+    public static let hourSlot = CGRect(x: pad, y: footRule - 40, width: hX - 9 - pad, height: 44)
+    public static let minuteSlot = CGRect(x: hX + 9, y: footRule - 40, width: mX - 9 - (hX + 9), height: 44)
 
-    static func taskY(_ i: Int) -> CGFloat { dayHeadH + taskH * CGFloat(i) }
+    public static func taskY(_ i: Int) -> CGFloat { dayHeadH + taskH * CGFloat(i) }
     /// 할 일 줄의 점선 체크 박스 (칸 기준 좌표). 일간과 같은 비율 (줄 높이의 0.57)
-    static func box(_ i: Int) -> CGRect {
+    public static func box(_ i: Int) -> CGRect {
         let s = (taskH * 0.57).rounded()
         return CGRect(x: markMidX - s / 2, y: taskY(i) + (taskH - s) / 2, width: s, height: s)
     }
 
-    static let weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
-    static func weekdayColor(_ i: Int) -> Color { i == 5 ? Ink.saturday : i == 6 ? Ink.red : Ink.soft }
+    public static let weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+    public static func weekdayColor(_ i: Int) -> Color { i == 5 ? Ink.saturday : i == 6 ? Ink.red : Ink.soft }
     /// DAY OFF 꼬리표의 세로 가운데 (칸 위 테두리와 인쇄된 요일 사이, 요일 가운데는 dayHeadH × 0.56)
-    static let dayOffTagMidY: CGFloat = 13
+    public static let dayOffTagMidY: CGFloat = 13
 }
 
 /// 쉬는 날 꼬리표: 인쇄 글자 "DAY OFF" 를 그날 컬러 테두리로 감싼다
@@ -119,13 +123,18 @@ private extension View {
 // MARK: - Page
 
 /// 주간 페이지 (디자인 2000 × 1277).
-struct WeeklyPage: View {
-    let weekStart: Date
-    let u: CGFloat
+public struct WeeklyPage: View {
+    public let weekStart: Date
+    public let u: CGFloat
 
     @EnvironmentObject private var store: PlannerStore
 
-    var body: some View {
+    public init(weekStart: Date, u: CGFloat) {
+        self.weekStart = weekStart
+        self.u = u
+    }
+
+    public var body: some View {
         let ws = weekStart
         let g = WK.goalFrame
         ZStack(alignment: .topLeading) {
@@ -258,13 +267,8 @@ private struct WeekDayColumn: View {
         .contentShape(Rectangle())
         .onTapGesture { state.openDay(date) }
         .onHover { h in withAnimation(.easeOut(duration: 0.16)) { hover = h } }
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: NSCursor.pointingHand.set()
-            case .ended: NSCursor.arrow.set()
-            }
-        }
-        .onDisappear { if hover { NSCursor.arrow.set() } }
+        .pointerCursor(.pointingHand)
+        .onDisappear { if hover { PointerCursor.arrow.set() } }
         .help("이 날 일간 페이지 열기")
     }
 
