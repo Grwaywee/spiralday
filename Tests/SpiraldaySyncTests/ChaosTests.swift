@@ -71,20 +71,23 @@ final class ChaosTests: XCTestCase {
                 }
             case "newBook":
                 let nb = newBook("책", created: "2026-09-0\(1 + rng.nat(8))T00:00:00Z", id: rng.uuid())
-                d.host.editLibrary { lib in
+                // 앱처럼 책장과 파일을 한 번에 (따로 바꾸면 그 사이의 비교가 반쯤 만든 책을 본다)
+                d.host.editLibrary({ lib in
                     var o = lib.objectValue!
                     o["books"] = .array(Records.books(lib) + [nb.info])
                     return .object(o)
-                }
-                d.host.setBook(nb.info["id"]!.stringValue!, nb.data)
+                }, setting: nb.info["id"]!.stringValue!, to: nb.data)
             case "dropOther":
                 if let victim = Records.books(d.host.library).first(where: { $0["id"]?.stringValue != bookId })?["id"]?.stringValue {
-                    d.host.editLibrary { lib in
+                    // 앱처럼: 지운 책을 엔진에 알리고 (localChanged deletedBooks) 책장에서 빼며 파일도 한 번에 지운다.
+                    // 알리지 않으면 비교 사이에 두 권을 지웠을 때 엔진은 한꺼번에 사라진 것으로 보고 되살린다 (massDeleteBooks — 설계대로),
+                    // 따로 지우면 그 사이의 비교가 "책장에서 빠졌는데 파일은 있는 책" 을 잃은 책으로 되살린다. 둘 다 이 시험을 드물게 실패시켰다
+                    await d.engine.noteLocalChange(library: true, deletedBooks: [victim])
+                    d.host.editLibrary({ lib in
                         var o = lib.objectValue!
                         o["books"] = .array(Records.books(lib).filter { $0["id"]?.stringValue != victim })
                         return .object(o)
-                    }
-                    d.host.setBook(victim, nil)
+                    }, setting: victim, to: nil)
                     tr.scope = ""
                     tr.del("book:\(victim)")
                 }

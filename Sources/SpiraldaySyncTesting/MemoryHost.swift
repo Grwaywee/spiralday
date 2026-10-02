@@ -175,4 +175,13 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
     public func editLibrary(_ f: (JSONValue) -> JSONValue) {
         lock.withLock { _library = f(_library) }
     }
+
+    /// 책장과 그 책 파일을 한 번에 고친 것처럼 (앱이 책을 만들거나 지울 때 — 진짜 앱은 한 MainActor 차례 안에서 둘 다 바꾼다).
+    /// 따로 고치면 그 사이에 비교가 끼어들 수 있다: 책장에서 빠졌는데 파일이 아직 있으면 엔진은 "잃은 책" 으로 보고 되살린다 (설계대로)
+    public func editLibrary(_ f: (JSONValue) -> JSONValue, setting id: String, to book: JSONValue?) {
+        lock.withLock {
+            _library = f(_library)
+            _books[id.uppercased()] = book
+        }
+    }
 }
