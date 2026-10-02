@@ -196,6 +196,7 @@ flowchart LR
 |---|---|
 | `Sources/SpiraldayKit/` | |
 | `Models.swift` · `SharedReader.swift` | 플래너(책) · 기록 · 저장, 읽기 전용 읽기 |
+| `TaskIDs.swift` · `ExternalChanges.swift` | → 로 넘긴 할 일의 id (UUIDv5, 늘 같은 값), 밖에서 바뀐 내용 넣기 (저장 알림 · 책장 · 펼친 책 · 펼치지 않은 책 파일, 쓰는 칸 지키기) |
 | `Theme.swift` · `Platform.swift` | 색 · 글꼴 · 종이 바탕 · 디자인 단위, 플랫폼 차이 (글꼴 · 햅틱 · 링크 · 커서) |
 | `DailyTemplate.swift` · `DailyPage.swift` | 일간 양식 인쇄 레이어 / 손글씨 레이어 |
 | `WeeklyPage.swift` · `HomePage.swift` · `HomeStats.swift` | 주간, 홈 통계 |
@@ -212,7 +213,7 @@ flowchart LR
 
 ```bash
 swift build
-swift test                                   # SpiraldayKit: 페이지 · 넘김 그리기, 저장 · 읽기 전용 읽기
+swift test                                   # SpiraldayKit: 페이지 · 넘김 그리기, 저장 · 읽기 전용 읽기, 밖에서 넣기
 .build/debug/Spiralday --demo                # 샘플 데이터 (실제 기록을 건드리지 않음)
 .build/debug/Spiralday --snapshot ./out      # 페이지 · 넘김 프레임 · 표지 · 첫 장 PNG (--front-qa 를 더하면 여러 경우와 번호 점검까지)
 .build/debug/Spiralday --pdf-test ./out      # PDF 레이아웃 4종 샘플

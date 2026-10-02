@@ -369,7 +369,7 @@ public struct DDay: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
-public struct PlannerData: Codable, Sendable {
+public struct PlannerData: Codable, Equatable, Sendable {
     public var days: [String: DayRecord] = [:]
     public var weeks: [String: WeekRecord] = [:]
     public var prefs = Prefs()
@@ -553,24 +553,40 @@ public final class PlannerStore: ObservableObject {
     /// 지금 펼친 책의 내용
     @Published public var data: PlannerData
     /// 모든 책 목록과 펼친 책
-    @Published public private(set) var library = Library()
+    @Published public internal(set) var library = Library()
     /// 데이터가 바뀔 때마다 올라간다 (페이지 스냅샷 캐시 무효화용)
     public private(set) var version = 0
 
     /// 저장 폴더 (메모리 전용이면 nil)
     public let folder: URL?
-    private var saveWork: DispatchWorkItem?
+    var saveWork: DispatchWorkItem?
     /// library.json 이 있는데 읽지 못했다 → 앱이 도는 동안 library.json 에 아무것도 쓰지 않는다 (예시 플래너도 꽂지 않는다).
     /// 책장은 books 폴더의 읽을 수 있는 책 파일로 메모리에서만 다시 꾸민다 (recoveredLibrary).
     public private(set) var libraryUnreadable = false
     /// 파일이 있는데 읽지 못한 책. 앱이 도는 동안 그 책 파일에는 쓰지 않고 (saveNow 가 건너뛴다) 펼치지도 않는다.
-    public private(set) var unreadableBooks: [UUID: UnreadableFile] = [:]
+    public internal(set) var unreadableBooks: [UUID: UnreadableFile] = [:]
     /// 켤 때 읽지 못한 파일. 앱이 첫 창을 열기 전에 한 번 알린다 (DataSafetyAlert.presentLaunchNotices).
     public private(set) var launchNotices: [UnreadableFile] = []
     /// 앱을 쓰다가 읽지 못하는 책을 펼치려 했을 때 (펼치지 않고 지금 책 그대로). AppDelegate 가 알림을 띄운다.
     public var onUnreadableBook: ((UnreadableFile) -> Void)?
     /// 메모리 전용일 때 펼치지 않은 책의 내용 (파일 대신)
-    private var memoryBooks: [UUID: PlannerData] = [:]
+    var memoryBooks: [UUID: PlannerData] = [:]
+
+    // MARK: 바뀐 것 알림 · 밖에서 넣기 (ExternalChanges.swift)
+
+    /// 이 저장소가 파일을 쓴 뒤에 불린다 (원자적 쓰기가 끝난 뒤, 메인 스레드).
+    /// bookID: 내용을 쓴 책 (없으면 nil) · libraryChanged: library.json 을 썼는지.
+    /// 사용자의 편집 · 책 만들기 · 책 정보 바꾸기 · 펼친 책 바꾸기 · applyLibrary / applyActiveData 가 쓴 것을 모두 알린다.
+    /// writeBookRaw · removeBookFile (밖에서 고친 펼치지 않은 책) 은 알리지 않는다. 메모리 전용 저장소는 쓰지 않으므로 알리지 않는다.
+    public var onSaved: ((_ bookID: UUID?, _ libraryChanged: Bool) -> Void)?
+    /// 사용자가 책을 지웠다 (deleteBook: 책 파일을 지우고 책장에서 뺀 뒤, 책장을 쓰기 직전). 밖에서 지운 책(applyLibrary)은 알리지 않는다.
+    public var onDeleted: ((_ bookID: UUID) -> Void)?
+    /// applyLibrary / applyActiveData 가 data · library 를 바꾸는 동안 true.
+    /// `$data` · `$library` 를 보는 쪽(되돌리기 기록 등)이 사용자의 편집과 밖에서 온 변경을 가를 때 쓴다 (sink 안에서 읽는다).
+    public internal(set) var isApplyingExternalChange = false
+    /// 이번 실행에서 library.json 이 없어서 책장을 새로 시작했는지 (처음 켬 · 데이터 폴더를 잃음).
+    /// 그 전부터 알던 책이 책장에 없는 것을 "지운 것" 이 아니라 "잃은 것" 으로 봐야 할 때 쓴다. 메모리 전용이면 false.
+    public private(set) var libraryCreated = false
 
     public var books: [BookInfo] { library.books }
     public var activeBook: BookInfo? { library.books.first { $0.id == library.activeID } }
@@ -584,13 +600,13 @@ public final class PlannerStore: ObservableObject {
         return rest.first { !$0.isSample } ?? rest.first
     }
 
-    private static let enc: JSONEncoder = {
+    static let enc: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = [.sortedKeys]
         return e
     }()
-    private static let dec: JSONDecoder = {
+    static let dec: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
@@ -669,6 +685,7 @@ public final class PlannerStore: ObservableObject {
     private func loadLibrary() {
         guard let url = libraryURL else { return }
         guard FileManager.default.fileExists(atPath: url.path) else {
+            libraryCreated = true
             migrateLegacy()
             return
         }
@@ -714,7 +731,7 @@ public final class PlannerStore: ObservableObject {
     /// 펼칠 책(library.activeID)을 연다. 읽지 못하면 그 책 파일은 그대로 두고 다른 책을 연다:
     /// 사용자가 만든 책이 먼저, 없으면 예시 플래너 (deleteBook 과 같은 순서). 열 수 있는 책이 없으면 아무 책도 펼치지 않는다.
     /// notifying: 앱을 쓰는 중이면 읽지 못한 책을 바로 알린다 (켤 때는 launchNotices 에 모아 두었다가 한 번에).
-    private func openActiveBook(notifying: Bool) {
+    func openActiveBook(notifying: Bool) {
         var skipped: Set<UUID> = []
         while let id = library.activeID {
             if let d = loadBook(id) {
@@ -815,8 +832,8 @@ public final class PlannerStore: ObservableObject {
         try? fm.copyItem(at: old, to: new)
     }
 
-    private var libraryURL: URL? { folder?.appendingPathComponent("library.json") }
-    private func bookURL(_ id: UUID) -> URL? { folder?.appendingPathComponent("books/\(id.uuidString).json") }
+    var libraryURL: URL? { folder?.appendingPathComponent("library.json") }
+    func bookURL(_ id: UUID) -> URL? { folder?.appendingPathComponent("books/\(id.uuidString).json") }
     /// 펼친 책의 저장 파일
     public var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
 
@@ -833,10 +850,12 @@ public final class PlannerStore: ObservableObject {
         let book = library.books.first { $0.id == id }
         var d: PlannerData
         do {
-            d = try Self.readBookFile(url, book: book).data
+            let opened = try Self.readBookFile(url, book: book)
+            d = opened.data
+            // 1.0.2 까지의 파일을 옮겨 그 파일에 다시 썼다
+            if opened.migration != nil { notifySaved(id, library: false) }
         } catch {
-            let copy = Self.preserveUnreadable(url)
-            unreadableBooks[id] = UnreadableFile(kind: .book(id), url: url, copy: copy, name: book?.name, reason: Self.reason(error))
+            noteUnreadableBook(id, url, error)
             return nil
         }
         unreadableBooks[id] = nil
@@ -1012,10 +1031,11 @@ public final class PlannerStore: ObservableObject {
             openActiveBook(notifying: true)
         }
         bump()
+        onDeleted?(id)
         writeLibrary()
     }
 
-    private func bump() { version &+= 1 }
+    func bump() { version &+= 1 }
 
     /// 메모리 전용이면 다른 책으로 바꾸기 전에 지금 책의 내용을 들고 있는다 (파일 대신)
     private func stashMemoryBook() {
@@ -1050,6 +1070,7 @@ public final class PlannerStore: ObservableObject {
         } else {
             guard let url = bookURL(sample.book.id), let raw = try? Self.enc.encode(sample.data),
                   (try? raw.write(to: url, options: .atomic)) != nil else { return nil }
+            notifySaved(sample.book.id, library: false)
         }
         library.books.append(sample.book)
         library.sampleSeeded = true
@@ -1079,20 +1100,32 @@ public final class PlannerStore: ObservableObject {
 
     /// 펼친 책과 책장을 저장한다 (임시 파일에 다 쓴 뒤 이름을 바꾸는 원자적 쓰기).
     /// 읽지 못한 책 파일에는 쓰지 않는다 (그 책은 펼쳐지지 않지만, 혹시라도 펼친 책이면 건너뛴다).
+    /// 쓴 것은 onSaved 로 한 번에 알린다.
     public func saveNow() {
         saveWork?.cancel()
         guard folder != nil else { return }
+        var saved: UUID?
         if let id = library.activeID, unreadableBooks[id] == nil,
-           let url = bookURL(id), let raw = try? Self.enc.encode(data) {
-            try? raw.write(to: url, options: .atomic)
+           let url = bookURL(id), let raw = try? Self.enc.encode(data),
+           (try? raw.write(to: url, options: .atomic)) != nil {
+            saved = id
         }
-        writeLibrary()
+        notifySaved(saved, library: writeLibrary(notifying: false))
     }
 
-    /// library.json 을 읽지 못한 실행에서는 쓰지 않는다 (원본을 그대로 둔다)
-    private func writeLibrary() {
-        guard !libraryUnreadable, let url = libraryURL, let raw = try? Self.enc.encode(library) else { return }
-        try? raw.write(to: url, options: .atomic)
+    /// library.json 을 읽지 못한 실행에서는 쓰지 않는다 (원본을 그대로 둔다). 썼으면 true (notifying 이면 onSaved 로 알린다)
+    @discardableResult
+    func writeLibrary(notifying: Bool = true) -> Bool {
+        guard !libraryUnreadable, let url = libraryURL, let raw = try? Self.enc.encode(library),
+              (try? raw.write(to: url, options: .atomic)) != nil else { return false }
+        if notifying { notifySaved(nil, library: true) }
+        return true
+    }
+
+    /// onSaved 를 부른다 (쓴 것이 있을 때만)
+    func notifySaved(_ bookID: UUID?, library: Bool) {
+        guard bookID != nil || library else { return }
+        onSaved?(bookID, library)
     }
 
     /// 메모리 전용(데모/스냅샷)에서 쓸 책
@@ -1395,12 +1428,15 @@ public final class PlannerStore: ObservableObject {
     /// → : 다음 날에 같은 글 · 같은 형광펜 · 표시 없는 할 일을 하나 만든다 (자리는 DayRecord.insertCarried).
     /// 이미 넘긴 것이 있거나, 다음 날이 이 플래너의 기간 밖이거나, 빈 할 일이면 하지 않는다.
     /// 넘어간 할 일은 보통 할 일과 같아서 고치고 표시하고 또 → 로 넘길 수 있다.
+    /// 사본의 id 는 PlanTask.carryTaskId(원래 id) 로 늘 같다 (TaskIDs.swift). 다음 날에 그 id 가 이미 있을 때만 새 id.
     private func carryForward(_ d: Date, _ t: PlanTask) {
         let next = Dates.add(days: 1, to: d)
         guard !t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               activeBook?.contains(next) ?? true,
               carriedCopy(of: t.id, from: d) == nil else { return }
-        editDay(next) { $0.insertCarried(PlanTask(text: t.text, cat: t.cat, carriedFrom: t.id)) }
+        let carried = PlanTask.carryTaskId(t.id)
+        let id = day(next).tasks.contains { $0.id == carried } ? UUID() : carried
+        editDay(next) { $0.insertCarried(PlanTask(id: id, text: t.text, cat: t.cat, carriedFrom: t.id)) }
     }
 
     /// → 를 뗐을 때: 다음 날에 넘긴 할 일을 그대로 두었으면 (표시 없음 · 글과 형광펜이 같으면) 지운다.
