@@ -23,8 +23,8 @@ final class PlannerSyncHost: SyncHost {
     var editingKey: () -> String? = { nil }
     /// 쓰던 할 일 · 메모가 다른 기기에서 지워졌다 → 편집을 끝낸다 (state.endEditing())
     var onEditedItemRemoved: () -> Void = {}
-    /// 쓰고 있던 칸(포커스)의 글이 다른 기기의 글로 바뀌었다 → 그 칸의 되돌리기 기록을 비운다
-    var onEditedFieldReplaced: () -> Void = {}
+    /// 쓰고 있던 칸(포커스)의 글이 다른 기기의 글로 바뀌었다 (그 칸의 새 글) → 그 칸의 되돌리기 기록을 비운다
+    var onEditedFieldReplaced: (_ text: String?) -> Void = { _ in }
     /// 책장을 넣었다 (펼친 책이 빠져 다른 책을 폈는지, 빠진 책들) — 화면이 안내 · 장 맞추기에 쓴다
     var onLibraryApplied: (ExternalApplyResult, _ removed: [BookInfo]) -> Void = { _, _ in }
     /// 펼친 책의 내용을 넣었다
@@ -76,8 +76,8 @@ final class PlannerSyncHost: SyncHost {
             let r = store.applyActiveData(merged, keepingEditOf: key)
             if r.editedItemRemoved {
                 onEditedItemRemoved()
-            } else if let key, r.changed, before != nil, PlannerData.editedText(key, in: store.data) != before {
-                onEditedFieldReplaced()
+            } else if let key, r.changed, before != nil, case let after = PlannerData.editedText(key, in: store.data), after != before {
+                onEditedFieldReplaced(after)
             }
             if r.changed { onActiveApplied(r) }
         } else if let next {

@@ -84,6 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updater: SPUStandardUpdaterController?
     /// 켤 때 읽을 수 있는 책이 하나도 없어서 새로 만들어 편 책 (알림에 적는다 → DataSafety.swift)
     private var launchFreshBook: UUID?
+    #if DEBUG
+    /// --sync-drive: 여러 기기 동기화 검증이 모는 실행 (디버그 빌드만 — Sync/SyncQADrive.swift)
+    private var drive: SyncQADriveLaunch.Config?
+    #endif
 
     var canCheckForUpdates: Bool { updater != nil }
 
@@ -103,6 +107,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     override init() {
+        #if DEBUG
+        // 여러 기기 동기화 검증: 따로 된 폴더 · 테스트용 키체인 이름 · 폴더 안의 설정 값만 쓴다 (앱의 데이터 · 설정을 건드리지 않는다)
+        if let cfg = SyncQADriveLaunch.config(Self.args) {
+            drive = cfg
+            store = PlannerStore(folder: cfg.dataDir)
+            state = AppState(kind: .daily)
+            sync = SyncQADriveLaunch.controller(store: store, config: cfg)
+            super.init()
+            state.store = store
+            SyncController.shared = sync
+            return
+        }
+        #endif
         Self.migrateDefaults()
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
             || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
@@ -130,7 +147,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SyncController.shared = sync
     }
 
+    #if DEBUG
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // --sync-drive: Dock · ⌘Tab 에 나오지 않고 앞으로 오지 않는다 (쓰던 사람의 포커스를 가져가지 않게)
+        if drive != nil { NSApp.setActivationPolicy(.accessory) }
+    }
+
+    /// --sync-drive: 플래너 종이(RootView)를 화면 밖 창에 열고 동기화를 켠 뒤 통로를 연다 (통계 · 업데이트 · 처음 안내 · 둘러보기 없이)
+    private func startDrive(_ cfg: SyncQADriveLaunch.Config) {
+        Fonts.register()
+        let window = SyncQADriveWindow.make(store: store, state: state)
+        state.installMonitors()
+        let sy = sync, st = state
+        Task { @MainActor in await sy.start(state: st) }
+        SyncQADrive.start(cfg, store: store, state: state, sync: sync) { window }
+        Fonts.activate { Task { @MainActor in st.fontsReady = true } }
+    }
+    #endif
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if let drive {
+            startDrive(drive)
+            return
+        }
+        #endif
         // 통계 전송 확인용: 창 없이 한 번 보내고 결과를 찍은 뒤 끝낸다
         if Self.args.contains("--ping-test") {
             Telemetry.runPingTest()

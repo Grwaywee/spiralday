@@ -92,7 +92,7 @@ final class PlannerSyncHostTests: XCTestCase {
         var replaced = 0
         b.host.editingKey = { key }
         b.host.onEditedItemRemoved = { removed += 1 }
-        b.host.onEditedFieldReplaced = { replaced += 1 }
+        b.host.onEditedFieldReplaced = { _ in replaced += 1 }
         b.store.dayField(d2, \.comment).wrappedValue = "회의 준"
         b.store.saveNow()
         try await b.engine.syncNow()

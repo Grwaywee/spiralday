@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import SwiftUI
 import SpiraldayKit
 import SpiraldaySync
 import SpiraldaySyncTesting
@@ -369,39 +370,64 @@ final class SyncControllerTests: XCTestCase {
         XCTAssertFalse(b.store.books.contains { $0.id == gone || $0.id == other })
     }
 
-    /// 쓰던 칸(포커스만)의 글이 다른 Mac 의 글로 바뀌면 플래너 창의 ⌘Z 기록을 비운다 — 되돌리기가 다른 Mac 의 글을 지우지 않게
+    /// 쓰던 칸(포커스만)의 글이 다른 Mac 의 글로 바뀌면 그 칸의 ⌘Z 기록을 비운다 — 되돌리기가 다른 Mac 의 글을 지우지 않게.
+    /// 앱과 같이 SwiftUI 글 칸(InlineField)을 NSHostingView 에 두고 키보드로 친 것처럼 쓴다: 필드 편집기의 되돌리기 기록은
+    /// 창의 undoManager 가 아니라 호스팅 뷰의 것이고, ⌘Z(undo:)는 응답자 사슬로 그 기록을 되돌린다
     func testRemoteEditOfTheFocusedFieldClearsItsUndo() async throws {
         let server = FakeSyncServer()
         let (a, b) = try await pairedMacs(server)
         let book = a.store.createBook(name: "같이 쓰는 플래너", start: today, end: nil)
         try await until("거실에 책") { b.store.books.contains { $0.id == book } }
         b.store.activate(book)
-        // 거실 Mac 의 플래너 창: 글 칸에 포커스, ⌘Z 기록이 있다
-        let window = NSWindow(contentRect: NSRect(x: -20_000, y: -20_000, width: 300, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        let key = "c|\(Dates.key(today))"
+        // 거실 Mac 의 플래너 창: COMMENT 칸 (화면 밖 창)
+        let window = NSWindow(contentRect: NSRect(x: -20_000, y: -20_000, width: 400, height: 200), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        let field = NSTextField(frame: NSRect(x: 10, y: 10, width: 200, height: 24))
-        window.contentView?.addSubview(field)
+        window.contentView = NSHostingView(rootView: CommentField(day: today).environmentObject(b.store).environmentObject(b.state))
         window.orderFrontRegardless()
         defer { window.orderOut(nil) }
-        XCTAssertTrue(window.makeFirstResponder(field))
-        XCTAssertTrue(window.firstResponder is NSTextView, "글 칸의 필드 편집기")
-        let undo = try XCTUnwrap(window.undoManager)
-        undo.registerUndo(withTarget: field) { $0.stringValue = "옛 글" }
-        XCTAssertTrue(undo.canUndo)
+        b.state.editingKey = key
+        func editor() -> NSTextView? { window.firstResponder as? NSTextView }
+        try await until("글 칸에 포커스") { editor() != nil }
+        func type(_ text: String) {
+            for ch in text {
+                let s = String(ch)
+                if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                            context: nil, characters: s, charactersIgnoringModifiers: s, isARepeat: false, keyCode: 0) {
+                    editor()?.interpretKeyEvents([e])
+                }
+            }
+        }
+        func canUndo() -> Bool { editor()?.undoManager?.canUndo ?? false }
+        func undo() { _ = editor()?.tryToPerform(Selector(("undo:")), with: nil) }
 
-        b.store.editDay(today) { $0.comment = "거실의 옛 글" }
-        try await until("서재가 받음") { a.store.day(today).comment == "거실의 옛 글" }
+        type("거실")
+        try await until("서재가 받음") { a.store.day(today).comment == "거실" }
+        try await until("되돌릴 수 있음") { canUndo() }
         b.store.editingGrace = 0
-        b.state.editingKey = "c|\(Dates.key(today))"
         a.store.editDay(today) { $0.comment = "서재의 새 글" }
-        try await until("거실이 받음") { b.store.day(today).comment == "서재의 새 글" }
-        XCTAssertFalse(undo.canUndo, "⌘Z 로 서재의 글을 지우고 옛 글로 돌아가지 않는다")
+        try await until("거실이 받음") { b.store.day(today).comment == "서재의 새 글" && editor()?.string == "서재의 새 글" }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertFalse(canUndo(), "⌘Z 로 서재의 글을 지우고 옛 글로 돌아가지 않는다")
+        undo()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(b.store.day(today).comment, "서재의 새 글")
+        XCTAssertEqual(editor()?.string, "서재의 새 글")
 
-        // 다른 칸의 편집은 ⌘Z 기록을 그대로 둔다
-        undo.registerUndo(withTarget: field) { $0.stringValue = "옛 글" }
+        // 다른 칸의 편집은 ⌘Z 기록을 그대로 둔다: 이어 친 것만 되돌린다 (다른 기기의 다른 칸은 그대로)
+        b.store.editingGrace = 5
+        type("!")
+        try await until("서재도 받음") { a.store.day(today).comment == "서재의 새 글!" }
+        try await until("되돌릴 수 있음") { canUndo() }
         a.store.editDay(today) { $0.memos[0] = "다른 칸" }
         try await until("거실이 받음") { b.store.day(today).memos[0] == "다른 칸" }
-        XCTAssertTrue(undo.canUndo)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(canUndo(), "다른 칸이 바뀌어도 이 칸의 ⌘Z 기록은 그대로")
+        undo()
+        XCTAssertEqual(editor()?.string, "서재의 새 글", "이어 친 것만 되돌림")
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertEqual(b.store.day(today).memos[0], "다른 칸")
+        XCTAssertEqual(a.store.day(today).memos[0], "다른 칸")
     }
 
     func testGearInfoOnlyWhileOnAndPointsToSyncWhenSomethingNeedsAttention() async throws {
@@ -695,5 +721,15 @@ final class SyncControllerTests: XCTestCase {
         XCTAssertFalse(r.ok)
         XCTAssertFalse(c.inGroup)
         XCTAssertNil(c.gearInfo())
+    }
+}
+
+/// 플래너 종이의 COMMENT 칸 (일간 장처럼 저장소를 보고 다시 그린다)
+private struct CommentField: View {
+    let day: Date
+    @EnvironmentObject private var store: PlannerStore
+
+    var body: some View {
+        InlineField(text: store.dayField(day, \.comment), font: .body, key: "c|\(Dates.key(day))")
     }
 }

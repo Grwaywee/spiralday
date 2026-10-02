@@ -271,12 +271,18 @@ private func observe(_ new: PlannerData) {
   - `SyncController` — 엔진 하나 · 설정 → 동기화의 단계별 흐름 · 앱 수명. 기본은 꺼짐: 이 설치가 그룹에 들어간 적이 있을 때(UserDefaults `sync.groupURL`)만
     켤 때 키체인을 읽고 엔진을 만든다. 그 전에는 키체인 · 네트워크를 건드리지 않는다. 잠자기(`NSWorkspace.willSleepNotification`) → 저장 · `suspend()`,
     깨어남 · 네트워크가 돌아옴(`NWPathMonitor`) · 앱이 앞으로 옴(15초에 한 번까지) → `resume()`, 끝낼 때(`applicationShouldTerminate`) → 저장 · `suspend()` (최대 2.5초).
-  - `PlannerSyncHost` — 위 4 의 호스트. 쓰던 칸(포커스만)의 글이 다른 기기의 글로 바뀌면 `onEditedFieldReplaced` 로 알리고, 컨트롤러가 플래너 창의
-    `undoManager` 를 비운다. Mac 앱의 ⌘Z 는 글 칸(필드 편집기)의 것뿐이라 PlannerData 를 쌓는 되돌리기가 없다 — 이것이 Mac 의 "되돌리기 옮기기"다.
+  - `PlannerSyncHost` — 위 4 의 호스트. 쓰던 칸(포커스만)의 글이 다른 기기의 글로 바뀌면 `onEditedFieldReplaced(새 글)` 로 알리고, 컨트롤러가 그 칸의
+    되돌리기 기록을 비운다. Mac 앱의 ⌘Z 는 글 칸(필드 편집기)의 것뿐이라 PlannerData 를 쌓는 되돌리기가 없다 — 이것이 Mac 의 "되돌리기 옮기기"다.
+    ⌘Z(`undo:`)는 응답자 사슬로 가서 필드 편집기가 보는 기록을 되돌리는데, SwiftUI 글 칸의 필드 편집기는 창의 `undoManager` 가 아니라 호스팅 뷰의 기록을 쓰고,
+    SwiftUI 가 다음 화면 갱신에서 새 글을 칸에 넣는 것도 그 기록에 남는다. 그래서 필드 편집기의 기록(과 창의 것)을 바로 한 번, 새 글이 칸에 들어간 뒤 한 번 더 비운다.
   - 펼친 책이 다른 기기에서 지워지면 다른 책을 펴고 플래너 위에 안내, 펼치지 않은 책이 지워지면 그 이름으로 안내. 지금 장이 기간 밖이면 오늘로.
   - 설정 → 동기화 (`SyncSettingsPane` · `SyncFlows` · `SyncHistory`), 팔레트의 설정 단추 귀퉁이 표시, 플래너 메뉴의 ‘지금 맞추기’ · ‘이 날(주)의 이전 버전…’ · ‘동기화 설정…’.
     Mac 은 QR 을 카메라로 찍지 않는다 — Windows PC 처럼 8자리 코드나 원래 기기의 ‘연결 글 복사’로 받은 글을 붙여 넣는다.
   - `Spiralday --sync-qa <폴더>` 가 설정 → 동기화의 모든 상태를 라이트 · 다크 PNG 로 (메모리에서만), `Tests/SpiraldayAppTests` 가 호스트 · 컨트롤러 · 말을 가짜 서버로 시험한다.
+  - 디버그 빌드만: `Spiralday --sync-drive <폴더> [--sync-drive-keychain com.spiralday.mac.sync.qa.<이름>]` — 여러 기기 검증 스크립트가 이 Mac 앱을 모는 통로
+    (`Sync/SyncQADrive.swift`). `<폴더>/in/*.json` 의 명령을 화면이 부르는 것과 같은 저장소 · 컨트롤러 함수로 실행하고 `<폴더>/out` 에 답한다.
+    플래너 파일은 `<폴더>/data`, 비밀은 테스트용 키체인 서비스 이름, 설정 값은 `<폴더>` 안 — 앱의 데이터 폴더 · `com.spiralday.sync` 키체인 항목은 거절한다.
+    플래너 종이는 화면 밖 창에 두고 앱을 앞으로 가져오지 않으며, 통계 · 업데이트 확인 · 처음 안내 · 둘러보기는 켜지 않는다. 서버는 운영 주소(또는 디버그의 `SPIRALDAY_SYNC_URL`).
 
 ## TypeScript 엔진과 다른 점
 

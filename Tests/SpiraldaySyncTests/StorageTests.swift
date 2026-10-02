@@ -142,7 +142,10 @@ final class KeychainTests: XCTestCase {
 
 final class ServerConfigTests: XCTestCase {
     func testResolveOrderAndValidation() {
-        let d = UserDefaults(suiteName: "spiralday-sync-test-\(UUID().uuidString)")!
+        // 이 테스트의 설정 값 묶음 (끝나면 지운다 — ~/Library/Preferences 에 파일을 남기지 않게)
+        let suite = "spiralday-sync-test-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: suite)!
+        defer { d.removePersistentDomain(forName: suite) }
         XCTAssertEqual(SyncServerConfig.resolve(bundle: Bundle(for: Self.self), defaults: d, environment: [:]).url.absoluteString, "https://sync.spiralday.com")
         XCTAssertEqual(SyncServerConfig.resolve(bundle: Bundle(for: Self.self), defaults: d, environment: [:]).source, .production)
         let env = ["SPIRALDAY_SYNC_URL": "http://127.0.0.1:8080/"]

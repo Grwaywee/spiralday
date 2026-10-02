@@ -455,7 +455,7 @@ final class SyncController: ObservableObject {
         let host = PlannerSyncHost(store: store)
         host.editingKey = { [weak self] in self?.state?.editingKey }
         host.onEditedItemRemoved = { [weak self] in self?.state?.endEditing() }
-        host.onEditedFieldReplaced = { [weak self] in self?.editedFieldReplaced() }
+        host.onEditedFieldReplaced = { [weak self] text in self?.editedFieldReplaced(with: text) }
         host.onLibraryApplied = { [weak self] r, removed in self?.libraryApplied(r, removed: removed) }
         host.onActiveApplied = { [weak self] _ in self?.activeApplied() }
         let e = try env.makeEngine(host, want, env.credentials)
@@ -652,12 +652,37 @@ final class SyncController: ObservableObject {
     }
 
     /// 쓰던 칸(포커스만 있던 칸)의 글이 다른 기기의 글로 바뀌었다: 그 칸의 되돌리기(⌘Z) 기록을 비운다.
-    /// 앱의 되돌리기는 글 칸의 것뿐이라(플래너 창의 undoManager) 비워도 다른 것을 잃지 않는다 —
-    /// 남겨 두면 ⌘Z 가 다른 기기의 글을 지우고 이 Mac 의 옛 글로 돌아간다
-    func editedFieldReplaced() {
-        for w in NSApplication.shared.windows where w.firstResponder is NSTextView && !(w is NSPanel) {
+    /// 앱의 되돌리기는 글 칸의 것뿐이라 비워도 다른 것을 잃지 않는다 — 남겨 두면 ⌘Z 가 다른 기기의 글을 지우고 이 Mac 의 옛 글로 돌아간다.
+    /// ⌘Z(undo:)는 응답자 사슬로 가서 필드 편집기가 보는 기록을 되돌린다 (SwiftUI 글 칸은 창의 undoManager 가 아니라 호스팅 뷰의 기록).
+    /// SwiftUI 는 다음 화면 갱신에서 새 글을 필드 편집기에 넣고, 그 넣기도 되돌리기 기록에 남는다 → 새 글이 칸에 들어간 뒤에 한 번 더 비운다
+    func editedFieldReplaced(with text: String? = nil) {
+        clearFocusedFieldUndo()
+        fieldUndoWork?.cancel()
+        fieldUndoWork = Task { @MainActor [weak self] in
+            for _ in 0..<20 {
+                try? await Task.sleep(nanoseconds: 25_000_000)
+                guard !Task.isCancelled, let self else { return }
+                if let text, self.focusedFieldText() == text { break }
+            }
+            guard !Task.isCancelled else { return }
+            self?.clearFocusedFieldUndo()
+        }
+    }
+
+    private var fieldUndoWork: Task<Void, Never>?
+
+    /// 글 칸에 포커스가 있는 창들의 되돌리기 기록 (필드 편집기의 것 · 창의 것)을 비운다
+    private func clearFocusedFieldUndo() {
+        for w in NSApplication.shared.windows where !(w is NSPanel) {
+            guard let editor = w.firstResponder as? NSTextView else { continue }
+            editor.undoManager?.removeAllActions()
             w.undoManager?.removeAllActions()
         }
+    }
+
+    /// 포커스가 있는 글 칸의 글 (팔레트 · 패널 빼고)
+    private func focusedFieldText() -> String? {
+        NSApplication.shared.windows.lazy.filter { !($0 is NSPanel) }.compactMap { ($0.firstResponder as? NSTextView)?.string }.first
     }
 
     func showNotice(_ text: String) {
