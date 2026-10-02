@@ -603,6 +603,15 @@ public final class PlannerStore: ObservableObject {
     public internal(set) var isApplyingExternalChange = false
     /// 사용자가 이 저장소의 내용을 마지막으로 고친 때 (scheduleSave — 밖에서 넣은 것은 세지 않는다)
     public private(set) var lastLocalEdit: Date?
+    /// 쓰는 칸 하나의 기록 (noteEditingField 로 알린 칸): 그 칸의 글과, 사용자가 그 글을 마지막으로 바꾼 때 (안 바꿨으면 nil).
+    /// 쓰는 중인지를 책 전체의 편집(lastLocalEdit)이 아니라 그 칸으로 가른다 — 다른 칸에 막 쓰거나 칠하고 이 칸으로 옮겨
+    /// 포커스만 둔 채로 다른 곳의 더 새 글을 화면의 옛 글로 덮지 않게
+    struct FieldEdit: Equatable {
+        var key: String
+        var text: String?
+        var at: Date?
+    }
+    var fieldEdit: FieldEdit?
     /// 쓰는 칸 지키기 (applyActiveData): 마지막으로 고친 뒤 이 시간 안이면 쓰는 칸의 화면 글을 지킨다 (쓰는 중인 글 · 커서 · 한글 조합).
     /// 그보다 오래 고치지 않은 칸(포커스만 있음)은 밖에서 들어온 더 새 글을 받는다
     public var editingGrace: TimeInterval = 5
@@ -1113,7 +1122,19 @@ public final class PlannerStore: ObservableObject {
 
     public func scheduleSave() {
         version &+= 1
-        if !isApplyingExternalChange { lastLocalEdit = Date() }
+        if !isApplyingExternalChange {
+            let now = Date()
+            lastLocalEdit = now
+            // 쓰는 칸의 글이 바뀌었을 때만 그 칸을 고친 것으로 (칠하기 · 다른 칸 편집은 세지 않는다)
+            if var f = fieldEdit {
+                let text = PlannerData.editedText(f.key, in: data)
+                if text != f.text {
+                    f.text = text
+                    f.at = now
+                    fieldEdit = f
+                }
+            }
+        }
         guard folder != nil else { return }
         saveWork?.cancel()
         let w = DispatchWorkItem { [weak self] in self?.saveNow() }

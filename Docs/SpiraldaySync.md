@@ -264,8 +264,13 @@ private func observe(_ new: PlannerData) {
 
 ### Mac 앱
 
-- 플랫폼 `.mac`. 동기화 상태 폴더는 `~/Library/Application Support/Spiralday/SyncState` (앱 데이터 폴더 안, 앱 파일과 섞지 않는다).
+- 플랫폼 `.mac`. 동기화 상태 폴더는 `~/Library/Application Support/Spiralday/SyncState` (앱 데이터 폴더 안, 앱 파일과 섞지 않는다, Time Machine 제외).
 - Keychain: 샌드박스 · keychain-access-groups 가 없는 Developer ID 앱은 `SyncEngine.standard(…, useDataProtectionKeychain: false)` (로그인 키체인, 같은 접근성 값).
+  로그인 키체인은 `ThisDeviceOnly` 를 지키지 않는다 — 이전 지원 · Time Machine 복원으로 새 Mac 에 옮겨 갈 수 있다. Mac 앱은 그룹에 들어갈 때
+  이 Mac 의 표시(IOPlatformUUID 의 해시, UserDefaults `sync.machine`)를 적어 두고, 켤 때 다르면 키체인을 읽기 전에 멈추고
+  ‘이 Mac 에서 이어 쓰기’(원래 Mac 을 더 쓰지 않음) · ‘정리하기’(이 Mac 의 열쇠 · SyncState 만 지우고 다시 합류 — 서버에는 묻지 않는다) 를 묻는다.
+- 그룹에 들어 있다는 표시(`sync.groupURL`)는 UserDefaults 에 있고 UserDefaults 는 번들 id 마다 따로라서, 키체인 항목 · SyncState 도 번들 id 로 가른다:
+  `com.spiralday.app` (build.sh 의 `.app`) 은 `com.spiralday.sync` · `SyncState`, 그 밖의 실행(`swift run` · 테스트)은 `com.spiralday.sync.dev` · `SyncState-dev`.
 - `carryForward` 의 미룸 id 규칙은 SpiraldayKit 에 들어 있어 Mac 앱도 이미 같다 (`PlanTask.carryTaskId`).
 - 이 저장소의 Mac 앱이 실제로 붙인 곳은 `Sources/Spiralday/Sync/` 다:
   - `SyncController` — 엔진 하나 · 설정 → 동기화의 단계별 흐름 · 앱 수명. 기본은 꺼짐: 이 설치가 그룹에 들어간 적이 있을 때(UserDefaults `sync.groupURL`)만
@@ -274,7 +279,11 @@ private func observe(_ new: PlannerData) {
   - `PlannerSyncHost` — 위 4 의 호스트. 쓰던 칸(포커스만)의 글이 다른 기기의 글로 바뀌면 `onEditedFieldReplaced(새 글)` 로 알리고, 컨트롤러가 그 칸의
     되돌리기 기록을 비운다. Mac 앱의 ⌘Z 는 글 칸(필드 편집기)의 것뿐이라 PlannerData 를 쌓는 되돌리기가 없다 — 이것이 Mac 의 "되돌리기 옮기기"다.
     ⌘Z(`undo:`)는 응답자 사슬로 가서 필드 편집기가 보는 기록을 되돌리는데, SwiftUI 글 칸의 필드 편집기는 창의 `undoManager` 가 아니라 호스팅 뷰의 기록을 쓰고,
-    SwiftUI 가 다음 화면 갱신에서 새 글을 칸에 넣는 것도 그 기록에 남는다. 그래서 필드 편집기의 기록(과 창의 것)을 바로 한 번, 새 글이 칸에 들어간 뒤 한 번 더 비운다.
+    SwiftUI 가 다음 화면 갱신에서 새 글을 칸에 넣는 것도 그 기록에 남는다. 그래서 필드 편집기의 기록(과 창의 것)을 바로 한 번, 새 글이 칸에 들어간 뒤(최대 3초 기다림) 한 번 더 비운다.
+    쓰는 중인지는 그 칸으로 가른다: `AppState.editingKey` 가 바뀌면 `PlannerStore.noteEditingField` 가 그 칸의 글을 적어 두고, 그 글이 바뀐 때만 쓰는 중으로 본다
+    (다른 칸에 막 쓰거나 칠하고 옮겨 온 칸은 포커스만 있는 칸 — 다른 기기의 더 새 글을 받는다).
+    설정 창의 형광펜 이름 · D-day 제목(칠 때마다 저장소에 쓰는 칸)은 쓰는 칸 지키기 밖이다. 그 값이 다른 기기의 값으로 바뀌면 `onSettingsTextReplaced` 로 알리고,
+    설정 창의 포커스 칸에 그 새 값이 들어오면 그 칸의 되돌리기 기록을 비운다.
   - 펼친 책이 다른 기기에서 지워지면 다른 책을 펴고 플래너 위에 안내, 펼치지 않은 책이 지워지면 그 이름으로 안내. 지금 장이 기간 밖이면 오늘로.
   - 설정 → 동기화 (`SyncSettingsPane` · `SyncFlows` · `SyncHistory`), 팔레트의 설정 단추 귀퉁이 표시, 플래너 메뉴의 ‘지금 맞추기’ · ‘이 날(주)의 이전 버전…’ · ‘동기화 설정…’.
     Mac 은 QR 을 카메라로 찍지 않는다 — Windows PC 처럼 8자리 코드나 원래 기기의 ‘연결 글 복사’로 받은 글을 붙여 넣는다.

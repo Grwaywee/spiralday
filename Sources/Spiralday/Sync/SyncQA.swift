@@ -15,7 +15,7 @@ import SpiraldaySync
 @MainActor
 enum SyncQA {
     static let states = [
-        "off", "off-demo", "creds", "problem",
+        "off", "off-demo", "creds", "problem", "moved",
         "start", "join-input", "join-code", "join-link", "join-error", "restore-input", "restore-typo", "restore-ok", "restore-merge",
         "recovery-working", "recovery-show", "recovery-rotate", "recovery-check", "recovery-failed",
         "pair-opening", "pair-qr", "pair-code", "pair-request", "pair-wrong", "pair-approving", "pair-approved", "pair-denied",
@@ -162,6 +162,7 @@ enum SyncQA {
         case "problem":
             sync.qaPresent(status: nil, inGroup: false, flow: nil, deviceName: deviceName,
                            startProblem: SyncText.errorText(KeychainError(status: errSecAuthFailed), .launch))
+        case "moved": sync.qaPresent(status: nil, inGroup: false, flow: nil, deviceName: deviceName, moved: true)
         case "start": off(.start)
         case "join-input": off(.join)
         case "join-code": off(.join, input: ["code": "K7QDM2X"])

@@ -14,6 +14,8 @@ import SpiraldaySync
 //   · 쓰고 있는 칸(AppState.editingKey)은 SpiraldayKit 이 화면의 글을 지킨다. 그 칸의 글이 다른 기기의 글로 바뀌었으면
 //     (쓰지 않고 포커스만 있던 칸) onEditedFieldReplaced 로 알린다 → 앱이 그 칸의 되돌리기(⌘Z) 기록을 비운다
 //     (되돌리기가 다른 기기의 글을 지우고 옛 글로 돌아가지 않게)
+//   · 설정 창의 동기화되는 글 칸(형광펜 이름 · 저장한 D-day 제목 — 칠 때마다 저장소에 쓴다)은 쓰는 칸 지키기 밖이다.
+//     그 값이 다른 기기의 값으로 바뀌었으면 onSettingsTextReplaced 로 새 값들을 알린다 → 앱이 그 칸의 ⌘Z 기록을 비운다
 // ─────────────────────────────────────────────────────────────────────────────
 
 @MainActor
@@ -29,6 +31,8 @@ final class PlannerSyncHost: SyncHost {
     var onLibraryApplied: (ExternalApplyResult, _ removed: [BookInfo]) -> Void = { _, _ in }
     /// 펼친 책의 내용을 넣었다
     var onActiveApplied: (ExternalApplyResult) -> Void = { _ in }
+    /// 설정 창에서 고치는 글(형광펜 이름 · 저장한 D-day 제목)이 다른 기기의 값으로 바뀌었다 (바뀐 새 값들)
+    var onSettingsTextReplaced: (_ newValues: Set<String>) -> Void = { _ in }
 
     init(store: PlannerStore) { self.store = store }
 
@@ -73,13 +77,18 @@ final class PlannerSyncHost: SyncHost {
             let merged = try PlannerStore.decodeFile(PlannerData.self, from: next.jsonData())
             let key = editingKey()
             let before = key.flatMap { PlannerData.editedText($0, in: store.data) }
+            let settingsBefore = Self.settingsTexts(store.data)
             let r = store.applyActiveData(merged, keepingEditOf: key)
             if r.editedItemRemoved {
                 onEditedItemRemoved()
             } else if let key, r.changed, before != nil, case let after = PlannerData.editedText(key, in: store.data), after != before {
                 onEditedFieldReplaced(after)
             }
-            if r.changed { onActiveApplied(r) }
+            if r.changed {
+                let replaced = Self.settingsTexts(store.data).filter { k, v in settingsBefore[k].map { $0 != v } ?? false }
+                if !replaced.isEmpty { onSettingsTextReplaced(Set(replaced.values)) }
+                onActiveApplied(r)
+            }
         } else if let next {
             // 앱 모델로 읽고 다시 써서 Mac 의 JSONEncoder 와 같은 바이트로 (모든 기기의 책 파일이 같은 바이트).
             // writeBookRaw 는 앱이 읽을 수 있는지 다시 보고 원자적으로 쓴다
@@ -87,6 +96,14 @@ final class PlannerSyncHost: SyncHost {
         } else if cur != nil {
             try store.removeBookFile(uuid)                      // 책장에서 이미 빠진 책
         }
+    }
+
+    /// 설정 창에서 칠 때마다 저장소에 쓰는 글 (형광펜 이름 · 저장한 D-day 제목), id 마다
+    static func settingsTexts(_ d: PlannerData) -> [String: String] {
+        var m: [String: String] = [:]
+        for c in d.prefs.categories { m["pen|\(c.id)"] = c.name }
+        for dd in d.prefs.ddays { m["dday|\(dd.id.uuidString)"] = dd.title }
+        return m
     }
 
     /// 앱 파일과 같은 JSON (PlannerStore.encodeFile 과 같은 .iso8601 · .sortedKeys) → 엔진의 값. MainActor 밖에서도

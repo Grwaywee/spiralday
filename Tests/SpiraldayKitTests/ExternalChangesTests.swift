@@ -273,6 +273,62 @@ final class ExternalChangesTests: XCTestCase {
         XCTAssertNil(store.day(d1).tasks.first { $0.id == task })
     }
 
+    /// 쓰는 중인지는 그 칸으로 가른다: 다른 칸에 막 쓰거나 칠하고 이 칸으로 옮겨 포커스만 두었으면 쓰는 중이 아니다 →
+    /// 다른 곳의 더 새 글이 들어온다 (화면의 옛 글로 되돌려 다음 비교에서 새 편집으로 올리지 않는다)
+    func testOnlyTheFocusedFieldsOwnEditsCountAsTyping() {
+        let store = PlannerStore(inMemory: true)
+        store.useBook(BookInfo(name: "A", start: d1), data: PlannerData())
+        let state = AppState(kind: .daily)
+        state.store = store
+        let k = Dates.key(d1)
+        let comment = "c|\(k)"
+        store.dayField(d1, \.comment).wrappedValue = "옛 COMMENT"
+        let task = store.addTask(d1, row: 0)
+
+        // 할 일(Y)에 막 쓰고, 칠하고, COMMENT(X)로 옮겨 포커스만 둠 — 모두 editingGrace(5초) 안
+        state.editingKey = AppState.taskKey(d1, task)
+        store.taskText(d1, id: task).wrappedValue = "방금 쓴 할 일"
+        state.editingKey = comment
+        store.editDay(d1) { $0.slots[30] = 1 }
+        XCTAssertNotNil(store.lastLocalEdit)
+
+        var newer = store.data
+        newer.days[k]!.comment = "다른 기기의 더 새 COMMENT"
+        let r = store.applyActiveData(newer, keepingEditOf: comment)
+        XCTAssertTrue(r.changed)
+        XCTAssertFalse(r.keptEdit, "이 칸은 쓰지 않았다")
+        XCTAssertEqual(store.day(d1).comment, "다른 기기의 더 새 COMMENT")
+        XCTAssertEqual(store.day(d1).tasks.first?.text, "방금 쓴 할 일")
+
+        // 그 칸에 치기 시작하면 쓰는 중: 같이 들어온 글보다 화면의 글을 지킨다
+        store.dayField(d1, \.comment).wrappedValue = "다른 기기의 더 새 COMMENT!"
+        var concurrent = store.data
+        concurrent.days[k]!.comment = "또 다른 글"
+        let r2 = store.applyActiveData(concurrent, keepingEditOf: comment)
+        XCTAssertTrue(r2.keptEdit)
+        XCTAssertEqual(store.day(d1).comment, "다른 기기의 더 새 COMMENT!")
+
+        // 밖에서 넣은 글은 사용자가 고친 것으로 세지 않는다: 메모 칸으로 옮겨 포커스만 둔 채 다른 기기의 글을 받고,
+        // 그 뒤에 칠하기만 해도 그 칸이 쓰는 중이 되지 않는다
+        let memo = "m|\(k)|0"
+        state.editingKey = memo
+        var memoNewer = store.data
+        memoNewer.days[k]!.memos[0] = "다른 기기의 메모"
+        XCTAssertFalse(store.applyActiveData(memoNewer, keepingEditOf: memo).keptEdit)
+        store.editDay(d1) { $0.slots[31] = 1 }
+        var memoAgain = store.data
+        memoAgain.days[k]!.memos[0] = "다른 기기의 메모 (고침)"
+        XCTAssertFalse(store.applyActiveData(memoAgain, keepingEditOf: memo).keptEdit, "받은 글 · 칠하기는 이 칸의 편집이 아니다")
+        XCTAssertEqual(store.day(d1).memos[0], "다른 기기의 메모 (고침)")
+
+        // 편집을 끝내면 잊는다 (다음에 알리지 않은 칸은 예전처럼 책 전체의 편집으로)
+        state.editingKey = nil
+        store.dayField(d1, \.comment).wrappedValue = "알리지 않은 칸"
+        var other = store.data
+        other.days[k]!.comment = "같이 온 글"
+        XCTAssertTrue(store.applyActiveData(other, keepingEditOf: comment).keptEdit)
+    }
+
     func testKeepingEditedFieldCoversEveryInlineField() {
         let k = "2026-10-01"
         var mine = PlannerData()

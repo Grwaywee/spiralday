@@ -1,6 +1,10 @@
-// 기기 토큰 · 그룹 키를 Keychain 에 둔다 (서버 · 동기화 상태 파일에는 두지 않는다).
+// 기기 토큰 · 그룹 키를 Keychain 에 둔다 (서버 · 동기화 상태 파일에는 두지 않는다). iCloud 키체인으로 동기화하지 않는다.
 // kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly: 처음 잠금을 푼 뒤 (뒤에서 동기화할 때도) 읽을 수 있고,
-// 백업 · 다른 기기로 옮겨 가지 않는다 (새 기기는 페어링이나 복구 코드로 들어온다).
+// 데이터 보호 키체인(iOS · macOS 의 useDataProtectionKeychain)에서는 백업 · 다른 기기로 옮겨 가지 않는다
+// (새 기기는 페어링이나 복구 코드로 들어온다).
+// macOS 의 로그인 키체인(useDataProtectionKeychain: false — 샌드박스 · keychain-access-groups 없는 Developer ID 앱)은
+// 이 속성을 지키지 않는다: 키체인 파일째 이전 지원 · Time Machine 복원으로 새 Mac 에 옮겨 갈 수 있다 →
+// 그런 앱은 다른 Mac 으로 옮겨 온 자격을 따로 알아봐야 한다 (Mac 앱: SyncController 의 movedFromOtherMac).
 import Foundation
 import Security
 

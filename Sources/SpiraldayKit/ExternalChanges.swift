@@ -12,6 +12,7 @@ import Foundation
 // 넣기 (모두 MainActor 에서 바로 — 사이에 사용자의 편집이 끼어들지 않는다)
 //   applyLibrary(_:)                  책장 (책 더하기 · 정보 바꾸기 · 빼기). 펼친 책이 빠지면 다른 책을 편다
 //   applyActiveData(_:keepingEditOf:base:) 펼친 책의 내용. 쓰는 중인 칸은 화면의 글을 지킨다 (포커스만 있는 칸은 아니다). 바로 저장한다
+//   noteEditingField(_:)              쓰기 시작한 칸 (AppState.editingKey 가 바뀔 때 알린다) — 쓰는 중인지를 그 칸의 편집으로 가른다
 //   readBookRaw / writeBookRaw / removeBookFile   펼치지 않은 책 파일
 //
 // 데이터 안전 규칙은 앱과 같다: 읽지 못한 파일(unreadableBooks · libraryUnreadable)은 읽거나 쓰거나 지우지 않고,
@@ -133,7 +134,8 @@ extension PlannerStore {
     /// 보통은 지금 `data` 로 합친 결과를 같은 MainActor 차례 안에서 바로 넘긴다 (그 사이에 사용자의 편집이 끼어들지 않게).
     /// - base: merged 를 만든 바탕 (밖에서 그때 읽은 data). 주지 않으면 지금 data 로 만든 것으로 본다.
     /// - editingKey (AppState.editingKey): 쓰고 있는 칸(할 일 · 타임테이블 메모 · COMMENT · 메모 · 메모 태그 · 주간 목표 · 첫 장의 말)은
-    ///   지금 쓰는 중이면 — base 를 줬으면 base 뒤로 고쳤을 때, 주지 않았으면 editingGrace 안에 고쳤을 때 — 화면의 글을 그대로 둔다
+    ///   지금 쓰는 중이면 — base 를 줬으면 base 뒤로 고쳤을 때, 주지 않았으면 그 칸을 editingGrace 안에 고쳤을 때
+    ///   (noteEditingField 로 알린 칸이면 그 칸의 글이 바뀐 때로, 아니면 책 전체의 마지막 편집 lastLocalEdit 로) — 화면의 글을 그대로 둔다
     ///   (글자 · 커서 · 한글 조합이 흔들리지 않는다. 그 칸은 다음 비교에서 새 편집으로 보인다).
     ///   포커스만 있고 쓰지 않은 칸은 merged 의 값을 넣는다 (다른 곳의 더 새 글을 화면의 옛 글로 덮어 되돌리지 않게).
     ///   쓰던 할 일 · 메모가 없어졌으면(다른 곳에서 지움) 되살리지 않고 editedItemRemoved 로 알린다 → 앱이 편집을 끝낸다.
@@ -151,8 +153,8 @@ extension PlannerStore {
         next.prefs.lastKind = data.prefs.lastKind
         next.prefs.ddaysPerDay = data.prefs.ddaysPerDay
         if let editingKey {
-            let typing = lastLocalEdit.map { Date().timeIntervalSince($0) < editingGrace } ?? false
-            let kept = PlannerData.keepingEditedField(editingKey, mine: data, merged: next, base: base ?? (typing ? nil : data))
+            let kept = PlannerData.keepingEditedField(editingKey, mine: data, merged: next,
+                                                      base: base ?? (isTyping(in: editingKey) ? nil : data))
             next = kept.data
             result.keptEdit = kept.kept
             result.editedItemRemoved = kept.removed
@@ -164,9 +166,35 @@ extension PlannerStore {
             data = next
             isApplyingExternalChange = false
             bump()
+            // 밖에서 넣은 글은 사용자가 고친 것이 아니다: 쓰는 칸의 기록을 새 글로 맞춘다 (고친 때는 그대로)
+            if var f = fieldEdit {
+                f.text = PlannerData.editedText(f.key, in: data)
+                fieldEdit = f
+            }
         }
         if result.changed || result.keptEdit { saveNow() }
         return result
+    }
+
+    /// 쓰기 시작한 칸을 알린다 (AppState.editingKey 가 바뀔 때 — 편집을 끝내면 nil). 그 칸의 지금 글을 적어 두고,
+    /// 그 뒤로 그 글이 바뀌어야(사용자가 쳐야) 그 칸을 쓰는 중으로 본다 (applyActiveData).
+    /// 같은 칸을 다시 알리면 아무것도 하지 않는다 (고친 때를 그대로 둔다)
+    public func noteEditingField(_ key: String?) {
+        guard let key else {
+            fieldEdit = nil
+            return
+        }
+        guard fieldEdit?.key != key else { return }
+        fieldEdit = FieldEdit(key: key, text: PlannerData.editedText(key, in: data), at: nil)
+    }
+
+    /// 그 칸을 지금 쓰는 중인지 (editingGrace 안에 고쳤는지). 알린 칸이면 그 칸의 편집으로, 아니면 책 전체의 마지막 편집으로
+    func isTyping(in key: String, now: Date = Date()) -> Bool {
+        if let f = fieldEdit, f.key == key {
+            guard let at = f.at else { return false }
+            return now.timeIntervalSince(at) < editingGrace
+        }
+        return lastLocalEdit.map { now.timeIntervalSince($0) < editingGrace } ?? false
     }
 
     // MARK: 펼치지 않은 책

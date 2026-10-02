@@ -49,6 +49,9 @@ fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/Fonts"
 cp Resources/Fonts/* "$APP/Contents/Resources/Fonts/"
+# 오픈소스 고지 (libsodium · swift-sodium 은 ISC — 실행 파일에 정적으로 링크되므로 모든 사본에 고지를 넣는다 · Sparkle 은 MIT)
+mkdir -p "$APP/Contents/Resources/Licenses"
+cp Resources/Licenses/* "$APP/Contents/Resources/Licenses/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

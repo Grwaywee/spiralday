@@ -56,7 +56,8 @@ struct SpiraldayApp: App {
                         planner { _ in PDFExportWindowController.shared.show(store: delegate.store, state: delegate.state) }
                     }
                     .keyboardShortcut("p", modifiers: .command)
-                    // 동기화: 지금 맞추기 · 이 날(주)의 이전 버전 · 동기화 설정 (켜기 전에는 설정만)
+                    // 동기화: 지금 맞추기 · 이 날(주)의 이전 버전 · 동기화 설정. 꺼져 있어도 세 항목이 보이고, 켜기 전에는
+                    // 앞의 둘은 흐리다 (1.0.7 과 달라지는 화면: 이 메뉴 · 설정 창의 ‘동기화’ — 종이 · 팔레트 · PDF 는 그대로)
                     SyncMenuItems(sync: delegate.sync, store: delegate.store, state: delegate.state,
                                   blocked: { TourController.shared.isRunning })
                 }

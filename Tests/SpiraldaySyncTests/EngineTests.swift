@@ -356,6 +356,29 @@ final class EnginePairingTests: XCTestCase {
         XCTAssertTrue(inGroup)
     }
 
+    /// 서버 전체의 코드 실패 상한(여러 IP 로 맞혀 보기)에 걸리면 모든 사람의 8자 코드 합류가 잠깐 멈춘다 — QR 은 그대로.
+    /// (상한 값은 운영 서버 설정이라 가짜 서버의 기본값은 제한 없음 — 여기서 1 로 둔다)
+    func testGlobalCodeFailCapPausesCodeJoinsButQrStillWorks() async throws {
+        var limits = FakeServerLimits()
+        limits.codeFailGlobalPer10Min = 1
+        let server = FakeSyncServer(limits: limits)
+        let a = await device(server)
+        try await a.engine.initialize()
+        try await a.engine.createGroup(deviceName: "A")
+        let guesser = await device(server, ip: "10.7.7.7")
+        try await guesser.engine.initialize()
+        _ = await expectError(.invalidCode) { _ = try await guesser.engine.joinGroup("AAAA-AAAA", deviceName: "C") }
+        let b = await device(server, ip: "10.9.9.9")
+        try await b.engine.initialize()
+        let offer = try await a.engine.startPairing(mode: .code)
+        _ = await expectError(.codeJoinPaused) { _ = try await b.engine.joinGroup(offer.code!, deviceName: "B") }
+        try await offer.cancel()
+        let (_, join, _) = try await requestAndApprove(a, b, mode: .qr)
+        try await join.accept()
+        let inGroup = await b.engine.inGroup
+        XCTAssertTrue(inGroup)
+    }
+
     func testDeviceNamesBoundToIds() async throws {
         let server = FakeSyncServer()
         let a = await device(server, platform: "Mac")

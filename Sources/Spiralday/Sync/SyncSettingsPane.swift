@@ -8,7 +8,7 @@ import SpiraldaySync
 // Windows · iOS 앱의 설정 → 동기화와 같은 흐름 · 같은 말을 Mac 설정 창의 모양(Form .grouped)으로. 흐름은 Windows 처럼
 // 이 자리에서 바뀐다 (시트를 겹치지 않는다):
 //   꺼짐(설명 · 시작하기 · 합류하기 · 복구) → 시작 · 합류 · 복구 코드 입력 → 흐름(복구 코드 · 기기 추가 · 합류 · 되살림)
-//   → 켜짐(상태 · 기기 · 이전 버전 · 복구 코드 · 끄기) · 빠짐/그룹 없음(정리하기)
+//   → 켜짐(상태 · 기기 · 이전 버전 · 복구 코드 · 끄기) · 빠짐/그룹 없음(정리하기) · 다른 Mac 에서 옮겨 온 그룹 정보(이어 쓰기 · 정리하기)
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct SyncSettingsPane: View {
@@ -30,6 +30,8 @@ struct SyncSettingsPane: View {
                 }
             } else if let flow = sync.flow {
                 SyncFlowScreen(flow: flow)
+            } else if sync.movedFromOtherMac {
+                SyncMovedScreen()
             } else if let step = sync.localStep, !sync.inGroup, sync.available {
                 switch step {
                 case .start: SyncStartStep()
@@ -71,7 +73,7 @@ struct SyncSettingsPane: View {
         }
     }
 
-    /// 메뉴의 ‘이 장의 이전 버전…’
+    /// 메뉴의 ‘이 날의 이전 버전…’ · ‘이 주의 이전 버전…’
     private func openRequestedHistory() {
         guard let r = sync.historyRequest, sync.inGroup else { return }
         sync.historyRequest = nil
@@ -235,6 +237,7 @@ struct SyncStartStep: View {
 struct SyncProblemScreen: View {
     @EnvironmentObject private var sync: SyncController
     @State private var busy = false
+    @State private var asksForget = false
 
     var body: some View {
         Form {
@@ -245,11 +248,8 @@ struct SyncProblemScreen: View {
                 VStack(alignment: .leading, spacing: 0) {
                     SettingsFootnote(text: "플래너는 이 Mac 에 그대로 있어요. [다시 해 보기]로 안 되면 [정리하기]로 이 Mac 의 동기화 정보만 정리한 뒤 다른 기기에 다시 합류하거나 복구 코드로 되살려 주세요.")
                     SyncActions {
-                        Button("정리하기") {
-                            busy = true
-                            Task { _ = await sync.forget(); busy = false }
-                        }
-                        .disabled(busy)
+                        Button("정리하기…") { asksForget = true }
+                            .disabled(busy)
                         Button("다시 해 보기") {
                             busy = true
                             Task { await sync.retryStart(); busy = false }
@@ -259,6 +259,64 @@ struct SyncProblemScreen: View {
                     }
                 }
             }
+        }
+        // 키체인 허용 창에서 한 번 ‘거부’ 했을 뿐일 수도 있다: 열쇠를 지우기 전에 한 번 묻는다
+        .alert("이 Mac 의 동기화 정보를 정리할까요?", isPresented: $asksForget) {
+            Button("취소", role: .cancel) {}
+            Button("정리하기", role: .destructive) {
+                busy = true
+                Task { _ = await sync.forget(); busy = false }
+            }
+        } message: {
+            Text("이 Mac 의 동기화 열쇠를 지워요. 플래너는 그대로예요.\n다시 동기화하려면 다른 기기의 ‘기기 추가’로 연결하거나 복구 코드로 되살려야 해요. 다른 기기의 기기 목록에 남은 이 Mac 은 그 기기에서 빼 주세요.\n\n키체인이 접근을 물었을 때 ‘거부’를 눌렀다면 정리하지 말고 [다시 해 보기]를 눌러 ‘허용’을 골라 주세요.")
+        }
+    }
+}
+
+// MARK: - 다른 Mac 에서 옮겨 온 그룹 정보 (이전 지원 · Time Machine 복원)
+
+struct SyncMovedScreen: View {
+    @EnvironmentObject private var sync: SyncController
+    @State private var busy = false
+    @State private var asksForget = false
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            Section {
+                SyncBanner(symbol: "laptopcomputer.and.arrow.down", tint: Color(nsColor: .systemOrange),
+                           title: "다른 Mac 에서 옮겨 온 동기화 정보예요",
+                           detail: "이 Mac 으로 옮겨 오면서(이전 지원 · Time Machine 복원) 원래 Mac 의 동기화 열쇠도 같이 왔어요. 두 Mac 이 한 기기로 붙지 않게 동기화를 멈춰 두었어요. 플래너는 그대로예요.")
+                if let error { SyncNote(tone: .error, text: error) }
+            } header: { SyncPaneHead() } footer: {
+                VStack(alignment: .leading, spacing: 0) {
+                    SettingsFootnote(text: "원래 Mac 을 더 쓰지 않으면 [이 Mac 에서 이어 쓰기]를 눌러요. 원래 Mac 도 계속 쓰면 [정리하기]로 이 Mac 의 동기화 정보만 지운 뒤, 다른 기기의 ‘기기 추가’로 새로 합류해 주세요.")
+                    SyncActions {
+                        Button("정리하기…") { asksForget = true }
+                            .disabled(busy)
+                        Button("이 Mac 에서 이어 쓰기") {
+                            busy = true
+                            Task { await sync.keepMovedGroup(); busy = false }
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(busy)
+                    }
+                }
+            }
+        }
+        .alert("이 Mac 의 동기화 정보를 정리할까요?", isPresented: $asksForget) {
+            Button("취소", role: .cancel) {}
+            Button("정리하기", role: .destructive) {
+                busy = true
+                error = nil
+                Task {
+                    let r = await sync.forgetMovedGroup()
+                    busy = false
+                    if !r.ok, let m = r.message, !m.isEmpty { error = m }
+                }
+            }
+        } message: {
+            Text("이 Mac 의 동기화 열쇠와 상태만 지워요. 원래 Mac 은 그룹에 그대로 남고, 플래너도 그대로예요.")
         }
     }
 }
@@ -399,7 +457,7 @@ struct SyncStatusScreen: View {
             Section {
                 HStack(spacing: 12) {
                     SyncRowText(title: "하루 · 한 주의 이전 버전",
-                                detail: "잘못 고치거나 지웠을 때 30일 안의 버전으로 되돌려요. 플래너 메뉴의 ‘이 장의 이전 버전…’으로도 열 수 있어요.")
+                                detail: "잘못 고치거나 지웠을 때 30일 안의 버전으로 되돌려요. 일간 · 주간 장을 보면서 플래너 메뉴의 ‘이 날의 이전 버전…’ · ‘이 주의 이전 버전…’으로도 열 수 있어요.")
                     Spacer(minLength: 12)
                     Button("이전 버전 보기…", action: onHistory)
                         .disabled(store.userBooks.isEmpty)

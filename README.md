@@ -70,7 +70,7 @@ LeanAgileHungry Inc. 의 Developer ID 로 서명하고 Apple 공증(notarization
 
 ### 직접 빌드
 
-Xcode 16 이상 (Swift 6 툴체인) 이 필요합니다.
+Xcode 16 이상 (Swift 6 툴체인 — `swift-tools-version:6.0` · `Package.resolved` v3) 이 필요합니다.
 
 ```bash
 git clone https://github.com/Grwaywee/spiralday.git
@@ -80,6 +80,8 @@ open build/Spiralday.app
 ```
 
 직접 빌드한 앱은 이 Mac 에서만 쓰는 애드혹 서명이고, 공증은 받지 않습니다. Apple Silicon · Intel 유니버설로 빌드하려면 `UNIVERSAL=1 ./build.sh`.
+
+직접 빌드한 `.app` 은 설치한 Spiralday 와 번들 id 가 같아서 같은 데이터 폴더 · 설정 · 동기화 열쇠(로그인 키체인의 `com.spiralday.sync`)를 씁니다. 애드혹 서명은 빌드할 때마다 서명이 바뀌어서, 동기화를 켠 뒤에는 다시 빌드할 때마다 키체인이 접근을 허용할지 물어요. `swift run` · `.build/debug/Spiralday` 처럼 `.app` 이 아닌 실행은 데이터 폴더는 같지만 동기화 열쇠 · 상태는 따로(`com.spiralday.sync.dev` · `SyncState-dev`) 써서 설치한 앱의 동기화를 건드리지 않습니다 — 그래도 플래너 파일은 같은 폴더라, 동기화를 시험할 때는 `--demo` 나 디버그 빌드의 `--sync-drive <폴더>` (따로 된 폴더 · 키체인 이름) 를 쓰세요.
 
 ## 사용법
 
@@ -161,9 +163,9 @@ open build/Spiralday.app
 
 설정 → 동기화에서 켭니다 (기본은 꺼짐). 첫 기기에서 **이 Mac 에서 시작하기** → 복구 코드를 적어 두고 (복사 · 텍스트 파일 · 인쇄 → 두 묶음을 다시 입력해 확인), 다른 기기에서는 **기기 추가** 의 QR 이나 8자리 코드로 들어옵니다. 새 기기 화면의 숫자 4자리를 원래 기기에 입력해야 그룹 열쇠가 갑니다. 그 밖에 기기 목록 · 이름 바꾸기 · 빼기, 하루 · 한 주의 이전 버전(30일), 복구 코드 새로 만들기, 이 Mac 에서 끄기 · 그룹 지우기.
 
-- 켜기 전에는 키체인도 네트워크도 건드리지 않습니다. 켜면 열쇠(기기 토큰 · 그룹 키)는 로그인 키체인(`com.spiralday.sync`, 이 Mac 에만)에, 동기화 상태는 `~/Library/Application Support/Spiralday/SyncState` 에 둡니다.
+- 켜기 전에는 키체인도 네트워크도 건드리지 않습니다. 켜면 열쇠(기기 토큰 · 그룹 키)는 로그인 키체인(`com.spiralday.sync`, iCloud 키체인으로 동기화하지 않음)에, 동기화 상태는 `~/Library/Application Support/Spiralday/SyncState` (Time Machine 제외) 에 둡니다. 로그인 키체인과 설정은 이전 지원 · Time Machine 복원으로 새 Mac 에 옮겨 갈 수 있어서, 켤 때 그룹에 들어간 Mac 과 다른 Mac 이면 동기화를 멈추고 **이 Mac 에서 이어 쓰기**(원래 Mac 을 더 쓰지 않을 때) · **정리하기**(원래 Mac 도 쓸 때 — 이 Mac 은 다시 합류) 를 묻습니다. 두 Mac 이 한 기기로 붙지 않게 하려는 것입니다.
 - 서버(`sync.spiralday.com`)는 암호문 · 불투명 id · 순번만 봅니다. 플래너 내용 · 날짜 · 플래너 이름 · 기기 이름도 암호문입니다.
-- 쓰는 중인 칸은 다른 기기의 편집이 들어와도 글 · 커서가 흔들리지 않고, ⌘Z 가 다른 기기의 편집을 지우지 않습니다. 다른 기기에 합류하거나 복구 코드로 되살리기 직전에는 이 Mac 의 플래너를 `SyncBackups/` 에 저절로 백업합니다 (설정 → 데이터 → 백업 가져오기로 꺼낼 수 있음).
+- 플래너 종이의 쓰는 중인 칸(그 칸을 5초 안에 고쳤을 때)은 다른 기기의 편집이 들어와도 글 · 커서가 흔들리지 않고, 포커스만 둔 칸은 다른 기기의 더 새 글을 받습니다. ⌘Z 는 다른 기기의 편집을 지우지 않습니다 (설정 창의 형광펜 이름 · D-day 제목도 — 다만 이 칸들은 쓰는 칸 지키기 밖이라 두 기기에서 같은 칸을 동시에 고치면 나중 값이 남습니다). 다른 기기에 합류하거나 복구 코드로 되살리기 직전에는 이 Mac 의 플래너를 `SyncBackups/` 에 저절로 백업합니다 (설정 → 데이터 → 백업 가져오기로 꺼낼 수 있음).
 - 엔진과 프로토콜은 [Docs/SpiraldaySync.md](Docs/SpiraldaySync.md).
 
 ### 개인정보
@@ -253,5 +255,7 @@ build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 �
 [MIT](LICENSE) © 2026 LeanAgileHungry Inc.
 
 - 손글씨 폰트 **Poor Story** — © YoonDesign Inc., [SIL Open Font License 1.1](Resources/Fonts/OFL-PoorStory.txt)
-- 동기화 암호 **libsodium** ([swift-sodium](https://github.com/jedisct1/swift-sodium)) — ISC License
+- 동기화 암호 **libsodium** · **[swift-sodium](https://github.com/jedisct1/swift-sodium)** — ISC License ([고지](Resources/Licenses/libsodium-LICENSE.txt) · [고지](Resources/Licenses/swift-sodium-LICENSE.txt))
+- 앱 업데이트 **[Sparkle](https://sparkle-project.org)** — MIT License ([고지](Resources/Licenses/Sparkle-LICENSE.txt))
+- 이 고지들은 `.app` 의 `Contents/Resources/Licenses` 에도 들어가고, 설정 → 데이터 → 정보의 ‘고지 보기…’로 열 수 있습니다.
 - 페이지 구성은 흔히 쓰는 10분 단위 종이 플래너 형식에서 영감을 받았으며, 특정 제품의 상표와 로고는 포함하지 않습니다.

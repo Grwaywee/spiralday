@@ -16,12 +16,14 @@ public struct FakeServerLimits: Sendable {
     public var historyMs = 30 * 86_400_000
     public var historyPerRecord = 100
     public var historyCoalesceMs = 2 * 60_000
+    // 남용 막기 상한 (요청 제한): 운영 서버의 값은 서버 설정이라 여기에 두지 않는다. 기본은 제한 없음(0) —
+    // 요청 제한을 보는 테스트가 필요한 값을 직접 넣는다 (예: codeFailPerHour = 2)
     /// IP 당 10분에 claim 시도 수 (0 = 제한 없음)
-    public var claimPer10Min = 10
+    public var claimPer10Min = 0
     /// IP 당 시간에 8자 코드 합류 실패 수 (0 = 제한 없음)
-    public var codeFailPerHour = 5
+    public var codeFailPerHour = 0
     /// 서버 전체 10분에 8자 코드 합류 실패 수 (0 = 제한 없음)
-    public var codeFailGlobalPer10Min = 500
+    public var codeFailGlobalPer10Min = 0
     /// 합류 요청 뒤 승인 기한 (초)
     public var pairingApproveSec = 180
     /// 승인 뒤 감싼 키를 받아 갈 기한 (초). 받은 뒤 이만큼은 다시 준다

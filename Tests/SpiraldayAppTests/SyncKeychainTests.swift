@@ -50,16 +50,19 @@ final class SyncKeychainTests: XCTestCase {
         XCTAssertEqual(creds.service, service)
         XCTAssertFalse(creds.useDataProtectionKeychain, "Developer ID 앱은 로그인 키체인")
         XCTAssertNil(creds.accessGroup)
-        XCTAssertEqual(SyncController.Environment.keychainService, "com.spiralday.sync", "앱의 진짜 항목 이름 (테스트는 쓰지 않는다)")
+        XCTAssertEqual(SyncController.Environment.releaseKeychainService, "com.spiralday.sync", "앱의 진짜 항목 이름 (테스트는 쓰지 않는다)")
         XCTAssertEqual(env.platform, .mac)
         XCTAssertEqual(env.backupRoot, dir.appendingPathComponent("SyncBackups", isDirectory: true))
         XCTAssertTrue(env.watchesSystem)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("SyncState").path), "켜기 전에는 폴더도 만들지 않는다")
+        XCTAssertNotNil(env.machineTag(), "이 Mac 의 표시를 읽는다 (옮겨 온 그룹 정보를 가른다)")
+        XCTAssertEqual(env.machineTag(), env.machineTag(), "늘 같은 값")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("SyncState-dev").path), "켜기 전에는 폴더도 만들지 않는다")
 
-        // 엔진을 만들 때 (켤 때): 데이터 폴더 안에 SyncState, Time Machine 에서 뺀다. initialize 전이라 키체인은 아직
+        // 엔진을 만들 때 (켤 때): 데이터 폴더 안에 SyncState, Time Machine 에서 뺀다. initialize 전이라 키체인은 아직.
+        // 테스트 실행은 .app 이 아니라서(번들 id 가 다름) 설치된 앱과 겹치지 않는 SyncState-dev
         let host = PlannerSyncHost(store: store)
         let engine = try env.makeEngine(host, URL(string: "https://sync.example.invalid")!, MemoryCredentialStore())
-        let state = dir.appendingPathComponent("SyncState", isDirectory: true)
+        let state = dir.appendingPathComponent("SyncState-dev", isDirectory: true)
         var isDir: ObjCBool = false
         XCTAssertTrue(FileManager.default.fileExists(atPath: state.path, isDirectory: &isDir) && isDir.boolValue)
         XCTAssertEqual(try state.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
@@ -67,6 +70,24 @@ final class SyncKeychainTests: XCTestCase {
         await engine.dispose()
         XCTAssertNotEqual(SecItemCopyMatching([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary, nil),
                           errSecSuccess, "테스트용 항목도 만들지 않았다")
+        // 옮겨 온 상태를 버릴 때: 그 폴더만 지운다
+        env.clearLocalState()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: state.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path), "데이터 폴더(플래너)는 그대로")
+    }
+
+    /// 설치된 앱과 같은 열쇠 · SyncState 는 번들 id 가 같은 실행만 쓴다 (그룹 표시 sync.groupURL 이 있는 UserDefaults 가 번들 id 마다 따로라서).
+    /// `swift run` · `.build/debug/Spiralday` 는 따로 된 이름을 써서 설치된 앱의 열쇠를 지우거나 SyncState 를 덮지 않는다
+    func testOnlyTheReleaseBundleSharesTheInstalledAppsKeychainItemAndState() {
+        typealias E = SyncController.Environment
+        XCTAssertTrue(E.sharesReleaseIdentity(bundleID: "com.spiralday.app"))
+        XCTAssertFalse(E.sharesReleaseIdentity(bundleID: nil), ".app 이 아닌 실행")
+        XCTAssertFalse(E.sharesReleaseIdentity(bundleID: "com.apple.dt.xctest.tool"))
+        XCTAssertEqual(E.developmentKeychainService, "com.spiralday.sync.dev")
+        XCTAssertNotEqual(E.developmentKeychainService, E.releaseKeychainService)
+        // 이 테스트 실행 자체도 .app 이 아니다
+        XCTAssertEqual(E.keychainService, E.developmentKeychainService)
+        XCTAssertEqual(E.stateFolderName, "SyncState-dev")
     }
 
     /// 로그인 키체인에 두고 · 읽고 · 지운다 (테스트용 서비스 이름)

@@ -348,12 +348,19 @@ struct SyncNameField: View {
 
 @MainActor
 enum SyncClipboard {
+    /// 클립보드 기록 앱(Raycast · Alfred · Paste · Maccy 등)이 기록에 남기지 않는 비밀 표시 (nspasteboard.org 의 약속)
+    static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    /// 잠깐만 쓰는 값 표시 (기록 앱이 건너뛴다)
+    static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
     /// 이 Mac 의 클립보드에만 둔다 (Handoff 의 공용 클립보드로 다른 Apple 기기에 가지 않게).
-    /// after 초 뒤에 그대로 남아 있으면 지운다
+    /// 비밀 · 잠깐 표시를 같이 넣어 클립보드 기록 앱이 보관하지 않게 하고, after 초 뒤에 그대로 남아 있으면 지운다
     static func copySecret(_ text: String, clearAfter seconds: TimeInterval) {
         let pb = NSPasteboard.general
         pb.prepareForNewContents(with: .currentHostOnly)
         pb.setString(text, forType: .string)
+        pb.setData(Data(), forType: concealedType)
+        pb.setData(Data(), forType: transientType)
         let count = pb.changeCount
         DispatchQueue.main.asyncAfter(deadline: .now() + max(1, seconds)) {
             if pb.changeCount == count, pb.string(forType: .string) == text { pb.clearContents() }

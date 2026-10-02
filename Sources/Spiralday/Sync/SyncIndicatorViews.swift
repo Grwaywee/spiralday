@@ -97,16 +97,23 @@ struct SyncMenuItems: View {
     let blocked: () -> Bool
 
     var body: some View {
+        // 동기화가 꺼져 있어도 자리는 보인다 (흐리게 — 어디서 켜는지 알 수 있게). 켜기 전에 되는 것은 ‘동기화 설정…’ 뿐
+        let page = sync.historyRequestForCurrentPage()
         Divider()
-        Button("지금 맞추기") { Task { await sync.syncNow() } }
+        Button("지금 맞추기") {
+            // 둘러보는 중에는 쉰다 (다른 항목과 같이 — 받은 편집이 둘러보기의 장을 바꾸지 않게)
+            guard !blocked() else { NSSound.beep(); return }
+            Task { await sync.syncNow() }
+        }
             .keyboardShortcut("s", modifiers: [.command, .shift])
             .disabled(!sync.inGroup || sync.status == nil)
-        Button(sync.historyRequestForCurrentPage()?.kind == .week ? "이 주의 이전 버전…" : "이 날의 이전 버전…") {
-            guard !blocked(), let r = sync.historyRequestForCurrentPage() else { return }
+        // 펼친 내 플래너의 일간 · 주간 장에서만 (홈 · 표지 · 첫 장 · 예시 플래너에서는 흐리게)
+        Button(page?.kind == .week ? "이 주의 이전 버전…" : "이 날의 이전 버전…") {
+            guard !blocked(), let r = sync.historyRequestForCurrentPage() else { NSSound.beep(); return }
             sync.historyRequest = r
             SettingsWindowController.shared.showSync(store: store, state: state)
         }
-        .disabled(!sync.inGroup)
+        .disabled(page == nil)
         Button("동기화 설정…") {
             guard !blocked() else { NSSound.beep(); return }
             SettingsWindowController.shared.showSync(store: store, state: state)

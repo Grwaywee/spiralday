@@ -5,7 +5,7 @@ import SpiraldayKit
 import SpiraldaySync
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 디버그 빌드만: 여러 기기 동기화 검증이 이 Mac 앱을 몰 수 있게 하는 통로 (iOS 앱의 --qa-drive 와 같은 약속).
+// 디버그 빌드만: 여러 기기 동기화 검증(여러 기기를 한꺼번에 모는 바깥 스크립트)이 이 Mac 앱을 몰 수 있게 하는 통로.
 //
 //   Spiralday --sync-drive <폴더> [--sync-drive-keychain com.spiralday.mac.sync.qa.<이름>]
 //

@@ -293,4 +293,33 @@ final class PlannerSyncHostTests: XCTestCase {
         let missing = await host.readBook(id: UUID().uuidString)
         XCTAssertEqual(missing, .missing)
     }
+
+    /// 설정 창에서 칠 때마다 저장소에 쓰는 글(형광펜 이름 · 저장한 D-day 제목)이 다른 기기의 값으로 바뀌면 새 값들을 알린다
+    /// (앱이 설정 창의 그 칸의 ⌘Z 기록을 비운다). 다른 칸만 바뀌면 알리지 않는다
+    func testSettingsTextsChangedElsewhereAreReported() async throws {
+        let server = FakeSyncServer()
+        let a = dev(server, ip: "10.0.0.1")
+        let b = dev(server, ip: "10.0.0.2")
+        _ = a.store.createBook(name: "내 플래너", start: d1, end: nil)
+        a.store.saveNow()
+        try await a.engine.initialize()
+        _ = try await a.engine.createGroup(deviceName: "A")
+        try await b.engine.initialize()
+        try await pair(a, b)
+        try await sync(a, b)
+        var reported: [Set<String>] = []
+        b.host.onSettingsTextReplaced = { reported.append($0) }
+
+        let pen = try XCTUnwrap(a.store.categories.first?.id)
+        a.store.updateCategory(pen) { $0.name = "집중 공부" }
+        try await sync(a, b)
+        XCTAssertEqual(b.store.categories.first { $0.id == pen }?.name, "집중 공부")
+        XCTAssertEqual(reported, [["집중 공부"]])
+
+        reported = []
+        a.store.editDay(d1) { $0.comment = "다른 칸" }
+        try await sync(a, b)
+        XCTAssertEqual(b.store.day(d1).comment, "다른 칸")
+        XCTAssertTrue(reported.isEmpty, "설정 창의 글이 아니면 알리지 않는다")
+    }
 }

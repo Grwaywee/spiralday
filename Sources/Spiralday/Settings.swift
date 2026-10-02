@@ -90,6 +90,25 @@ final class SettingsWindowController {
 /// 제목 막대가 있는 평범한 창 모양의 패널 (앱이 비활성일 때도 숨지 않는다)
 private final class SettingsPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+
+    /// ⌘W · 닫기 단추: 한 번만 보여 주는 복구 코드가 화면에 있으면 먼저 묻는다 (동기화의 ‘나중에…’와 같은 말).
+    /// 닫으면 그 코드는 버리고, 설정 → 동기화에 ‘복구 코드를 적어 두었는지 확인하지 못했어요’ 가 남는다
+    override func performClose(_ sender: Any?) {
+        guard SyncController.shared?.showsOneTimeRecoveryCode == true, attachedSheet == nil else {
+            super.performClose(sender)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "복구 코드를 적지 않고 닫을까요?"
+        alert.informativeText = "이 코드는 다시 볼 수 없어요. 복구 코드가 없으면 기기를 모두 잃었을 때 되살릴 수 없어요. 나중에 설정 → 동기화에서 새로 만들어 적어 둘 수 있어요."
+        alert.addButton(withTitle: "돌아가기")
+        let close = alert.addButton(withTitle: "닫기")
+        close.hasDestructiveAction = true
+        alert.beginSheetModal(for: self) { [weak self] response in
+            guard response == .alertSecondButtonReturn else { return }
+            self?.close()
+        }
+    }
 }
 
 // MARK: - Sections
@@ -2066,6 +2085,16 @@ private struct SettingsDataPane: View {
             Section {
                 LabeledContent("버전", value: SettingsDataFile.version)
                 LabeledContent("손글씨 글꼴", value: "Poor Story · SIL OFL 1.1")
+                LabeledContent("오픈소스") {
+                    HStack(spacing: 8) {
+                        Text("libsodium · swift-sodium (ISC) · Sparkle (MIT)")
+                        // build.sh 가 .app 의 Contents/Resources/Licenses 에 넣는다 (.app 이 아닌 실행에는 없다)
+                        if let url = Bundle.main.url(forResource: "Licenses", withExtension: nil) {
+                            Button("고지 보기…") { NSWorkspace.shared.open(url) }
+                                .controlSize(.small)
+                        }
+                    }
+                }
             } header: {
                 SettingsSectionTitle(title: "정보")
             }

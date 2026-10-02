@@ -11,7 +11,10 @@ public final class AppState: ObservableObject {
     @Published public private(set) var kind: PageKind
     @Published public var weekIndex = 0
     @Published public var dayIndex = 0
-    @Published public var editingKey: String? = nil
+    @Published public var editingKey: String? = nil {
+        // 저장소가 쓰는 칸을 알게 한다 (밖에서 온 편집이 쓰는 중인 칸만 지키게 — PlannerStore.noteEditingField)
+        didSet { if editingKey != oldValue { store?.noteEditingField(editingKey) } }
+    }
     /// 형광펜 카테고리 id, 또는 아래 특수 도구
     @Published public var tool = 0
     public static let eraser = -1

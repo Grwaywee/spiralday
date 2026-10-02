@@ -62,7 +62,8 @@ final class SyncControllerTests: XCTestCase {
     private func freshDefaults() -> UserDefaults { SyncMemoryDefaults() }
 
     private func device(_ server: FakeSyncServer, ip: String, name: String, creds: CountingCredentials = CountingCredentials(),
-                        defaults: UserDefaults? = nil, backupRoot: URL? = nil, net: FakeNet = FakeNet(), start: Bool = true) async -> Device {
+                        defaults: UserDefaults? = nil, backupRoot: URL? = nil, net: FakeNet = FakeNet(), start: Bool = true,
+                        machine: String? = nil, cleared: Counter? = nil) async -> Device {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mac-ctl-sync-\(UUID().uuidString)")
         dirs.append(dir)
         let store = PlannerStore(folder: dir.appendingPathComponent("planner"))
@@ -80,7 +81,9 @@ final class SyncControllerTests: XCTestCase {
             },
             pollIntervalMs: 20,
             backupRoot: backupRoot ?? dir.appendingPathComponent("backups"),
-            watchesSystem: false)
+            watchesSystem: false,
+            machineTag: { machine },
+            clearLocalState: { cleared?.n += 1 })
         let sync = SyncController(store: store, env: env)
         controllers.append(sync)
         if start { await sync.start(state: state) }
@@ -518,6 +521,73 @@ final class SyncControllerTests: XCTestCase {
         let left = await broken.peek()
         XCTAssertNil(left)
         XCTAssertNil(d3.string(forKey: SyncController.Key.groupURL))
+    }
+
+    /// 로그인 키체인 · 설정이 이전 지원 · Time Machine 복원으로 새 Mac 에 옮겨 왔다: 키체인을 읽기 전에 멈추고 묻는다
+    /// (두 Mac 이 같은 기기 id · 토큰으로 한 기기처럼 붙지 않게). 이어 쓰기 · 정리하기 (정리는 서버에 묻지 않는다 — 원래 Mac 이 빠지지 않게)
+    func testGroupInfoMovedFromAnotherMacIsNotStartedUntilTheUserChooses() async throws {
+        let server = FakeSyncServer()
+        let a = await device(server, ip: "10.0.0.1", name: "옛 Mac", machine: "mac-old")
+        a.store.createBook(name: "내 플래너", start: today, end: nil)
+        let created = await a.sync.create(deviceName: "옛 Mac")
+        XCTAssertTrue(created.ok, created.message ?? "")
+        a.sync.recoveryConfirmed()
+        XCTAssertEqual(a.defaults.string(forKey: SyncController.Key.machine), "mac-old", "그룹에 들어간 Mac 을 적어 둔다")
+        let c = await a.creds.peek()
+
+        // 같은 Mac 에서 다시 켬: 그대로
+        let same = await device(server, ip: "10.0.0.1", name: "옛 Mac", creds: CountingCredentials(c), defaults: a.defaults, machine: "mac-old")
+        XCTAssertFalse(same.sync.movedFromOtherMac)
+        XCTAssertTrue(same.sync.inGroup)
+        await same.sync.dispose()
+
+        // 새 Mac 으로 옮겨 옴 (같은 설정 · 같은 키체인 항목): 키체인도 엔진도 건드리지 않고 묻는다
+        func movedCopy() -> UserDefaults {
+            let d = freshDefaults()
+            for k in [SyncController.Key.groupURL, SyncController.Key.machine, SyncController.Key.deviceName] {
+                d.set(a.defaults.string(forKey: k), forKey: k)
+            }
+            return d
+        }
+        let movedCreds = CountingCredentials(c)
+        let cleared = Counter()
+        let before = server.log.count
+        let moved = await device(server, ip: "10.0.0.2", name: "새 Mac", creds: movedCreds, defaults: movedCopy(), machine: "mac-new", cleared: cleared)
+        XCTAssertTrue(moved.sync.ready)
+        XCTAssertTrue(moved.sync.movedFromOtherMac)
+        XCTAssertFalse(moved.sync.inGroup)
+        XCTAssertEqual(moved.engines.n, 0)
+        let reads = await movedCreds.reads
+        XCTAssertEqual(reads, 0, "키체인을 읽기 전에 멈춘다")
+        XCTAssertEqual(server.log.count, before, "서버에 아무것도 보내지 않는다")
+        XCTAssertEqual(moved.sync.gearInfo()?.attention, true, "설정 단추가 동기화로 이끈다")
+
+        // [정리하기]: 이 Mac 의 열쇠 · 상태만. 원래 Mac 은 그룹에 그대로
+        let f = await moved.sync.forgetMovedGroup()
+        XCTAssertTrue(f.ok)
+        XCTAssertFalse(moved.sync.movedFromOtherMac)
+        let left = await movedCreds.peek()
+        XCTAssertNil(left)
+        XCTAssertEqual(cleared.n, 1, "옮겨 온 SyncState 를 지운다 (새 기기는 새 nodeId)")
+        XCTAssertNil(moved.defaults.string(forKey: SyncController.Key.groupURL))
+        XCTAssertNil(moved.defaults.string(forKey: SyncController.Key.machine))
+        XCTAssertEqual(server.log.count, before, "서버에 묻지 않는다")
+        let devices = try await a.sync.listDevices().devices
+        XCTAssertEqual(devices.count, 1, "옛 Mac 은 그대로")
+
+        // [이 Mac 에서 이어 쓰기]: 이 Mac 이 그 기기를 이어받는다
+        let kept = await device(server, ip: "10.0.0.3", name: "새 Mac", creds: CountingCredentials(c), defaults: movedCopy(), machine: "mac-new")
+        XCTAssertTrue(kept.sync.movedFromOtherMac)
+        await kept.sync.keepMovedGroup()
+        XCTAssertFalse(kept.sync.movedFromOtherMac)
+        XCTAssertTrue(kept.sync.inGroup)
+        XCTAssertEqual(kept.defaults.string(forKey: SyncController.Key.machine), "mac-new")
+        try await until("이어서 동기화") { kept.sync.status?.state == .idle }
+
+        // 이 Mac 의 표시를 읽지 못하면 (가상 머신 등) 가르지 않는다 — 예전처럼 켠다
+        let unknown = await device(server, ip: "10.0.0.4", name: "x", creds: CountingCredentials(c), defaults: movedCopy(), machine: nil)
+        XCTAssertFalse(unknown.sync.movedFromOtherMac)
+        XCTAssertTrue(unknown.sync.inGroup)
     }
 
     func testGroupOnAnotherServerIsNotStartedHere() async throws {

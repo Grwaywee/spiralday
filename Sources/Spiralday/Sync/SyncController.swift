@@ -2,6 +2,8 @@ import AppKit
 import Combine
 import Network
 import SystemConfiguration
+import IOKit
+import CryptoKit
 import SpiraldayKit
 import SpiraldaySync
 
@@ -16,8 +18,11 @@ import SpiraldaySync
 //                  끝낼 때 → 저장 · suspend (남은 편집을 올린다, 오래 기다리지 않는다)
 //   받은 편집      펼친 책이 빠졌으면 안내 · 다른 책, 지금 장이 기간 밖이면 오늘로, 쓰던 칸이 바뀌었으면 그 칸의 ⌘Z 기록을 비운다
 //
-// 비밀(기기 토큰 · 그룹 키)은 로그인 키체인 (KeychainCredentialStore, 이 Mac 에만 — Developer ID 앱이라 데이터 보호 키체인은 쓰지 않는다).
+// 비밀(기기 토큰 · 그룹 키)은 로그인 키체인 (KeychainCredentialStore — Developer ID 앱이라 데이터 보호 키체인은 쓰지 않는다).
+// 로그인 키체인은 ThisDeviceOnly 를 지키지 않아 이전 지원 · Time Machine 복원으로 새 Mac 에 옮겨 갈 수 있다 →
+// 그룹에 들어갈 때 이 Mac 의 표시(IOPlatformUUID 의 해시)를 적어 두고, 켤 때 다르면 엔진을 띄우지 않고 묻는다 (movedFromOtherMac).
 // 동기화 상태(도장 · 그림자 · 순번)는 ~/Library/Application Support/Spiralday/SyncState (앱 파일과 섞지 않는다).
+// .app 이 아닌 실행(swift run 등 — 번들 id 가 다름)은 키체인 항목 · 상태 폴더를 따로 쓴다 (Environment.sharesReleaseIdentity).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // MARK: - 화면이 보는 값 (엔진의 값을 옮겨 담는다 — 화면 · 테스트 · 스크린샷이 엔진 없이도 만들 수 있게)
@@ -178,7 +183,7 @@ struct SyncActionResult: Equatable {
     }
 }
 
-/// 메뉴의 ‘이 장의 이전 버전…’ — 설정 → 동기화가 그 날(주)로 이전 버전을 연다
+/// 메뉴의 ‘이 날의 이전 버전…’ · ‘이 주의 이전 버전…’ — 설정 → 동기화가 그 날(주)로 이전 버전을 연다
 struct SyncHistoryRequest: Equatable, Identifiable {
     let id = UUID()
     let book: UUID
@@ -213,7 +218,29 @@ final class SyncController: ObservableObject {
 
     /// 엔진을 만드는 법 · 비밀을 두는 곳 (테스트 · QA 는 가짜 서버 · 메모리 · 따로 된 키체인 이름으로 바꾼다)
     struct Environment {
-        static let keychainService = "com.spiralday.sync"
+        /// 출시 앱(build.sh 의 .app — 번들 id com.spiralday.app)의 키체인 서비스 이름
+        static let releaseKeychainService = "com.spiralday.sync"
+        /// 번들 id 가 다른 실행(`swift run` · `.build/debug/Spiralday` 처럼 .app 이 아닌 실행)의 키체인 서비스 이름
+        static let developmentKeychainService = "com.spiralday.sync.dev"
+        static let releaseBundleID = "com.spiralday.app"
+
+        /// 이 실행이 설치된 앱과 같은 동기화 자리(키체인 항목 · SyncState)를 써도 되는지.
+        /// 그룹에 들어 있다는 표시(sync.groupURL)는 UserDefaults 에 있고, UserDefaults 는 번들 id 마다 따로다 →
+        /// 번들 id 가 같은 실행만 같은 열쇠 · 상태를 써야 서로 어긋나지 않는다 (.app 이 아닌 실행이 설치된 앱의 열쇠를 지우거나
+        /// SyncState 를 다른 그룹 것으로 덮지 않게). 디버그 빌드인지가 아니라 번들 id 로 가른다
+        static func sharesReleaseIdentity(bundleID: String? = Bundle.main.bundleIdentifier) -> Bool {
+            bundleID == releaseBundleID
+        }
+
+        /// 이 실행의 키체인 서비스 이름
+        static var keychainService: String {
+            sharesReleaseIdentity() ? releaseKeychainService : developmentKeychainService
+        }
+
+        /// 이 실행의 동기화 상태 폴더 이름 (데이터 폴더 안)
+        static var stateFolderName: String {
+            sharesReleaseIdentity() ? "SyncState" : "SyncState-dev"
+        }
 
         var platform: SyncPlatform = .mac
         var suggestedName: String
@@ -226,19 +253,27 @@ final class SyncController: ObservableObject {
         var now: () -> Date = { Date() }
         /// 잠자기 · 깨어남 · 네트워크 · 앱 활성을 볼지 (테스트는 끈다)
         var watchesSystem = true
+        /// 이 Mac 의 표시 (IOPlatformUUID 의 해시). 그룹 정보가 다른 Mac 에서 옮겨 왔는지 가른다. nil = 보지 않는다 (테스트 · QA)
+        var machineTag: @MainActor () -> String? = { nil }
+        /// 이 Mac 의 동기화 상태(SyncState)를 지운다 — 다른 Mac 에서 옮겨 온 상태를 버릴 때 (엔진이 없을 때만 부른다)
+        var clearLocalState: @MainActor () -> Void = {}
 
-        /// 앱의 구성: 로그인 키체인 · 앱 데이터 폴더 안의 SyncState · 운영 서버. 저장 폴더가 없는 저장소(메모리)면 nil
+        /// 앱의 구성: 로그인 키체인 · 앱 데이터 폴더 안의 SyncState · 운영 서버. 저장 폴더가 없는 저장소(메모리)면 nil.
+        /// .app 이 아닌 실행(번들 id 가 다름)은 키체인 · 상태 폴더를 따로 쓴다 (sharesReleaseIdentity)
         @MainActor static func live(store: PlannerStore, keychainService: String = Environment.keychainService,
+                                    stateFolder: String = Environment.stateFolderName,
                                     defaults: UserDefaults = .standard) -> Environment? {
             guard let folder = store.folder else { return nil }
-            // Developer ID 앱(샌드박스 · keychain-access-groups 없음)은 데이터 보호 키체인을 열 수 없다 → 로그인 키체인
+            // Developer ID 앱(샌드박스 · keychain-access-groups 없음)은 데이터 보호 키체인을 열 수 없다 → 로그인 키체인.
+            // 로그인 키체인은 ThisDeviceOnly 를 지키지 않는다 (이전 지원 · Time Machine 복원으로 새 Mac 에 옮겨 간다) →
+            // machineTag 로 옮겨 온 것을 알아본다
             let credentials = KeychainCredentialStore(service: keychainService, useDataProtectionKeychain: false)
-            let stateDir = folder.appendingPathComponent("SyncState", isDirectory: true)
+            let stateDir = folder.appendingPathComponent(stateFolder, isDirectory: true)
             return Environment(
                 suggestedName: SyncController.defaultDeviceName(), credentials: credentials, defaults: defaults,
                 makeEngine: { host, server, creds in
                     try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
-                    // 동기화 상태는 Time Machine 에 넣지 않는다 (자격은 이 Mac 의 키체인에만 있어 다른 Mac 으로 옮겨 가도 쓸 수 없다)
+                    // 동기화 상태는 Time Machine 에 넣지 않는다 (복원한 Mac 이 옛 Mac 과 같은 기기로 붙지 않게 — 옮겨 와도 machineTag 가 가른다)
                     var url = stateDir
                     var v = URLResourceValues()
                     v.isExcludedFromBackup = true
@@ -247,7 +282,9 @@ final class SyncController: ObservableObject {
                                                         storage: FileSyncStorage(directory: stateDir), credentials: creds,
                                                         platform: .mac, log: SyncLog.os()))
                 },
-                backupRoot: folder.appendingPathComponent("SyncBackups", isDirectory: true))
+                backupRoot: folder.appendingPathComponent("SyncBackups", isDirectory: true),
+                machineTag: { SyncMachine.tag() },
+                clearLocalState: { try? FileManager.default.removeItem(at: stateDir) })
         }
     }
 
@@ -286,8 +323,10 @@ final class SyncController: ObservableObject {
     @Published private(set) var appliedRev = 0
     /// 지금 서버와 하는 일이 있는지 (create · join · restore 의 첫 서버 요청)
     @Published private(set) var starting = false
-    /// 메뉴의 ‘이 장의 이전 버전…’ (설정 → 동기화가 열면 비운다)
+    /// 메뉴의 ‘이 날(주)의 이전 버전…’ (설정 → 동기화가 열면 비운다)
     @Published var historyRequest: SyncHistoryRequest?
+    /// 그룹 정보(설정 · 키체인)가 다른 Mac 에서 옮겨 왔다 (이전 지원 · Time Machine 복원). 엔진을 띄우지 않고 이어 쓸지 · 정리할지 묻는다
+    @Published private(set) var movedFromOtherMac = false
 
     let env: Environment
     let store: PlannerStore
@@ -318,6 +357,8 @@ final class SyncController: ObservableObject {
         /// 그룹이 있는 서버. 이것이 있을 때만 켤 때 키체인을 읽는다 (= 이 설치가 동기화를 켰다)
         static let groupURL = "sync.groupURL"
         static let recoveryPending = "sync.recoveryPending"
+        /// 그룹에 들어간 Mac 의 표시 (SyncMachine.tag — IOPlatformUUID 의 해시). 켤 때 이 Mac 과 다르면 옮겨 온 그룹 정보다
+        static let machine = "sync.machine"
     }
 
     var deviceName: String {
@@ -378,8 +419,45 @@ final class SyncController: ObservableObject {
             ready = true
             return
         }
+        if let here = env.machineTag() {
+            if let tag = env.defaults.string(forKey: Key.machine), tag != here {
+                // 다른 Mac 의 그룹 정보 (같은 기기 id · 토큰으로 두 Mac 이 한 기기처럼 붙지 않게): 키체인을 읽기 전에 멈추고 묻는다
+                movedFromOtherMac = true
+                ready = true
+                return
+            }
+            env.defaults.set(here, forKey: Key.machine)
+        }
         await readCredentialsAndBoot()
         ready = true
+    }
+
+    /// 그룹에 들어간 이 Mac 을 적어 둔다 (만들기 · 합류 · 되살리기 · 옮겨 온 정보를 이어 쓰기)
+    private func rememberMachine() {
+        if let here = env.machineTag() { env.defaults.set(here, forKey: Key.machine) }
+    }
+
+    /// 옮겨 온 그룹 정보: [이 Mac 에서 이어 쓰기] — 원래 Mac 을 더 쓰지 않는다 (이 Mac 이 그 기기를 이어받는다)
+    func keepMovedGroup() async {
+        guard movedFromOtherMac else { return }
+        movedFromOtherMac = false
+        rememberMachine()
+        await readCredentialsAndBoot()
+    }
+
+    /// 옮겨 온 그룹 정보: [정리하기] — 이 Mac 의 열쇠 · 동기화 상태만 지운다. 서버에는 묻지 않는다
+    /// (그 기기 id 는 원래 Mac 의 것이다 — 그룹에서 빼면 원래 Mac 이 빠진다). 플래너는 그대로
+    func forgetMovedGroup() async -> SyncActionResult {
+        guard movedFromOtherMac, engine == nil else { return .failed("") }
+        do {
+            try await env.credentials.set(nil)
+        } catch {
+            return .failed(SyncText.errorText(error))
+        }
+        env.clearLocalState()
+        movedFromOtherMac = false
+        afterLeaving()
+        return .done
     }
 
     private func readCredentialsAndBoot() async {
@@ -398,6 +476,7 @@ final class SyncController: ObservableObject {
             // 그룹 주소는 남았는데 열쇠가 없다 (키체인 항목을 지움): 꺼짐으로
             groupURL = nil
             env.defaults.removeObject(forKey: Key.recoveryPending)
+            env.defaults.removeObject(forKey: Key.machine)
             return
         }
         inGroup = true
@@ -436,7 +515,7 @@ final class SyncController: ObservableObject {
 
     /// [다시 해 보기] (시작하지 못했을 때)
     func retryStart() async {
-        guard ready, available else { return }
+        guard ready, available, !movedFromOtherMac else { return }
         startProblem = nil
         if inGroup {
             await bootEngine()
@@ -458,6 +537,7 @@ final class SyncController: ObservableObject {
         host.onEditedFieldReplaced = { [weak self] text in self?.editedFieldReplaced(with: text) }
         host.onLibraryApplied = { [weak self] r, removed in self?.libraryApplied(r, removed: removed) }
         host.onActiveApplied = { [weak self] _ in self?.activeApplied() }
+        host.onSettingsTextReplaced = { [weak self] values in self?.settingsTextReplaced(values) }
         let e = try env.makeEngine(host, want, env.credentials)
         let (stream, cont) = AsyncStream<SyncEvent>.makeStream()
         listenerID = await e.addListener { cont.yield($0) }
@@ -654,15 +734,21 @@ final class SyncController: ObservableObject {
     /// 쓰던 칸(포커스만 있던 칸)의 글이 다른 기기의 글로 바뀌었다: 그 칸의 되돌리기(⌘Z) 기록을 비운다.
     /// 앱의 되돌리기는 글 칸의 것뿐이라 비워도 다른 것을 잃지 않는다 — 남겨 두면 ⌘Z 가 다른 기기의 글을 지우고 이 Mac 의 옛 글로 돌아간다.
     /// ⌘Z(undo:)는 응답자 사슬로 가서 필드 편집기가 보는 기록을 되돌린다 (SwiftUI 글 칸은 창의 undoManager 가 아니라 호스팅 뷰의 기록).
-    /// SwiftUI 는 다음 화면 갱신에서 새 글을 필드 편집기에 넣고, 그 넣기도 되돌리기 기록에 남는다 → 새 글이 칸에 들어간 뒤에 한 번 더 비운다
+    /// SwiftUI 는 다음 화면 갱신에서 새 글을 필드 편집기에 넣고, 그 넣기도 되돌리기 기록에 남는다 → 새 글이 칸에 들어간 뒤에 한 번 더 비운다.
+    /// 메인 스레드가 바쁘면(넘김 애니메이션 등) 늦게 들어올 수 있어 글이 같아질 때까지 기다린다 (최대 3초 — 그 사이 사용자가 더 쳤으면
+    /// 3초 뒤에 비운다). 포커스가 다른 칸으로 옮겨 가면 그만 기다린다
     func editedFieldReplaced(with text: String? = nil) {
         clearFocusedFieldUndo()
         fieldUndoWork?.cancel()
+        let editor = focusedFieldEditor()
         fieldUndoWork = Task { @MainActor [weak self] in
-            for _ in 0..<20 {
+            // 새 글을 모르면 예전처럼 0.5초만 기다린다
+            for _ in 0..<(text == nil ? 20 : 120) {
                 try? await Task.sleep(nanoseconds: 25_000_000)
                 guard !Task.isCancelled, let self else { return }
-                if let text, self.focusedFieldText() == text { break }
+                let now = self.focusedFieldEditor()
+                if now == nil || now !== editor { break }
+                if let text, now?.string == text { break }
             }
             guard !Task.isCancelled else { return }
             self?.clearFocusedFieldUndo()
@@ -670,6 +756,28 @@ final class SyncController: ObservableObject {
     }
 
     private var fieldUndoWork: Task<Void, Never>?
+
+    private var settingsUndoWork: Task<Void, Never>?
+
+    /// 설정 창에서 쓰는 글(형광펜 이름 · 저장한 D-day 제목)이 다른 기기의 값으로 바뀌었다: 설정 창의 포커스 칸에 그 새 값이
+    /// 들어오면(SwiftUI 가 다음 갱신에서 넣는다) 그 칸의 ⌘Z 기록을 비운다 — 되돌리기가 다른 기기의 값을 옛 값으로 되돌려 퍼뜨리지 않게.
+    /// 다른 칸의 값만 바뀌었으면 그대로 둔다 (설정 창의 칸은 쓰는 칸 지키기 밖이라 같은 칸을 두 기기에서 동시에 고치면 나중 값이 이긴다)
+    func settingsTextReplaced(_ values: Set<String>) {
+        guard let w = SettingsWindowController.shared.window, w.isVisible,
+              let editor = w.firstResponder as? NSTextView, !values.isEmpty else { return }
+        settingsUndoWork?.cancel()
+        settingsUndoWork = Task { @MainActor in
+            for _ in 0..<120 {
+                guard !Task.isCancelled, w.firstResponder === editor else { return }
+                if values.contains(editor.string) {
+                    editor.undoManager?.removeAllActions()
+                    w.undoManager?.removeAllActions()
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 25_000_000)
+            }
+        }
+    }
 
     /// 글 칸에 포커스가 있는 창들의 되돌리기 기록 (필드 편집기의 것 · 창의 것)을 비운다
     private func clearFocusedFieldUndo() {
@@ -680,9 +788,9 @@ final class SyncController: ObservableObject {
         }
     }
 
-    /// 포커스가 있는 글 칸의 글 (팔레트 · 패널 빼고)
-    private func focusedFieldText() -> String? {
-        NSApplication.shared.windows.lazy.filter { !($0 is NSPanel) }.compactMap { ($0.firstResponder as? NSTextView)?.string }.first
+    /// 포커스가 있는 글 칸의 필드 편집기 (팔레트 · 패널 빼고)
+    private func focusedFieldEditor() -> NSTextView? {
+        NSApplication.shared.windows.lazy.filter { !($0 is NSPanel) }.compactMap { $0.firstResponder as? NSTextView }.first
     }
 
     func showNotice(_ text: String) {
@@ -706,7 +814,11 @@ final class SyncController: ObservableObject {
 
     /// 설정 단추 귀퉁이 표시 (동기화가 켜져 있을 때만)
     func gearInfo(now: Date = Date()) -> SyncGearInfo? {
-        guard ready, available, inGroup else { return nil }
+        guard ready, available else { return nil }
+        if movedFromOtherMac {
+            return SyncGearInfo(tone: .warn, attention: true, spoken: "동기화: 다른 Mac 에서 옮겨 온 동기화 정보를 확인해 주세요")
+        }
+        guard inGroup else { return nil }
         guard let s = status else {
             guard let p = startProblem else { return nil }
             return SyncGearInfo(tone: .warn, attention: true, spoken: "동기화: \(p)")
@@ -784,6 +896,7 @@ final class SyncController: ObservableObject {
         guard r.ok else { return r }
         deviceName = name
         groupURL = engineURL?.absoluteString
+        rememberMachine()
         recoveryPending = true
         inGroup = true
         credsUnreadable = false
@@ -1032,6 +1145,7 @@ final class SyncController: ObservableObject {
         }
         self.join = nil
         groupURL = engineURL?.absoluteString
+        rememberMachine()
         recoveryPending = false
         inGroup = true
         credsUnreadable = false
@@ -1073,6 +1187,7 @@ final class SyncController: ObservableObject {
         guard r.ok else { return r }
         deviceName = name
         groupURL = engineURL?.absoluteString
+        rememberMachine()
         recoveryPending = false
         inGroup = true
         credsUnreadable = false
@@ -1168,6 +1283,7 @@ final class SyncController: ObservableObject {
     private func afterLeaving() {
         groupURL = nil
         env.defaults.removeObject(forKey: Key.recoveryPending)
+        env.defaults.removeObject(forKey: Key.machine)
         inGroup = false
         warnings = []
         startProblem = nil
@@ -1239,6 +1355,12 @@ final class SyncController: ObservableObject {
         timers = []
     }
 
+    /// 한 번만 보여 주는 복구 코드가 화면에 있다 (적어 두었다고 확인하기 전 — 설정 창을 닫기 전에 묻는다)
+    var showsOneTimeRecoveryCode: Bool {
+        if case .recovery(_, .show)? = flow { return true }
+        return false
+    }
+
     /// 설정 창을 닫았다: 아무도 보지 않는 화면에서 기다리지 않는다 (합치는 중이면 그대로 끝까지)
     func settingsClosed() {
         localStep = nil
@@ -1276,8 +1398,9 @@ final class SyncController: ObservableObject {
     /// 흐름 · 상태를 그대로 놓는다
     func qaPresent(status: SyncViewStatus?, inGroup: Bool, flow: SyncFlow?, local: SyncLocalStep? = nil,
                    warnings: [SyncWarningItem] = [], recoveryPending: Bool = false, deviceName: String? = nil,
-                   credsUnreadable: Bool = false, startProblem: String? = nil, available: Bool = true) {
+                   credsUnreadable: Bool = false, startProblem: String? = nil, available: Bool = true, moved: Bool = false) {
         qaMode = true
+        movedFromOtherMac = moved
         self.status = status
         self.inGroup = inGroup
         self.flow = flow
@@ -1340,5 +1463,21 @@ final class SyncSystemWatch {
         monitor.cancel()
         for (c, o) in observers { c.removeObserver(o) }
         observers = []
+    }
+}
+
+// MARK: - 이 Mac 의 표시 (옮겨 온 그룹 정보 가르기)
+
+enum SyncMachine {
+    /// IOPlatformUUID 의 해시 (그대로 두지 않는다 — 이 Mac 의 설정 파일에만 적고 어디로도 보내지 않는다). 읽지 못하면 nil.
+    /// 로그인 키체인 · 설정은 이전 지원 · Time Machine 복원으로 새 Mac 에 그대로 옮겨 가지만 이 값은 Mac 마다 다르다
+    static func tag() -> String? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        guard let uuid = IORegistryEntryCreateCFProperty(service, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? String, !uuid.isEmpty else { return nil }
+        let digest = SHA256.hash(data: Data("spiralday-sync-machine:\(uuid)".utf8))
+        return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 }
