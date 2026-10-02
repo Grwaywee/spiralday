@@ -44,7 +44,7 @@ Spiralday 는 앱 안에 플래너를 그려 넣지 않고 **창 자체를 종�
 | 🎨 **날마다 컬러** | 9가지 컬러 컨셉 — TOTAL TIME · 요일 · D-day · 체크 표시 색이 함께 바뀝니다. 기본값은 설정에서. |
 | 🖨 **PDF 로 뽑기** | 일간 A4 세로 / **A4 반쪽 (두 장씩, 자르면 실물 크기)**, 주간 · 홈 A4 가로. 기간을 정해 한 번에, 맨 앞에 표지와 첫 장까지. 벡터라 인쇄가 선명합니다. |
 | 🧭 **둘러보기** | 처음 플래너를 펼치면 일간 → 주간 → 홈 → 표지 · 첫 장 순서로 쓰는 법을 하나씩 짚어 줍니다. 튜토리얼과 둘러보기는 설정에서 언제든 골라 다시 볼 수 있습니다. |
-| 🔒 **내 Mac 에만** | 계정 없음, 광고 없음. 기록은 JSON 파일로 내 Mac 에만 저장. 인터넷은 하루 한 번 업데이트 확인과 익명 사용 통계(설정에서 끌 수 있음)에만 써요. |
+| 🔒 **내 Mac 에 · 원하면 내 기기끼리** | 계정 없음, 광고 없음. 기록은 JSON 파일로 내 Mac 에 저장. **Spiralday Sync** 를 켜면 내 iPhone · iPad · Windows PC 와 종단간 암호화로 맞춥니다 (기본은 꺼짐, 계정 없이 QR · 8자리 코드로 연결). 동기화를 켜지 않으면 인터넷은 하루 한 번 업데이트 확인과 익명 사용 통계(설정에서 끌 수 있음)에만 써요. |
 
 ## 화면
 
@@ -157,9 +157,18 @@ open build/Spiralday.app
 
 입력은 즉시 자동 저장됩니다 (원자적 쓰기, 종료 시 즉시 저장). 백업은 폴더째 복사하거나 설정 → 데이터 → 백업 내보내기.
 
+### 동기화 (Spiralday Sync)
+
+설정 → 동기화에서 켭니다 (기본은 꺼짐). 첫 기기에서 **이 Mac 에서 시작하기** → 복구 코드를 적어 두고 (복사 · 텍스트 파일 · 인쇄 → 두 묶음을 다시 입력해 확인), 다른 기기에서는 **기기 추가** 의 QR 이나 8자리 코드로 들어옵니다. 새 기기 화면의 숫자 4자리를 원래 기기에 입력해야 그룹 열쇠가 갑니다. 그 밖에 기기 목록 · 이름 바꾸기 · 빼기, 하루 · 한 주의 이전 버전(30일), 복구 코드 새로 만들기, 이 Mac 에서 끄기 · 그룹 지우기.
+
+- 켜기 전에는 키체인도 네트워크도 건드리지 않습니다. 켜면 열쇠(기기 토큰 · 그룹 키)는 로그인 키체인(`com.spiralday.sync`, 이 Mac 에만)에, 동기화 상태는 `~/Library/Application Support/Spiralday/SyncState` 에 둡니다.
+- 서버(`sync.spiralday.com`)는 암호문 · 불투명 id · 순번만 봅니다. 플래너 내용 · 날짜 · 플래너 이름 · 기기 이름도 암호문입니다.
+- 쓰는 중인 칸은 다른 기기의 편집이 들어와도 글 · 커서가 흔들리지 않고, ⌘Z 가 다른 기기의 편집을 지우지 않습니다. 다른 기기에 합류하거나 복구 코드로 되살리기 직전에는 이 Mac 의 플래너를 `SyncBackups/` 에 저절로 백업합니다 (설정 → 데이터 → 백업 가져오기로 꺼낼 수 있음).
+- 엔진과 프로토콜은 [Docs/SpiraldaySync.md](Docs/SpiraldaySync.md).
+
 ### 개인정보
 
-플래너 기록은 내 Mac 밖으로 나가지 않습니다. 1.0.2 부터 하루 한 번 **익명 사용 통계**(무작위 설치 번호 · 앱 버전 · macOS 버전 · 칩 종류 · 언어)만 보내고, 설정 → 데이터에서 끌 수 있습니다. 자세한 내용은 [개인정보 처리방침](https://spiralday.com/privacy.html).
+동기화를 켜지 않으면 플래너 기록은 내 Mac 밖으로 나가지 않습니다. 켜면 내 기기끼리 맞추려고 **종단간 암호화한** 기록만 동기화 서버로 보내고, 서버의 사본은 설정 → 동기화 → 그룹 지우기로 언제든 바로 지울 수 있습니다. 1.0.2 부터 하루 한 번 **익명 사용 통계**(무작위 설치 번호 · 앱 버전 · macOS 버전 · 칩 종류 · 언어)만 보내고, 설정 → 데이터에서 끌 수 있습니다. 자세한 내용은 [개인정보 처리방침](https://spiralday.com/privacy.html).
 
 ## 아키텍처
 
@@ -208,6 +217,7 @@ flowchart LR
 | `Sources/Spiralday/` | |
 | `App.swift` · `WindowController.swift` · `RootView.swift` · `RingWindow.swift` | 앱, 창 = 종이, 창 밖 스프링 |
 | `Palette.swift` · `Settings.swift` · `Onboarding.swift` · `Tour.swift` · `PDFExportWindow.swift` | 도구 팔레트, 설정, 튜토리얼, 플래너 둘러보기, PDF 창 |
+| `Sync/` | 동기화 붙이기: `SyncController` (엔진 수명 · 잠자기 · 깨어남 · 네트워크 · 끝내기 · 흐름), `PlannerSyncHost` (PlannerStore ↔ 엔진), 설정 → 동기화 화면 · 이전 버전 · 팔레트 표시 · 메뉴, 합치기 전 백업, `--sync-qa` |
 | `Telemetry.swift` · `StarPrompt.swift` · `DataSafety.swift` | 익명 사용 통계, GitHub ⭐ 부탁 (한 번만), 데이터 안전 알림 |
 
 ## 개발
@@ -224,6 +234,9 @@ swift test                                   # SpiraldayKit: 페이지 · 넘김
 .build/debug/Spiralday --tour-test ./out     # 플래너 둘러보기의 모든 단계 PNG (--palette-edge left|top|bottom 으로 팔레트 자리를 바꿔 보기)
 .build/debug/Spiralday --palette-test ./out  # 팔레트 네 자리 × 펼침 · 접힘(펜 · 지우개 · 글씨 · 밥) 을 종이 옆에 그린 PNG, 설정의 자리 고르기
 .build/debug/Spiralday --demo --palette-edge top   # 설정을 건드리지 않고 이번 실행만 팔레트를 그 자리에
+.build/debug/Spiralday --sync-qa ./out       # 설정 → 동기화의 모든 상태 (라이트 · 다크) · 팔레트 표시 · 안내 PNG (메모리에서만, 서버 · 키체인 없이)
+swift test --filter SpiraldayAppTests        # Mac 앱의 동기화 붙이기 (호스트 · 컨트롤러 · 말) — 가짜 서버 · 메모리 열쇠
+SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter SyncKeychainTests   # 진짜 로그인 키체인 (실행마다 새로 만든 테스트용 서비스 이름)
 build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 한 번 보내 보고 결과 출력
 ```
 
@@ -232,7 +245,7 @@ build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 �
 ## 로드맵
 
 - [ ] 월간 페이지
-- [ ] iCloud Drive 동기화 (선택)
+- [x] 내 기기끼리 동기화 (Spiralday Sync, 선택 · 종단간 암호화)
 - [ ] 종이 넘김 소리 (선택)
 
 ## 라이선스

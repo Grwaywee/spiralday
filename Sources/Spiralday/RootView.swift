@@ -21,6 +21,8 @@ struct RootView: View {
                 }
                 // 플래너 둘러보기 (코치 마크). 둘러보는 중이 아니면 아무것도 그리지 않는다.
                 TourOverlay(size: g.size)
+                // 동기화 안내 (다른 기기에서 지운 플래너 등). 안내가 없으면 아무것도 그리지 않는다.
+                SyncNoticeOverlay()
             }
             .frame(width: g.size.width, height: g.size.height)
             .onAppear { state.curl.pageSize = g.size }

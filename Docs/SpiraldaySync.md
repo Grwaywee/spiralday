@@ -267,6 +267,16 @@ private func observe(_ new: PlannerData) {
 - 플랫폼 `.mac`. 동기화 상태 폴더는 `~/Library/Application Support/Spiralday/SyncState` (앱 데이터 폴더 안, 앱 파일과 섞지 않는다).
 - Keychain: 샌드박스 · keychain-access-groups 가 없는 Developer ID 앱은 `SyncEngine.standard(…, useDataProtectionKeychain: false)` (로그인 키체인, 같은 접근성 값).
 - `carryForward` 의 미룸 id 규칙은 SpiraldayKit 에 들어 있어 Mac 앱도 이미 같다 (`PlanTask.carryTaskId`).
+- 이 저장소의 Mac 앱이 실제로 붙인 곳은 `Sources/Spiralday/Sync/` 다:
+  - `SyncController` — 엔진 하나 · 설정 → 동기화의 단계별 흐름 · 앱 수명. 기본은 꺼짐: 이 설치가 그룹에 들어간 적이 있을 때(UserDefaults `sync.groupURL`)만
+    켤 때 키체인을 읽고 엔진을 만든다. 그 전에는 키체인 · 네트워크를 건드리지 않는다. 잠자기(`NSWorkspace.willSleepNotification`) → 저장 · `suspend()`,
+    깨어남 · 네트워크가 돌아옴(`NWPathMonitor`) · 앱이 앞으로 옴(15초에 한 번까지) → `resume()`, 끝낼 때(`applicationShouldTerminate`) → 저장 · `suspend()` (최대 2.5초).
+  - `PlannerSyncHost` — 위 4 의 호스트. 쓰던 칸(포커스만)의 글이 다른 기기의 글로 바뀌면 `onEditedFieldReplaced` 로 알리고, 컨트롤러가 플래너 창의
+    `undoManager` 를 비운다. Mac 앱의 ⌘Z 는 글 칸(필드 편집기)의 것뿐이라 PlannerData 를 쌓는 되돌리기가 없다 — 이것이 Mac 의 "되돌리기 옮기기"다.
+  - 펼친 책이 다른 기기에서 지워지면 다른 책을 펴고 플래너 위에 안내, 펼치지 않은 책이 지워지면 그 이름으로 안내. 지금 장이 기간 밖이면 오늘로.
+  - 설정 → 동기화 (`SyncSettingsPane` · `SyncFlows` · `SyncHistory`), 팔레트의 설정 단추 귀퉁이 표시, 플래너 메뉴의 ‘지금 맞추기’ · ‘이 날(주)의 이전 버전…’ · ‘동기화 설정…’.
+    Mac 은 QR 을 카메라로 찍지 않는다 — Windows PC 처럼 8자리 코드나 원래 기기의 ‘연결 글 복사’로 받은 글을 붙여 넣는다.
+  - `Spiralday --sync-qa <폴더>` 가 설정 → 동기화의 모든 상태를 라이트 · 다크 PNG 로 (메모리에서만), `Tests/SpiraldayAppTests` 가 호스트 · 컨트롤러 · 말을 가짜 서버로 시험한다.
 
 ## TypeScript 엔진과 다른 점
 

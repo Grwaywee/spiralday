@@ -6,6 +6,8 @@ import Security
 
 /// 키체인에 항목은 있는데 읽을 수 없다 (손상 · 다른 형식). 조용히 "그룹 없음" 으로 보지 않고 앱이 안내하게 한다
 public struct CredentialsUnreadable: Error, CustomStringConvertible, Sendable {
+    /// 앱이 만든 CredentialStore (다른 보관 방법) · 테스트도 같은 뜻으로 던질 수 있게
+    public init() {}
     public var description: String { "동기화 열쇠를 읽을 수 없어요 (키체인 항목이 손상됨)" }
 }
 

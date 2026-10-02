@@ -897,15 +897,23 @@ struct PaletteBody: View {
     }
 
     private var settingsButton: some View {
-        Button { SettingsWindowController.shared.show(store: store, state: state) } label: {
+        Button {
+            // 동기화에 손볼 것이 있으면 (오류 · 빠짐 · 복구 코드 확인) 설정 → 동기화로 바로
+            if SyncIndicator.shared.gear?.attention == true {
+                SettingsWindowController.shared.showSync(store: store, state: state)
+            } else {
+                SettingsWindowController.shared.show(store: store, state: state)
+            }
+        } label: {
             Image(systemName: "gearshape.fill")
                 .font(.system(size: 13, weight: .semibold))
+                .syncGearBadge()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.primary.opacity(0.07)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("설정 (⌘,) — 형광펜 이름·색, 기본 컬러, D-day, 팔레트 자리")
+        .syncSettingsHelp("설정 (⌘,) — 형광펜 이름·색, 기본 컬러, D-day, 팔레트 자리")
         .tourTarget(.settings)
     }
 }
@@ -1508,7 +1516,7 @@ enum PaletteTest {
     }
 
     /// 종이(보통 크기) + 스프링 + 팔레트 패널을 실제 창과 같은 자리 계산으로 한 장에
-    private static func scene(edge: PaletteEdge, kind: PageKind, open: Bool, tool: Int, store: PlannerStore) -> CGImage? {
+    static func scene(edge: PaletteEdge, kind: PageKind, open: Bool, tool: Int, store: PlannerStore) -> CGImage? {
         let state = AppState(kind: kind)
         state.store = store
         state.tool = tool

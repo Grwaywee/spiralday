@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 import SpiraldayKit
@@ -16,6 +17,8 @@ final class SettingsWindowController {
     private static let size = NSSize(width: 720, height: 560)
 
     private(set) var window: NSWindow?
+    private var syncWatch: AnyCancellable?
+    private var closeWatch: NSObjectProtocol?
 
     func show(store: PlannerStore, state: AppState) {
         let fresh = window == nil || window?.isVisible == false
@@ -34,6 +37,12 @@ final class SettingsWindowController {
     /// 플래너(책) 목록을 펼친 채로 연다 (팔레트의 ‘플래너 관리…’)
     func showPlanners(store: PlannerStore, state: AppState) {
         UserDefaults.standard.set(SettingsPane.books.rawValue, forKey: SettingsView.paneKey)
+        show(store: store, state: state)
+    }
+
+    /// 동기화를 펼친 채로 연다 (팔레트의 동기화 표시 · 플래너 메뉴의 동기화 항목)
+    func showSync(store: PlannerStore, state: AppState) {
+        UserDefaults.standard.set(SettingsPane.sync.rawValue, forKey: SettingsView.paneKey)
         show(store: store, state: state)
     }
 
@@ -56,8 +65,19 @@ final class SettingsWindowController {
         w.tabbingMode = .disallowed
         w.collectionBehavior = [.fullScreenNone]
 
-        let host = NSHostingController(rootView: SettingsView().environmentObject(store).environmentObject(state))
+        let sync = SyncController.shared ?? SyncController.unavailable(store: store)
+        let host = NSHostingController(rootView: SettingsView().environmentObject(store).environmentObject(state).environmentObject(sync))
         host.sizingOptions = []
+        // 복구 코드 · 연결 코드가 화면에 있는 동안에는 화면 공유 · 화면 기록에서 이 창을 가린다
+        syncWatch = sync.$flow
+            .map { $0?.showsSecret == true }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak w] secret in w?.sharingType = secret ? .none : .readOnly }
+        // 창을 닫으면 아무도 보지 않는 흐름(기기 추가 기다림 등)을 거둔다
+        closeWatch = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
+            MainActor.assumeIsolated { SyncController.shared?.settingsClosed() }
+        }
         w.contentViewController = host
         w.setContentSize(Self.size)
         w.contentMinSize = NSSize(width: 680, height: 460)
@@ -74,8 +94,8 @@ private final class SettingsPanel: NSPanel {
 
 // MARK: - Sections
 
-private enum SettingsPane: String, CaseIterable, Identifiable {
-    case books, pens, concept, dday, pdf, palette, shortcuts, tutorials, data
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case books, pens, concept, dday, pdf, palette, shortcuts, tutorials, data, sync
 
     var id: Self { self }
 
@@ -90,6 +110,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .shortcuts: "단축키"
         case .tutorials: "튜토리얼"
         case .data: "데이터"
+        case .sync: "동기화"
         }
     }
 
@@ -103,7 +124,8 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "도구 팔레트를 종이의 어느 쪽에 둘지, 쓰지 않을 때 접어 둘지 골라요. 모든 플래너에 똑같이 적용돼요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
         case .tutorials: "처음 안내와 플래너 둘러보기를 언제든, 보고 싶은 것만 골라 다시 볼 수 있어요."
-        case .data: "기록은 이 Mac 에만 저장되고, 적는 즉시 자동으로 저장돼요."
+        case .data: "기록은 적는 즉시 이 Mac 에 자동으로 저장돼요. 동기화를 켜면 내 다른 기기에도 암호화해서 보내요."
+        case .sync: "내 다른 기기와 플래너를 맞춰요. 종단간 암호화라 서버도 Spiralday 도 기록을 읽을 수 없고, 계정이 필요 없어요."
         }
     }
 
@@ -118,6 +140,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .shortcuts: "keyboard.fill"
         case .tutorials: "graduationcap.fill"
         case .data: "externaldrive.fill"
+        case .sync: "arrow.triangle.2.circlepath"
         }
     }
 
@@ -132,6 +155,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .shortcuts: Color(hex: "8A8A93")
         case .tutorials: Color(hex: "2FA3A0")
         case .data: Color(hex: "3A84F0")
+        case .sync: Color(hex: "2B8FBF")
         }
     }
 
@@ -143,12 +167,14 @@ struct SettingsView: View {
     static let paneKey = "settingsPane"
     /// 마지막으로 보던 항목 (실행 인자 `-settingsPane dday` 로도 고를 수 있다)
     @AppStorage(SettingsView.paneKey) private var paneRaw = SettingsPane.books.rawValue
+    /// 이 항목으로 고정한다 (`--sync-qa` 스크린샷 — 설정 값을 건드리지 않는다)
+    var fixedPane: SettingsPane? = nil
 
-    private var pane: SettingsPane { SettingsPane(rawValue: paneRaw) ?? .books }
+    private var pane: SettingsPane { fixedPane ?? SettingsPane(rawValue: paneRaw) ?? .books }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: Binding<SettingsPane?>(get: { pane }, set: { if let p = $0 { paneRaw = p.rawValue } })) {
+            List(selection: Binding<SettingsPane?>(get: { pane }, set: { if let p = $0, fixedPane == nil { paneRaw = p.rawValue } })) {
                 ForEach(SettingsPane.allCases) { p in
                     HStack(spacing: 9) {
                         SettingsIconTile(symbol: p.symbol, tint: p.tint, size: 22)
@@ -173,6 +199,7 @@ struct SettingsView: View {
                 case .shortcuts: SettingsShortcutsPane()
                 case .tutorials: SettingsTutorialsPane()
                 case .data: SettingsDataPane()
+                case .sync: SyncSettingsPane()
                 }
             }
             .formStyle(.grouped)
@@ -2241,7 +2268,7 @@ private enum SettingsDataFile {
 // MARK: - Shared bits
 
 /// System Settings 처럼 색 바탕에 흰 기호가 있는 둥근 사각형
-private struct SettingsIconTile: View {
+struct SettingsIconTile: View {
     let symbol: String
     let tint: Color
     let size: CGFloat
@@ -2259,7 +2286,7 @@ private struct SettingsIconTile: View {
     }
 }
 
-private struct SettingsPaneHeader: View {
+struct SettingsPaneHeader: View {
     let pane: SettingsPane
 
     var body: some View {
@@ -2306,7 +2333,7 @@ private struct SettingsBookScope: View {
     }
 }
 
-private struct SettingsSectionTitle: View {
+struct SettingsSectionTitle: View {
     let title: String
     var trailing: String? = nil
 
@@ -2326,7 +2353,7 @@ private struct SettingsSectionTitle: View {
     }
 }
 
-private struct SettingsFootnote: View {
+struct SettingsFootnote: View {
     let text: String
 
     var body: some View {

@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Sparkle
 import SpiraldayKit
+import SpiraldaySync
 
 @main
 struct SpiraldayApp: App {
@@ -55,6 +56,9 @@ struct SpiraldayApp: App {
                         planner { _ in PDFExportWindowController.shared.show(store: delegate.store, state: delegate.state) }
                     }
                     .keyboardShortcut("p", modifiers: .command)
+                    // 동기화: 지금 맞추기 · 이 날(주)의 이전 버전 · 동기화 설정 (켜기 전에는 설정만)
+                    SyncMenuItems(sync: delegate.sync, store: delegate.store, state: delegate.state,
+                                  blocked: { TourController.shared.isRunning })
                 }
             }
     }
@@ -73,6 +77,8 @@ extension SpiraldayApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store: PlannerStore
     let state: AppState
+    /// Spiralday Sync (기본은 꺼짐 — 켜기 전까지 키체인 · 네트워크를 건드리지 않는다)
+    let sync: SyncController
     private var windowController: MainWindowController?
     /// 원격 업데이트 (Sparkle). 데모·스냅샷 같은 개발 실행에서는 켜지 않는다.
     private var updater: SPUStandardUpdaterController?
@@ -101,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
             || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
             || Self.args.contains("--sample-book-test") || Self.args.contains("--tour-test")
-            || Self.args.contains("--palette-test") || Self.args.contains("--load-safety-test") {
+            || Self.args.contains("--palette-test") || Self.args.contains("--load-safety-test") || Self.args.contains("--sync-qa") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -115,8 +121,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         state = AppState(kind: Self.args.contains("--weekly") ? .weekly
                             : Self.args.contains("--home") ? .home : store.data.prefs.lastKind)
+        // 동기화는 파일에 저장하는 실행에서만 (데모 · 스냅샷은 메모리 저장소라 꺼짐으로만 보인다)
+        let st = store
+        sync = SyncController.Environment.live(store: st).map { SyncController(store: st, env: $0) }
+            ?? SyncController.unavailable(store: st)
         super.init()
         state.store = store
+        SyncController.shared = sync
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -156,6 +167,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if let img = r.cgImage { Snapshotter.write(img, out) }
                     exit(0)
                 }
+            }
+            return
+        }
+        // 설정 → 동기화의 모든 상태를 라이트 · 다크로 PNG 로 찍고 끝낸다 (메모리에서만 · 서버 · 키체인 없이)
+        if let i = Self.args.firstIndex(of: "--sync-qa") {
+            guard i + 1 < Self.args.count else {
+                print("사용법: Spiralday --sync-qa <결과 폴더> [상태 …]")
+                exit(2)
+            }
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            let only = Array(Self.args[(i + 2)...].filter { !$0.hasPrefix("-") })
+            let st = store
+            Fonts.activate {
+                Task { @MainActor in exit(await SyncQA.run(to: dir, store: st, only: only)) }
             }
             return
         }
@@ -240,6 +265,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // .app 으로 실행될 때만 (Info.plist 에 SUFeedURL 이 있을 때) 업데이트를 확인한다
         if !demo, Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
             updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+            sync.onCheckForUpdates = { [weak self] in self?.checkForUpdates() }
+        }
+        // Spiralday Sync: 이 설치가 그룹에 들어 있을 때만 키체인을 읽고 엔진을 띄운다 (기본은 꺼짐). 데모에서는 쓰지 않는다
+        if demo {
+            sync.startUnavailable(state: state)
+        } else {
+            let sy = sync, st = state
+            Task { @MainActor in await sy.start(state: st) }
         }
         // 익명 사용 통계 (하루 한 번, 설정에서 끌 수 있다). 데모에서는 보내지 않는다.
         if !demo { Telemetry.start() }
@@ -284,6 +317,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// 끝내기 전: 동기화를 켰으면 저장하고 남은 편집을 올린다 (오래 기다리지 않는다 — 못 올린 것은 다음에 켤 때 올린다)
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard sync.inGroup, sync.hasEngine else { return .terminateNow }
+        sync.prepareToQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
+    }
 }
 
 // MARK: - Snapshot CLI

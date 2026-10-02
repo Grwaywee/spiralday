@@ -51,6 +51,8 @@ let package = Package(
             name: "Spiralday",
             dependencies: [
                 "SpiraldayKit",
+                // Spiralday Sync (기본은 꺼짐 — 설정 → 동기화에서 켤 때만 엔진을 만든다)
+                "SpiraldaySync",
                 .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
             ],
             path: "Sources/Spiralday",
@@ -58,6 +60,12 @@ let package = Package(
                 // .app 안의 Contents/Frameworks/Sparkle.framework 를 찾는다
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
             ]
+        ),
+        .testTarget(
+            name: "SpiraldayAppTests",
+            // Mac 앱의 동기화 붙이기 (PlannerSyncHost · SyncController · 말 · 키체인): 가짜 서버 · 메모리 · 임시 폴더로
+            dependencies: ["Spiralday", "SpiraldayKit", "SpiraldaySync", "SpiraldaySyncTesting"],
+            path: "Tests/SpiraldayAppTests"
         ),
     ],
     // SpiraldayKit · 앱은 Swift 5 모드 그대로, 동기화 엔진만 Swift 6 (위의 swiftLanguageMode)
