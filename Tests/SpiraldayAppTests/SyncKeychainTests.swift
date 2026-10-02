@@ -11,14 +11,11 @@ import SpiraldaySyncTesting
 @MainActor
 final class SyncKeychainTests: XCTestCase {
     private var dirs: [URL] = []
-    private var suites: [String] = []
     private var services: [String] = []
 
     override func tearDown() async throws {
         for d in dirs { try? FileManager.default.removeItem(at: d) }
         dirs = []
-        for s in suites { UserDefaults.standard.removePersistentDomain(forName: s) }
-        suites = []
         for s in services {
             SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: s] as CFDictionary)
         }
@@ -31,11 +28,7 @@ final class SyncKeychainTests: XCTestCase {
         return (PlannerStore(folder: dir), dir)
     }
 
-    private func freshDefaults() -> UserDefaults {
-        let name = "mac-sync-keychain-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
+    private func freshDefaults() -> UserDefaults { SyncMemoryDefaults() }
 
     private func testService() -> String {
         let s = "com.spiralday.mac.sync.test.\(UUID().uuidString)"

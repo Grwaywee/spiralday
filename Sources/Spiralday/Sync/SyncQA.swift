@@ -30,9 +30,8 @@ enum SyncQA {
 
     static func run(to dir: URL, store: PlannerStore, only: [String]) async -> Int32 {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let suite = "spiralday-sync-qa-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else { return 1 }
-        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        // 이 실행의 동기화 설정 값은 메모리에만 (앱의 설정 파일 · ~/Library/Preferences 에 아무것도 남기지 않는다)
+        let defaults = SyncMemoryDefaults()
         let wanted = only.isEmpty ? states : states.filter { only.contains($0) }
         var count = 0
         var failures = 0
@@ -256,4 +255,18 @@ enum SyncQA {
         do { try png.write(to: url) } catch { return false }
         return true
     }
+}
+
+/// 메모리에만 두는 UserDefaults (QA · 테스트: 쓴 값이 설정 파일로 가지 않는다). 동기화 설정이 쓰는 것만 덮는다
+final class SyncMemoryDefaults: UserDefaults {
+    private var values: [String: Any] = [:]
+
+    init() { super.init(suiteName: nil)! }
+
+    override func object(forKey defaultName: String) -> Any? { values[defaultName] }
+    override func set(_ value: Any?, forKey defaultName: String) { values[defaultName] = value }
+    override func set(_ value: Bool, forKey defaultName: String) { values[defaultName] = value }
+    override func removeObject(forKey defaultName: String) { values[defaultName] = nil }
+    override func string(forKey defaultName: String) -> String? { values[defaultName] as? String }
+    override func bool(forKey defaultName: String) -> Bool { values[defaultName] as? Bool ?? false }
 }

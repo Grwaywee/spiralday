@@ -212,7 +212,7 @@ final class SyncTextTests: XCTestCase {
     }
 
     func testServerChoiceKeepsTheGroupsServerAndReleaseBuildsTakeHttpsOnly() {
-        let d = UserDefaults(suiteName: "spiralday-sync-server-\(UUID().uuidString)")!
+        let d = SyncMemoryDefaults()
         XCTAssertEqual(SyncServer.choose(groupURL: nil, defaults: d, environment: [:], allowOverride: false).url, SyncServerConfig.productionURL)
         XCTAssertEqual(SyncServer.choose(groupURL: "https://sync.example.com", defaults: d, environment: [:], allowOverride: false).source, .group)
         d.set("http://127.0.0.1:9000", forKey: SyncServer.overrideKey)

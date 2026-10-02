@@ -35,7 +35,6 @@ actor CountingCredentials: CredentialStore {
 @MainActor
 final class SyncControllerTests: XCTestCase {
     private var dirs: [URL] = []
-    private var suites: [String] = []
     private var controllers: [SyncController] = []
 
     override func tearDown() async throws {
@@ -43,8 +42,6 @@ final class SyncControllerTests: XCTestCase {
         controllers = []
         for d in dirs { try? FileManager.default.removeItem(at: d) }
         dirs = []
-        for s in suites { UserDefaults.standard.removePersistentDomain(forName: s) }
-        suites = []
         SyncIndicator.shared.notice = nil
         SyncIndicator.shared.gear = nil
     }
@@ -61,11 +58,7 @@ final class SyncControllerTests: XCTestCase {
         let engines: Counter
     }
 
-    private func freshDefaults() -> UserDefaults {
-        let name = "mac-sync-test-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
+    private func freshDefaults() -> UserDefaults { SyncMemoryDefaults() }
 
     private func device(_ server: FakeSyncServer, ip: String, name: String, creds: CountingCredentials = CountingCredentials(),
                         defaults: UserDefaults? = nil, backupRoot: URL? = nil, net: FakeNet = FakeNet(), start: Bool = true) async -> Device {
