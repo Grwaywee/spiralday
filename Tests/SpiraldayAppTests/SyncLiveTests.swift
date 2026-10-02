@@ -401,6 +401,43 @@ final class SyncLiveTests: XCTestCase {
         XCTAssertTrue(tv.undoManager?.canUndo ?? false, "되돌리기 기록은 필드 편집기의 것 그대로")
     }
 
+    /// 조합을 지워 취소하면(마지막 자모에서 Backspace — 조합 중인 글이 비고 칸의 글은 저장소와 같다) 상대 종이에서도 그 자모가 바로 사라지고
+    /// 레코드에도 남지 않는다. 알리지 않으면 엔진이 본 ‘회의 ㄱ’ 이 도장과 함께 남아 상대에 보이고 레코드로 올라간다
+    func testCancelledCompositionIsWithdrawnRightAway() async throws {
+        let server = FakeSyncServer()
+        let (a, b, _) = try await pairedMacs(server)
+        let w = paper(a)
+        a.state.editingKey = "c|\(dayKey)"
+        try await until("COMMENT 칸에 포커스") { editor(w) != nil }
+        let tv = editor(w)!
+        func mark(_ s: String) { tv.setMarkedText(s, selectedRange: NSRange(location: (s as NSString).length, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        tv.insertText("회의 ", replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await until("거실에 ‘회의 ’", timeout: 2) { b.store.day(today).comment == "회의 " }
+        // 묶어 둔 파일 저장 · 그 뒤의 비교가 끝나기를 (그것이 조합 글을 바로잡는 것이 아니게)
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        mark("ㄱ")
+        XCTAssertTrue(tv.hasMarkedText())
+        try await until("거실에 ‘회의 ㄱ’", timeout: 2) { b.store.day(today).comment == "회의 ㄱ" }
+        // 마지막 자모를 지운다: IME 가 조합 중인 글을 빈 글로 바꾸고 조합을 끝낸다 (알림 때 이미 조합 아님 · 칸의 글 = 저장소의 글 —
+        // 바인딩 · $data 는 바뀌지 않는다)
+        tv.insertText("", replacementRange: tv.markedRange())
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, "회의 ")
+        XCTAssertEqual(a.store.day(today).comment, "회의 ")
+        try await until("거실에서도 자모가 바로 사라짐", timeout: 0.5) { b.store.day(today).comment == "회의 " }
+        // 레코드로 맞춰도 자모는 없다
+        await a.sync.syncNow()
+        await b.sync.syncNow()
+        await a.sync.syncNow()
+        XCTAssertEqual(a.store.day(today).comment, "회의 ")
+        XCTAssertEqual(b.store.day(today).comment, "회의 ")
+        // 조합 중인 글을 비우는 다른 길 (setMarkedText 에 빈 글)
+        mark("ㅈ")
+        try await until("거실에 ‘회의 ㅈ’", timeout: 2) { b.store.day(today).comment == "회의 ㅈ" }
+        mark("")
+        try await until("거실에서 ‘ㅈ’ 이 바로 사라짐", timeout: 0.5) { b.store.day(today).comment == "회의 " }
+    }
+
     /// 거실 Mac 이 쓰는 중인 칸은 서재의 글로 덮지 않고 "다른 기기에서 쓰는 중" · "다른 기기의 글이 있어요" 를 보인다.
     /// 거실이 쓰기를 마치면 나중 글(서재)이 둘 다에 (LWW)
     func testTheFieldBeingTypedKeepsItsTextAndShowsTheHint() async throws {

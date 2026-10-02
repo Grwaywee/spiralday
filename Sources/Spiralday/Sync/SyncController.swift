@@ -279,9 +279,12 @@ final class SyncController: ObservableObject {
                     var v = URLResourceValues()
                     v.isExcludedFromBackup = true
                     try? url.setResourceValues(v)
+                    // 실시간 저장 간격: 이 앱은 묶은 저장 · 잠자기 · 끝내기에서 파일을 쓰기 전에 늘 storageBehind → flushLive 를 기다린다
+                    // (SyncLive 의 beforeScheduledSave · saveAfterEngine) → 파일이 엔진 저장소를 앞서지 않으므로 넓힌다 — 다른 기기가 계속 치는
+                    // 동안 받기만 하는 Mac 이 초당 10번 일지를 쓰지 않게 (Docs/SpiraldaySync.md §7.7)
                     return SyncEngine(SyncEngineOptions(host: host, transport: HTTPTransport(baseURL: server),
                                                         storage: FileSyncStorage(directory: stateDir), credentials: creds,
-                                                        platform: .mac, log: SyncLog.os()))
+                                                        platform: .mac, liveFlushMs: 500, liveReceiveFlushMs: 1000, log: SyncLog.os()))
                 },
                 backupRoot: folder.appendingPathComponent("SyncBackups", isDirectory: true),
                 machineTag: { SyncMachine.tag() },
@@ -689,7 +692,7 @@ final class SyncController: ObservableObject {
     }
 
     /// 파일을 바로 쓰기 전에 엔진 저장소부터 (storageBehind 면 flushLive) — 앱 파일이 엔진 저장소보다 앞선 채 꺼지면 다시 켤 때
-    /// 그 값(받은 초안 · 친 글)이 이 기기의 새 편집으로 올라가 다른 기기의 더 새 글을 덮는다 (Docs/SpiraldaySync.md §7.1)
+    /// 그 값(받은 초안 · 친 글)이 이 기기의 새 편집으로 올라가 다른 기기의 더 새 글을 덮는다 (Docs/SpiraldaySync.md §7.7)
     private func saveAfterEngine(_ engine: SyncEngine) async {
         if await engine.storageBehind { await engine.flushLive() }
         store.saveNow()

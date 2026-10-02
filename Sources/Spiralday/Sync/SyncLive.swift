@@ -42,6 +42,8 @@ final class SyncLiveBridge {
     private(set) var editsSent = 0
     /// QA · 테스트: 조합 중인 글자로 liveEdit 한 횟수
     private(set) var composedEdits = 0
+    /// 마지막으로 알린 때 조합 중이던 칸의 레코드 (조합이 끝나면 — 확정 · 마지막 자모를 지워 취소 — 글이 저장소와 같아도 한 번 더 알린다)
+    private var composedRecord: String?
 
     init(store: PlannerStore, state: AppState?, engine: SyncEngine, plannerWindow: @escaping () -> NSWindow?) {
         self.store = store
@@ -152,6 +154,12 @@ final class SyncLiveBridge {
     // MARK: 쓰는 칸
 
     private func editingChanged(_ key: String?) {
+        // 조합 중에 칸을 떠났다: 엔진이 본 조합 글을 저장소의 글로 바로잡게 그 레코드를 다시 (조합 글은 이제 얹히지 않는다)
+        if let r = composedRecord {
+            composedRecord = nil
+            editsSent += 1
+            engine?.liveEdit([r])
+        }
         engine?.setEditing(address(key))
         if key == nil { hints.hideAll() }
     }
@@ -189,14 +197,19 @@ final class SyncLiveBridge {
 
     /// 플래너 창의 쓰는 칸(필드 편집기)의 글이 바뀌었다 (키 입력 · 조합 단계 · 조합 취소). 조합 중인 글자는 SwiftUI 가 바인딩에 넣지
     /// 않으므로($data 가 바뀌지 않는다) 그 칸의 레코드를 바로 liveEdit — 엔진은 호스트가 얹은 조합 중인 글을 읽는다.
-    /// 저장소와 같은 글(조합 없음)이면 아무것도 하지 않는다 (보통 입력은 바인딩 → $data 가 알린다)
+    /// 조합이 막 끝났으면 글이 저장소와 같아도 알린다: 마지막 자모를 Backspace 로 지워 조합을 취소하면(‘회의 ㄱ’ → ‘회의 ’) 바인딩도
+    /// $data 도 바뀌지 않는다 — 알리지 않으면 엔진이 본 ‘회의 ㄱ’ 이 도장과 함께 남아 상대 종이에 보이고 레코드로 올라가며,
+    /// 그 사이 앱이 죽으면 다시 켤 때 내 글에 되살아난다. 그 밖에 저장소와 같은 글이면 아무것도 하지 않는다 (보통 입력은 $data 가 알린다)
     private func fieldTextChanged(_ tv: NSTextView) {
         guard let w = tv.window, w === plannerWindow(), w.firstResponder === tv, let key = state?.editingKey,
               let cur = PlannerData.editedText(key, in: store.data), let record = address(key)?.key else { return }
-        guard tv.hasMarkedText() || tv.string != cur else { return }
-        if tv.hasMarkedText() { composedEdits += 1 }
+        let composing = tv.hasMarkedText()
+        let was = composedRecord
+        composedRecord = composing ? record : nil
+        guard composing || was != nil || tv.string != cur else { return }
+        if composing { composedEdits += 1 }
         editsSent += 1
-        engine?.liveEdit([record])
+        engine?.liveEdit(was.map { $0 == record ? [record] : [record, $0] } ?? [record])
     }
 
     /// 쓰는 칸에서 조합 중인 글 (그 칸의 편집 키 · 필드 편집기의 글 전체 — 조합 중인 글자 포함). 조합 중이 아니면 nil
