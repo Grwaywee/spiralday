@@ -386,6 +386,9 @@ public actor SyncEngine {
     var heldTimer: Task<Void, Never>?
     /// 앱에 알린 held 칸 (held 이벤트를 바뀔 때만)
     var heldAt: FieldAddress?
+    /// 지금 도는 미뤄 둔 칸 다시 맞추기 (releaseHeld) 수와 그것이 끝나기를 기다리는 setEditingAndSettle
+    var releasing = 0
+    var releaseWaiters: [CheckedContinuation<Void, Never>] = []
     var liveKeys = Set<String>()
     var liveTickTask: Task<Void, Never>?
     var liveLastTick = Int.min / 4

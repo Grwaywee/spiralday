@@ -13,6 +13,7 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
     private var _openBook: String?
     private var _liveApplied = 0
     private var _liveReads = 0
+    private var _liveDelayMs = 0
 
     public init(library: JSONValue = ["books": [], "sampleSeeded": false], sharedSettings: JSONValue? = nil) {
         _library = library
@@ -52,6 +53,17 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
     public var openBook: String? {
         get { lock.withLock { _openBook } }
         set { lock.withLock { _openBook = newValue?.uppercased() } }
+    }
+
+    /// readLive · applyLive 가 앱 값을 다루기 전에 기다리는 시간 (앱의 메인 스레드가 바쁜 것처럼 — 경주 시험)
+    public var liveDelayMs: Int {
+        get { lock.withLock { _liveDelayMs } }
+        set { lock.withLock { _liveDelayMs = newValue } }
+    }
+
+    private func liveDelay() async {
+        let ms = liveDelayMs
+        if ms > 0 { try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000) }
     }
 
     /// applyLive 로 넣은 횟수
@@ -108,7 +120,8 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
     }
 
     public func readLive(bookId: String, keys: [String]) async -> [String: JSONValue]? {
-        lock.withLock {
+        await liveDelay()
+        return lock.withLock {
             let k = bookId.uppercased()
             guard _openBook == k, let data = _books[k] else { return nil }
             _liveReads += 1
@@ -119,7 +132,8 @@ public final class MemoryHost: SyncHost, @unchecked Sendable {
     }
 
     public func applyLive(bookId: String, keys: [String], _ transform: @Sendable ([String: JSONValue]) -> [String: JSONValue]) async -> Bool {
-        lock.withLock {
+        await liveDelay()
+        return lock.withLock {
             let k = bookId.uppercased()
             guard _openBook == k, var data = _books[k] else { return false }
             var cur: [String: JSONValue] = [:]

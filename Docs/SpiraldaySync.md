@@ -285,7 +285,7 @@ private func observe(_ new: PlannerData) {
 |---|---|
 | `engine.liveEdit(_ keys: [String])` | **nonisolated · 기다리지 않음** (메인 스레드에서 입력마다). 앱의 메모리 값이 방금 바뀌었다: 키 입력 · IME 조합 한 단계(marked text 포함) · 칠하기 한 칸 · 표시 · 할 일 더하기/지우기 … `keys` = 바뀐 레코드 키 — 열린 책의 `RecordKeys.day(책, "yyyy-MM-dd")` · `RecordKeys.week(책, 월요일)` · `RecordKeys.prefs(책)` (책 id 대소문자 무관, 다른 종류는 무시). 첫 입력은 바로, 그 뒤는 50 ms 묶음 (마지막 값은 꼭). 그룹 밖 · 멈춤이면 아무것도 하지 않는다 (네트워크 0). 이 부름이 곧 "사용자가 치는 중" 이다 |
 | `engine.setEditing(_ at: FieldAddress?)` | **nonisolated · 기다리지 않음**. 캐럿이 있는 칸 (없으면 nil). 쓰는 중인 동안(마지막 `liveEdit` 부터 `editingGraceMs` 5초) 들어오는 변경으로 덮지 않는다. 포커스만 있는 칸은 지키지 않는다 (더 새 글을 받는다) |
-| `await engine.setEditingAndSettle(_ at:)` | 같고, 미뤄 둔 상대 글을 앱에 넣을 때까지 기다린다 — 쓰기를 마친 뒤 정리(빈 할 일 · 빈 메모 지우기)를 하는 곳은 이것을 기다린 뒤 정리한다 (정리가 화면의 옛 값을 보고 지우지 않게) |
+| `await engine.setEditingAndSettle(_ at:)` | 같고, 미뤄 둔 상대 글을 앱에 넣을 때까지 기다린다 — 쓰기를 마친 뒤 정리(빈 할 일 · 빈 메모 지우기)를 하는 곳은 이것을 기다린 뒤 정리한다 (정리가 화면의 옛 값을 보고 지우지 않게). 앞서 부른 `setEditing` 이 시작한 넣기가 아직 앱 값을 다루는 중이면 그것이 끝날 때까지도 기다린다 (앱의 `$editingKey` 구독이 `setEditing(nil)` 을 먼저 부르는 흔한 순서) |
 | `engine.editingProtected: Bool?` | **nonisolated**. 쓰고 있는 칸을 지금 지키는지 (칸이 없으면 nil). 호스트가 따로 칸을 지키는 안전망은 이 값을 따라야 한다 — 엔진보다 더 지키면 옛 글이 새 도장을 얻어 더 새 글을 덮는다 |
 | `engine.localChanged(bookId:saved:)` | 앱이 책 파일을 **다 쓴 뒤**: `saved` = 쓴 그 책의 PlannerData JSON 을 주는 함수 (`{ try? JSONValue.parse(raw) }` — 엔진이 앞선 레코드가 있을 때만 부른다). 실시간 쓰기를 하는 앱은 꼭 준다: 앱이 파일 저장 전에 죽었을 때 친 글 · 받은 글을 되살리고, 옛 파일 값이 새 편집으로 올라가 다른 기기의 글을 지우지 않게 |
 | `await engine.storageBehind` · `await engine.flushLive()` | 동기화 저장소가 메모리보다 뒤처졌는지 · 남은 실시간 일을 지금 (비교 · 초안 · 저장). 책 파일을 쓰기 직전에 `storageBehind` 면 `flushLive()` 를 기다린다 — 엔진은 받은 초안을 바로(그 뒤 0.1초 간격) 저장하므로 0.6초 묶음 저장이면 거의 늘 false |

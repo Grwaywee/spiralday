@@ -69,10 +69,13 @@ extension SyncEngine {
         if liveBox.setEditing(normalizeAddress(at)) { Task { await self.drainLive() } }
     }
 
-    /// setEditing 과 같고, 미뤄 둔 칸을 다시 맞춰 앱에 넣을 때까지 기다린다 (쓰기를 마친 뒤의 정리 앞에)
+    /// setEditing 과 같고, 미뤄 둔 칸을 다시 맞춰 앱에 넣을 때까지 기다린다 (쓰기를 마친 뒤의 정리 앞에).
+    /// 앞서 부른 setEditing 이 시작한 다시 맞추기가 아직 앱 값을 다루는 중이면 그것도 끝날 때까지 기다린다 — 앱은 $editingKey 구독이
+    /// setEditing(nil) 을 먼저 부르고 이어서 이것을 기다리는데, 그때 먼저 돌아오면 정리가 미뤄 둔 상대 글이 들어가기 전의 값을 보고 지운다
     public func setEditingAndSettle(_ at: FieldAddress?) async {
         _ = liveBox.setEditing(normalizeAddress(at))
         await drainLive()
+        while releasing > 0 { await withCheckedContinuation { releaseWaiters.append($0) } }
     }
 
     /// 쓰고 있는 칸(setEditing)을 지금 지키는지 (마지막 liveEdit 부터 editingGraceMs 가 지나지 않았다). 쓰고 있는 칸이 없으면 nil.
@@ -673,6 +676,15 @@ extension SyncEngine {
     /// 미뤄 둔(held) 레코드를 상태의 승자로 다시 맞춘다: 마지막 내 글을 받아들이고 (더 나중이면 내 글), 다르면 앱에 넣는다
     func releaseHeld(_ key: String) async {
         guard let e = recs[key], liveReady(), let bookId = e.pk.bookId, liveBookOk(bookId) else { return }
+        releasing += 1
+        defer {
+            releasing -= 1
+            if releasing == 0, !releaseWaiters.isEmpty {
+                let w = releaseWaiters
+                releaseWaiters = []
+                for c in w { c.resume() }
+            }
+        }
         await acquireApp()
         if liveReady(), recs[key] === e, let values = await readLiveValues(bookId, [key]), recs[key] === e {
             let cur = Records.flattenOf(e.pk, liveValue(values[key]))

@@ -199,6 +199,31 @@ final class LiveEditingTests: LiveCase {
         XCTAssertEqual(pa + pb, 0)
     }
 
+    /// 앱은 쓰기를 마치면 $editingKey 구독이 먼저 setEditing(nil) 을 부르고, 이어서 정리(빈 할 일 지우기) 앞에서 setEditingAndSettle(nil) 을
+    /// 기다린다 (Mac · iOS 앱). setEditing 이 먼저 시작한 넣기가 아직 앱 값을 다루는 중이어도 settle 은 그 넣기가 끝날 때까지 기다려야 한다 —
+    /// 먼저 돌아오면 정리가 미뤄 둔 상대 글이 들어가기 전의 값을 보고 지운다 (다른 기기가 막 쓴 할 일이 모든 기기에서 사라진다)
+    func testSettleWaitsForReleaseStartedBySetEditing() async throws {
+        let server = FakeSyncServer()
+        let (devs, book, key) = try await liveGroup(server, 2)
+        let a = devs[0], b = devs[1]
+        b.engine.setEditing(FieldAddress(key: key, field: "comment"))
+        setComment(b, book, "내 글")
+        await b.engine.flushLive()
+        try await waitUntil { liveComment(a, book) == "내 글" }
+        setComment(a, book, "상대 글")
+        await a.engine.flushLive()
+        try await waitUntil { await b.engine.liveCounters.received >= 1 }
+        await settle()
+        XCTAssertEqual(liveComment(b, book), "내 글")
+        // 앱의 메인 스레드가 바빠 넣기가 오래 걸린다
+        b.host.liveDelayMs = 40
+        b.engine.setEditing(nil)
+        try await Task.sleep(nanoseconds: 10_000_000)       // 먼저 시작한 넣기가 앱 값을 읽는 중에
+        await b.engine.setEditingAndSettle(nil)
+        XCTAssertEqual(liveComment(b, book), "상대 글", "정리 앞에서는 미뤄 둔 상대 글이 이미 앱에 있다")
+        b.host.liveDelayMs = 0
+    }
+
     func testTypingMoreWhileEditingWins() async throws {
         let server = FakeSyncServer()
         let (devs, book, key) = try await liveGroup(server, 2)
