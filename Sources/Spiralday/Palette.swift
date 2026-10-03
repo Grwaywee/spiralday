@@ -1040,24 +1040,35 @@ private struct BookMenu: View {
             if isSnapshot {
                 label(book)
             } else {
-                Menu {
-                    ForEach(store.books) { b in
-                        Button { store.activate(b.id) } label: {
-                            // 예시 플래너는 이름에 "예시" 가 없을 때(이름을 바꿨을 때)만 표시를 붙인다
-                            Text((b.id == book?.id ? "✓ " : "   ") + b.name
-                                 + (b.isSample && !b.name.contains("예시") ? "  · 예시" : ""))
-                        }
-                    }
-                    Divider()
-                    Button("플래너 관리…") { SettingsWindowController.shared.show(store: store, state: state) }
-                } label: {
-                    label(book)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
+                // macOS 의 Menu 단추는 label 의 그림(표지 색 · 책등)을 지우고 글자만 그린다 —
+                // 그래서 책 모양은 보통 단추로 그리고, 누르면 같은 메뉴를 그 자리에 띄운다
+                Button { showMenu(book) } label: { label(book) }
+                    .buttonStyle(.plain)
             }
         }
         .help(book.map { "\($0.name) · \($0.periodText)" } ?? "플래너를 만들어 주세요")
+    }
+
+    /// 플래너 목록 (지금 펼친 권에 ✓) · 플래너 관리… — 마우스 자리에 띄운다
+    private func showMenu(_ book: BookInfo?) {
+        let target = BookMenuTarget.shared
+        target.actions.removeAll()
+        let menu = NSMenu()
+        for b in store.books {
+            // 예시 플래너는 이름에 "예시" 가 없을 때(이름을 바꿨을 때)만 표시를 붙인다
+            let title = b.name + (b.isSample && !b.name.contains("예시") ? "  · 예시" : "")
+            let item = NSMenuItem(title: title, action: #selector(BookMenuTarget.run(_:)), keyEquivalent: "")
+            item.target = target
+            item.state = b.id == book?.id ? .on : .off
+            item.tag = target.add { [store] in store.activate(b.id) }
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let manage = NSMenuItem(title: "플래너 관리…", action: #selector(BookMenuTarget.run(_:)), keyEquivalent: "")
+        manage.target = target
+        manage.tag = target.add { [store, state] in SettingsWindowController.shared.show(store: store, state: state) }
+        menu.addItem(manage)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
     private func label(_ book: BookInfo?) -> some View {
@@ -1078,6 +1089,20 @@ private struct BookMenu: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+    }
+}
+
+/// BookMenu 가 띄우는 NSMenu 의 항목이 부를 일 (메뉴가 닫힐 때까지 붙잡아 둔다)
+private final class BookMenuTarget: NSObject {
+    static let shared = BookMenuTarget()
+    var actions: [() -> Void] = []
+    func add(_ action: @escaping () -> Void) -> Int {
+        actions.append(action)
+        return actions.count - 1
+    }
+    @objc func run(_ sender: NSMenuItem) {
+        guard actions.indices.contains(sender.tag) else { return }
+        actions[sender.tag]()
     }
 }
 
