@@ -80,11 +80,17 @@ public struct CurlSheetShape: Equatable, Sendable {
 
     // MARK: geometry
 
-    init(frame: CurlFrame, fold: CurlFold) {
-        outline = Self.outline(frame: frame, fold: fold)
+    init(frame f: CurlFrame, fold: CurlFold) {
+        // page space → view (screen orientation), then keep what the overlay shows
+        outline = Self.liftedOutline(fold: fold, paper: (0, f.W, f.H),
+                                     toView: { f.edge == .top ? CurlVec($0.y, $0.x) : $0 },
+                                     clip: CGRect(origin: .zero, size: f.view))
     }
 
-    private static func outline(frame f: CurlFrame, fold: CurlFold) -> [CGPoint] {
+    /// The lifted part of the sheet `paper` = [lo, hi] × [0, H] (page space) under `fold`, mapped by the affine
+    /// `toView` and clipped to `clip` (view points). Shared by the single page and the open book (CurlSpreadLeaf).
+    static func liftedOutline(fold: CurlFold, paper: (lo: Double, hi: Double, H: Double),
+                              toView: (CurlVec) -> CurlVec, clip rect: CGRect) -> [CGPoint] {
         let N = CurlMath.normalize(fold.normal, CurlVec(1, 0))
         let T = CurlVec(-N.y, N.x)
         let A = fold.axisPoint
@@ -92,7 +98,7 @@ public struct CurlSheetShape: Equatable, Sendable {
         let halfTurn = Double.pi * r
 
         // the part of the page beyond the axis, in (t along the axis, u across it)
-        let corners = [CurlVec(0, 0), CurlVec(f.W, 0), CurlVec(f.W, f.H), CurlVec(0, f.H)].map {
+        let corners = [CurlVec(paper.lo, 0), CurlVec(paper.hi, 0), CurlVec(paper.hi, paper.H), CurlVec(paper.lo, paper.H)].map {
             CurlVec(simd_dot($0 - A, T), simd_dot($0 - A, N))
         }
         let beyond = clip(corners) { $0.y }      // u ≥ 0
@@ -132,13 +138,12 @@ public struct CurlSheetShape: Equatable, Sendable {
         guard upper.count >= 2 else { return [] }
         let ring = upper + lower.reversed()
 
-        // page space → view (screen orientation), then keep what the overlay shows
-        let view = ring.map { f.edge == .top ? CurlVec($0.y, $0.x) : $0 }
-        let w = Double(f.view.width), h = Double(f.view.height)
-        var poly = clip(view) { $0.x }
-        poly = clip(poly) { w - $0.x }
-        poly = clip(poly) { $0.y }
-        poly = clip(poly) { h - $0.y }
+        let view = ring.map(toView)
+        let x0 = Double(rect.minX), x1 = Double(rect.maxX), y0 = Double(rect.minY), y1 = Double(rect.maxY)
+        var poly = clip(view) { $0.x - x0 }
+        poly = clip(poly) { x1 - $0.x }
+        poly = clip(poly) { $0.y - y0 }
+        poly = clip(poly) { y1 - $0.y }
         guard poly.count >= 3, abs(area(poly)) > 0.25 else { return [] }
         return poly.map { CGPoint(x: $0.x, y: $0.y) }
     }

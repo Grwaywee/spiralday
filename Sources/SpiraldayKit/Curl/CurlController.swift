@@ -173,6 +173,13 @@ public final class CurlController: ObservableObject {
         return CurlSheetShape(frame: turn.frame, fold: turn.frame.fold(F))
     }
 
+    /// Spread mode: the leaf turning in the frame the overlay shows now, nil while no spread turn shows
+    /// (CurlSpreadLeaf.swift). `watchLiftedSheet` calls its handler on every frame in spread mode too.
+    public var spreadLeaf: CurlSpreadLeaf? {
+        guard let turn, let sp = turn.spread else { return nil }
+        return CurlSpreadLeaf(geometry: sp.geometry, sigma: sp.sigma, holdTop: sp.holdTop, frame: turn.frame, fold: turn.frame.fold(F))
+    }
+
     private var isSpread: Bool { if case .spread = layout { return true } else { return false } }
 
     public init() {}
