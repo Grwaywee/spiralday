@@ -169,7 +169,7 @@ extension SyncEngine {
     /// 이 기기의 진짜 편집(clock = HLC)이고 초안으로 오가는 레코드면 듣는 기기에 보낼 조각에 더한다
     @discardableResult
     func absorb(_ e: RecEntry, _ kind: RecordKind, _ cur: Flat, _ clock: StampSource) -> RecState? {
-        let r = e.d.absorb(kind, cur, clock)
+        let r = e.d.absorb(kind, cur, clock, seed: seeding)
         if r.touched { touch(e) }
         guard let delta = r.delta else { return nil }
         localDirty = true
@@ -181,7 +181,7 @@ extension SyncEngine {
     func diffKey(_ key: String, _ kind: RecordKind, _ cur: Flat, _ clock: StampSource, live: Bool = false) {
         guard let e0 = recs[key] else {
             // 처음 보는 레코드: 비어 있으면 만들지 않는다
-            let delta = Records.diff(kind, prev: nil, cur: cur, clock: clock)
+            let delta = Records.diff(kind, prev: nil, cur: cur, clock: clock, seed: seeding)
             if CRDT.isEmptyDelta(delta) { return }
             let e = rec(key)
             CRDT.mergeInto(&e.d.state, delta)
@@ -197,7 +197,11 @@ extension SyncEngine {
         }
         let hadPend = e0.d.pend != nil
         let before = e0.d.shadow
-        let delta = absorb(e0, kind, cur, clock)
+        // 그림자가 없는 레코드(받았지만 아직 넣지 않음 · 되살리기 · 예전 엔진 저장소의 버린 책 설정)는 이 앱 값을 비교한 적이 없다 →
+        // 넣기 직전의 비교와 같게 시각 0 도장 (동기화된 값이 이기고, 이 기기에만 있던 것은 남는다). 실시간 길은 그대로 (TS 와 같다)
+        let real = (clock as AnyObject) === hlc
+        let zero = real && !live && e0.d.shadow == nil
+        let delta = absorb(e0, kind, cur, zero ? ZeroClock(node: meta.nodeId) : clock)
         if live {
             if delta != nil, e0.d.saved == nil {
                 e0.d.saved = SavedShadow(before)
@@ -402,7 +406,11 @@ extension SyncEngine {
             throw SyncEngineError(.libraryUnavailable, "책장을 읽을 수 없어 동기화를 시작하지 못했어요.")
         }
         // 그룹을 만든 기기는 진짜 도장 (그룹의 첫 내용), 들어온 기기는 시각 0 도장
-        let clock: StampSource = meta.importMode == .real ? hlc : ZeroClock(node: meta.nodeId)
+        let real = meta.importMode == .real
+        let clock: StampSource = real ? hlc : ZeroClock(node: meta.nodeId)
+        // 그룹을 만든 기기의 형광펜은 그룹의 첫 값 — 기본값과 같은 필드도 진짜 도장으로 (Records.diff seed)
+        seeding = real
+        defer { seeding = false }
         try await scan(.all, clock: clock)
         meta.imported = true
         metaTouched = true
@@ -413,14 +421,16 @@ extension SyncEngine {
     // MARK: - 받기 (서버 → 상태)
 
     /// 암호문 → (레코드 키, 상태). 모르는 payload 버전이면 UnknownVersion
-    func decodeWithKey(_ rid: String, _ ct: String) throws -> (key: String, state: RecState) {
+    func decodeWithKey(_ rid: String, _ ct: String) throws -> (key: String, state: RecState, v: Int) {
         guard let keys else { throw CryptoError("그룹 키가 없음") }
         let p = try keys.decryptRecord(rid: rid, ct: ct)
         guard case .object = p else { throw CryptoError("레코드 모양이 틀림") }
-        guard p["v"] == .number(1) else { throw UnknownVersion(v: p["v"]) }
         guard case let .string(k)? = p["k"] else { throw CryptoError("레코드 모양이 틀림") }
+        // 읽는 버전: 1, 책 설정은 1 · 2 (PAYLOAD_VERSION). 그 밖은 새 버전 앱의 것
+        let v: Int
+        if p["v"] == .number(1) { v = 1 } else if p["v"] == .number(2), payloadVersion(k) == 2 { v = 2 } else { throw UnknownVersion(v: p["v"]) }
         guard keys.rid(k) == rid else { throw CryptoError("레코드 키와 rid 가 맞지 않음") }
-        return (k, try CRDT.parseState(p["s"]))
+        return (k, try CRDT.parseState(p["s"]), v)
     }
 
     func decode(_ rid: String, _ ct: String, expectKey: String? = nil) throws -> RecState {
@@ -477,8 +487,9 @@ extension SyncEngine {
         if let known, known.d.seq >= seq { return }
         let key: String
         let remote: RecState
+        let v: Int
         do {
-            (key, remote) = try decodeWithKey(rid, ct)
+            (key, remote, v) = try decodeWithKey(rid, ct)
         } catch is UnknownVersion {
             emit(.warning(.updateRequired, message: "다른 기기의 새 버전 앱이 쓴 기록이 있어요. 앱을 업데이트해 주세요."))
             // 커서는 지나간다 → 이 엔진보다 새 엔진으로 켜면 처음부터 다시 받아 이 레코드를 읽는다
@@ -510,20 +521,24 @@ extension SyncEngine {
             // 서버의 지금 버전이 내 상태와 같다 (응답만 잃은 쓰기가 서버에 닿았던 것) → 다시 쓰지 않는다
             e.d.dirty = false
         }
+        // 예전 엔진이 v 1 로 쓴 책 설정은 v 2 로 다시 올린다 — 그 엔진이 읽지 못하게 (PAYLOAD_VERSION)
+        if v < payloadVersion(key), e.d.state.x == nil, !CRDT.isEmptyDelta(e.d.state) { e.d.dirty = true }
         touch(e)
     }
 
     // MARK: - 보내기 (상태 → 서버)
 
     func encrypt(_ e: RecEntry) -> String {
-        keys!.encryptRecord(rid: e.rid, payload: ["v": 1, "k": .string(e.key), "s": CRDT.toJSON(e.d.state)])
+        keys!.encryptRecord(rid: e.rid, payload: ["v": JSONValue(payloadVersion(e.key)), "k": .string(e.key), "s": CRDT.toJSON(e.d.state)])
     }
 
     /// 보낼 레코드를 모두 보낸다: 여러 개면 batch(100개씩), 서버가 batch 를 모르면 하나씩 (동시에 몇 개)
     func pushAll() async throws {
         let a = try authOrThrow()
         for round in 0..<12 {
-            let dirty = recs.values.filter(pushable).sorted { $0.key < $1.key }
+            // 책 정보(b/)는 맨 뒤에: 다른 기기는 책 정보가 와야 그 책을 만든다 → 묶음 사이에 받아도 책 설정(p/) · 날이 먼저 서버에 있다
+            // (묶음 사이에 받은 기기가 책 설정 없이 책을 만들어 기본 형광펜을 보이지 않게)
+            let dirty = recs.values.filter(pushable).sorted { ($0.pk.kind == .book ? 1 : 0, $0.key) < ($1.pk.kind == .book ? 1 : 0, $1.key) }
             // 지금 밀린 것은 모두 이 보내기에 실린다: 그 뒤의 변경만 FAST · COVERED 를 다시 정한다
             if round == 0 { pushUncovered = false }
             if dirty.isEmpty { return }
@@ -656,13 +671,21 @@ extension SyncEngine {
         touch(e)
         guard let ct else { return }
         let remote: RecState
+        let v: Int
         do {
-            remote = try decode(e.rid, ct, expectKey: e.key)
+            let r = try decodeWithKey(e.rid, ct)
+            if r.key != e.key { throw CryptoError("다른 레코드") }
+            (remote, v) = (r.state, r.v)
         } catch {
             // 풀 수 없는 서버 버전(새 버전 앱 · 손상)은 덮어쓰지 않는다
             e.blocked = true
             if error is UnknownVersion {
                 emit(.warning(.updateRequired, message: "다른 기기의 새 버전 앱이 쓴 기록이 있어요. 앱을 업데이트해 주세요."))
+                // 이 순번을 적었으니, 더 새 엔진으로 켜면 처음부터 다시 받아 이 버전을 합친 뒤에 보낸다 (initialize 의 repull)
+                if meta.skippedBelow == nil {
+                    meta.skippedBelow = PAYLOAD_VERSION
+                    metaTouched = true
+                }
             } else {
                 emit(.warning(.undecryptable, message: "서버의 동기화 기록 하나를 풀 수 없어 그 기록은 보내지 않아요."))
             }
@@ -673,7 +696,8 @@ extension SyncEngine {
             e.d.apply = true
             e.d.ver += 1
         }
-        if e.d.state == confirmLive(e, remote) { e.d.dirty = false }
+        // 서버의 지금 버전이 내 상태와 같으면 다시 쓰지 않는다 — 예전 엔진이 v 1 로 쓴 책 설정이면 v 2 로 쓴다 (ingest 와 같다)
+        if e.d.state == confirmLive(e, remote), v >= payloadVersion(e.key) { e.d.dirty = false }
     }
 
     /// 받은 상태의 도장을 시계에 알린다. 시계보다 하루 넘게 앞선 도장이면 (한 번) 알린다
@@ -756,6 +780,9 @@ extension SyncEngine {
                         clock: hlc,
                         protection: protectionProbe())
                     try await host.updateBook(id: bookId) { cur in job.run(cur) }
+                    // 있던 책인데 파일이 없다 (그 사이에 지웠거나 잃음 — 호스트: 파일 없이 연 펼친 책도 nil) → 넣지 않았다. 그 책을 곧 다시
+                    // 비교한다: 책장에서 빠졌으면 지움, 파일만 잃었으면 .missing → 되살리기 (TS 와 같다)
+                    if job.skippedMissing { kick(scan: .some([bookId]), delay: 0) }
                     commit(job)
                     releaseApp()
                     changedBooks.append(bookId)
@@ -844,11 +871,17 @@ final class BookApplyJob: @unchecked Sendable {
     }
 
     func output() -> Output? { lock.withLock { out } }
+    /// 있던 책인데 파일이 없어 넣지 않았다 (run 이 nil)
+    var skippedMissing: Bool { lock.withLock { missing } }
+    private var missing = false
 
     func run(_ cur: JSONValue?) -> JSONValue? {
         lock.withLock {
             // 있던 책인데 파일이 없어졌다 = 그 사이에 지운 것 (되살리기로 한 책이 아니면 만들지 않는다)
-            if cur == nil, deleteIfMissing { return nil }
+            if cur == nil, deleteIfMissing {
+                missing = true
+                return nil
+            }
             // cur = nil: 이 기기에 없던 책 (처음 받은 책 · 파일을 잃은 책). 그 값은 엔진이 만든 빈 책이라 이 기기의 편집이 없다 → 비교하지 않는다
             let fresh = cur == nil
             var data = cur ?? PlannerModel.emptyPlannerData()

@@ -83,8 +83,14 @@ final class PlannerSyncHost: SyncHost {
     func updateBook(id: String, _ transform: @Sendable (JSONValue?) -> JSONValue?) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         let cur: JSONValue?
-        let composing = uuid == store.library.activeID && store.unreadableBooks[uuid] == nil ? composing() : nil
-        if let composing {
+        let openedWithoutFile = store.booksOpenedWithoutFile.contains(uuid)
+        let composing = !openedWithoutFile && uuid == store.library.activeID && store.unreadableBooks[uuid] == nil ? composing() : nil
+        if openedWithoutFile {
+            // 파일 없이 연 펼친 책 (엔진이 아직 받아들이지 않음): 메모리의 빈 책은 사용자의 플래너가 아니다 → readBook 의 .missing 과 같게
+            // nil. 엔진은 그 책을 다시 비교해 되살린다 (missingNoted 뒤에는 메모리 값). 조합 중이어도 같다 — readBookRaw · 조합 중인 값은
+            // 펼친 책의 메모리 값이라, 넘기면 옛 그림자와 비교돼 모든 기기에서 날 · 형광펜이 지워졌다 (2026-10-04 사고 검토 W1)
+            cur = nil
+        } else if let composing {
             // 펼친 책에서 조합 중: 엔진이 보는 값은 조합 중인 글을 얹은 것 (readBook · readLive 와 같게)
             guard case let .ok(v) = Self.appJSON(store.data.settingEditedText(composing.key, composing.text)) else { return }
             cur = v

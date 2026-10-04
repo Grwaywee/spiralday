@@ -184,8 +184,12 @@ public enum Draft {
     /// 봉인한 초안 base64url 길이: 평문 최소 256바이트 → 396자, 서버 한도 32,000자
     public static let minChars = 396
     public static let maxChars = 32_000
-    /// 초안 payload 버전
+    /// 초안 payload 버전 — 레코드와 같다 (비공개 docs/sync-engine.md §1): 하루 · 한 주는 1, 책 설정(p/)은 2. 책 설정 초안이 1 이면
+    /// 예전 엔진의 것이라 버린다 (받은 책을 만들 때 기본 형광펜을 편집으로 올리던 엔진). 예전 엔진은 2 를 버린다. TS DRAFT_VERSION 과 같다
     public static let version = 1
+    public static let prefsVersion = 2
+    /// 이 레코드 키의 초안 payload 버전
+    public static func version(for recordKey: String) -> Int { recordKey.hasPrefix("p/") ? prefsVersion : version }
 
     /// 봉인한 초안 모양 (^[A-Za-z0-9_-]{396,32000}$)
     public static func isDraft(_ s: String) -> Bool {
@@ -223,7 +227,7 @@ public final class GroupKeys: Sendable {
 
     /// (테스트 벡터) nonce 를 정해 봉인 — 공개하지 않는다 (nonce 를 다시 쓰면 비밀이 깨진다). nil = 난수
     func sealDraft(key recordKey: String, state: RecState, gid: String, from: String, q: Stamp, nonce: [UInt8]?) -> String? {
-        let payload: JSONValue = ["v": JSONValue(Draft.version), "k": .string(recordKey), "s": CRDT.toJSON(state)]
+        let payload: JSONValue = ["v": JSONValue(Draft.version(for: recordKey)), "k": .string(recordKey), "s": CRDT.toJSON(state)]
         let json = payload.canonicalBytes
         let size = max(Draft.pad, (json.count + Draft.pad - 1) / Draft.pad * Draft.pad)
         if size > Draft.maxPlain { return nil }
@@ -233,7 +237,8 @@ public final class GroupKeys: Sendable {
     }
 
     /// 초안 풀기와 모양 검사 (§4.4 의 3–4). 틀리면 CryptoError:
-    /// 형식 · 풀리지 않음 · 평문 23,552바이트 초과 · JSON 객체가 아님 · v ≠ 1 · 키가 하루 · 한 주 · 책 설정이 아님 · 상태 모양 · 레코드 지움(x)
+    /// 형식 · 풀리지 않음 · 평문 23,552바이트 초과 · JSON 객체가 아님 · 키가 하루 · 한 주 · 책 설정이 아님 · v 가 그 키의 버전이 아님
+    /// (하루 · 한 주 1, 책 설정 2 — 책 설정 v 1 은 예전 엔진의 초안) · 상태 모양 · 레코드 지움(x)
     public func openDraft(_ draft: String, gid: String, from: String, q: Stamp) throws -> (key: String, state: RecState) {
         guard Draft.isDraft(draft) else { throw CryptoError("초안 형식이 틀림") }
         guard let sealed = Base64URL.decode(draft) else { throw CryptoError("초안이 base64url 이 아님") }
@@ -242,11 +247,13 @@ public final class GroupKeys: Sendable {
         // JS 는 잘못된 UTF-8 이면 (fatal 디코더) 실패한다
         guard String(bytes: plain, encoding: .utf8) != nil, let p = try? JSONValue.parse(plain) else { throw CryptoError("초안이 JSON 이 아님") }
         guard case let .object(o) = p else { throw CryptoError("초안 모양이 틀림") }
-        guard o["v"] == .number(Double(Draft.version)) else { throw CryptoError("모르는 초안 버전") }
+        guard o["v"] == .number(Double(Draft.version)) || o["v"] == .number(Double(Draft.prefsVersion)) else { throw CryptoError("모르는 초안 버전") }
         guard case let .string(k)? = o["k"] else { throw CryptoError("초안 모양이 틀림") }
         guard let pk = RecordKeys.parse(k), pk.kind == .day || pk.kind == .week || pk.kind == .prefs else {
             throw CryptoError("초안으로 받지 않는 레코드")
         }
+        if pk.kind == .prefs, o["v"] != .number(Double(Draft.prefsVersion)) { throw CryptoError("예전 엔진의 책 설정 초안 (버전 1)") }
+        if pk.kind != .prefs, o["v"] != .number(Double(Draft.version)) { throw CryptoError("모르는 초안 버전") }
         let s: RecState
         do {
             s = try CRDT.parseState(o["s"])

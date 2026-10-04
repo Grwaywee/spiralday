@@ -33,6 +33,9 @@ struct Meta {
     var rename: String?
     /// 모르는 payload 버전이라 건너뛴 레코드가 있을 때, 그때 이 엔진이 알던 버전 (더 새 엔진으로 켜면 처음부터 다시 받는다)
     var skippedBelow: Int?
+    /// 이 저장소의 레코드를 어느 payload 버전까지 올렸는지 (없음 = 1 — 예전 엔진의 저장소). 2 보다 작으면 켤 때 처음부터 다시 받고
+    /// 책 설정 레코드를 모두 v 2 로 다시 올린다 (예전 엔진이 읽지 못하게 — PAYLOAD_VERSION). TS Meta.pv 와 같다
+    var pv: Int? = PAYLOAD_VERSION
     /// 기기마다 마지막으로 받아들인 초안의 q (재생 거르기, LIVE_SEEN_MAX 개까지)
     var liveSeen: [String: Stamp] = [:]
 
@@ -46,13 +49,18 @@ struct Meta {
         if let importMode { o["importMode"] = .string(importMode.rawValue) }
         if let rename { o["rename"] = .string(rename) }
         if let skippedBelow { o["skippedBelow"] = JSONValue(skippedBelow) }
+        if let pv { o["pv"] = JSONValue(pv) }
         if !liveSeen.isEmpty { o["liveSeen"] = .object(liveSeen.mapValues { .string($0) }) }
         return .object(o)
     }
 }
 
-/// 이 엔진이 읽고 쓰는 레코드 payload 버전
-let PAYLOAD_VERSION = 1
+/// 레코드 · 초안 payload 버전 (비공개 docs/sync-engine.md §1 — TS PAYLOAD_VERSION 과 같다). 1 = 처음 형식. 2 = 같은 형식인데
+/// 책 설정(p/)만 — 기기가 채운 기본 형광펜을 편집으로 올리지 않는 엔진(2026-10-04 사고 고침)만 읽게 한다. 예전 엔진은 v 2 를 모르는
+/// 버전으로 건너뛰고(업데이트 안내) 덮어쓰지 못한다 (409 → 풀 수 없음 → 막힘). 이 엔진은 1 · 2 를 읽고, 책 설정은 늘 2 로 쓴다
+let PAYLOAD_VERSION = 2
+/// 이 엔진이 쓰는 payload 버전: 책 설정은 2, 나머지는 1 (예전 엔진도 계속 읽는다)
+func payloadVersion(_ key: String) -> Int { key.hasPrefix("p/") ? 2 : 1 }
 /// 원래 기기에서 새 기기 화면의 확인 숫자를 틀리게 넣을 수 있는 횟수
 let MAX_DIGIT_TRIES = 3
 /// 승인 뒤 새 기기가 수락할 수 있는 시간 (서버는 30분 — 시계 차이를 두고 조금 짧게)
@@ -94,7 +102,7 @@ struct RecData: Sendable {
     var held = false
 
     /// 그림자와 지금 값을 비교해 바뀐 것을 상태에 합친다. (합친 조각 — 이 기기의 편집, 도장을 올린 뒤, 저장할 것이 생겼는지)
-    mutating func absorb(_ kind: RecordKind, _ cur: Flat, _ clock: StampSource) -> (delta: RecState?, touched: Bool) {
+    mutating func absorb(_ kind: RecordKind, _ cur: Flat, _ clock: StampSource, seed: Bool = false) -> (delta: RecState?, touched: Bool) {
         if state.x != nil {
             shadow = nil
             saved = nil
@@ -106,7 +114,7 @@ struct RecData: Sendable {
             pend = nil
             return (nil, true)
         }
-        var delta = Records.diff(kind, prev: shadow, cur: cur, clock: clock, base: state)
+        var delta = Records.diff(kind, prev: shadow, cur: cur, clock: clock, base: state, seed: seed)
         let had = shadow != nil
         shadow = cur
         if CRDT.isEmptyDelta(delta) { return (nil, !had) }
@@ -381,6 +389,8 @@ public actor SyncEngine {
     /// 마지막 받기가 서버 head 까지 다 받았다 (이번 실행). 이 기기에 없는 책은 이때만 만든다 — 받기가 중간에 끊겨 그 책의 레코드
     /// 일부(책 정보 · 하루만, 책 설정은 아직)만 있을 때 만들면 앱이 그 책을 열고 기본 형광펜을 본 채 고칠 수 있다 (TS pulledAll)
     var pulledAll = false
+    /// 그룹을 만든 기기의 첫 가져오기 중 (Records.diff seed)
+    var seeding = false
     var listeners: [UUID: @Sendable (SyncEvent) -> Void] = [:]
     var droppedListeners = Set<UUID>()
     var liveListeners: [UUID: @Sendable (SyncLiveEvent) -> Void] = [:]
@@ -538,10 +548,16 @@ public actor SyncEngine {
         if let r = m?["recovery"], let id = r.optStr("recoveryId") { meta.recovery = (id, r.optInt("at") ?? 0) }
         meta.importMode = m?.optStr("importMode").flatMap(ImportMode.init(rawValue:))
         meta.rename = m?.optStr("rename")
+        // 이 저장소를 올린 payload 버전 (저장소가 비었으면 처음부터 이 엔진, 있는데 적혀 있지 않으면 예전 엔진의 저장소 = 1)
+        meta.pv = m == nil ? PAYLOAD_VERSION : (m?.optInt("pv") ?? 1)
+        // 예전 엔진의 저장소이거나, 모르는 버전이라 건너뛴 레코드가 있었다 → 처음부터 다시 받는다 (합치기는 멱등). 레코드의 서버 순번도
+        // 잊는다 — 예전 엔진은 읽지 못한 서버 버전(책 설정 v 2)의 순번을 409 에서 적어 두었다. 그대로면 다시 받을 때 "이미 본 순번" 으로
+        // 건너뛰고, 다음 보내기가 읽지 못했던 그 내용 없이 그 위에 덮어쓴다
+        var repull = (meta.pv ?? 1) < PAYLOAD_VERSION
         if let sb = m?.optInt("skippedBelow") {
-            // 예전 엔진이 모르는 버전이라 건너뛴 레코드가 있었다: 이제 읽을 수 있으니 처음부터 다시 받는다 (합치기는 멱등)
-            if sb < PAYLOAD_VERSION { meta.head = 0 } else { meta.skippedBelow = sb }
+            if sb < PAYLOAD_VERSION { repull = true } else { meta.skippedBelow = sb }
         }
+        if repull { meta.head = 0 }
         if case let .object(seen)? = m?["liveSeen"] {
             for (k, v) in seen {
                 if let q = v.stringValue, Stamps.isStamp(q), isId22(k) { meta.liveSeen[k] = q }
@@ -552,7 +568,7 @@ public actor SyncEngine {
         for (key, v) in stored.records {
             guard let pk = RecordKeys.parse(key), case .object = v else { continue }
             let e = newRec(key, pk)
-            e.d.seq = v.optInt("seq") ?? 0
+            e.d.seq = repull ? 0 : (v.optInt("seq") ?? 0)
             do {
                 e.d.state = try CRDT.parseState(v["state"])
             } catch {
@@ -571,6 +587,33 @@ public actor SyncEngine {
                 for path in fragPaths(lv) { e.liveTimes[path] = stored[path]?.safeInt ?? 0 }
             }
             if pk.kind == .book, e.d.shadow != nil, e.d.state.x == nil, let b = pk.bookId { knownAtStart.insert(b) }
+        }
+        if repull {
+            for e in recs.values where e.pk.kind == .prefs && e.d.dirty && e.d.state.x == nil {
+                // 보내지 못한 책 설정 (예전 엔진이 v 2 에 막혔거나 꺼진 동안 고친 것): 예전 엔진은 받은 책을 만들 때 · 형광펜이 없을 때 기본
+                // 형광펜을 진짜 도장으로 올렸다 (사고의 길) → 이 상태는 믿지 않는다. 버리고 서버에서 다시 받는다. 앱 값은 그림자 없이 시각 0
+                // 으로 다시 비교한다 → 그룹 값이 이기고, 그룹에 없는 것은 남는다 (TS 와 같다)
+                e.d.state = RecState()
+                e.d.shadow = nil
+                e.d.saved = nil
+                e.d.pend = nil
+                e.d.held = false
+                e.liveFrag = nil
+                e.liveTimes = [:]
+                e.d.dirty = false
+                e.d.apply = true
+                e.d.ver += 1
+                touch(e)
+            }
+        }
+        if (meta.pv ?? 1) < PAYLOAD_VERSION {
+            // 예전 엔진의 저장소: 책 설정 레코드를 모두 v 2 로 다시 올린다 — 그룹에 예전 엔진(받은 책을 만들 때 기본 형광펜으로 덮던 엔진)이
+            // 남아 있거나 새로 들어와도 그 레코드를 읽지 못해 덮지 못한다. 같은 상태라 다른 기기와 부딪혀도 바뀌는 것이 없다
+            for e in recs.values where e.pk.kind == .prefs && e.d.state.x == nil && !CRDT.isEmptyDelta(e.d.state) {
+                e.d.dirty = true
+                touch(e)
+            }
+            meta.pv = PAYLOAD_VERSION
         }
         creds = credStore != nil ? try await credStore!.get() : meta.creds
         if let c = creds { keys = try GroupKeys(base64: c.key) }
@@ -892,6 +935,7 @@ public actor SyncEngine {
             meta.recovery = nil
             meta.rename = nil
             meta.liveSeen = [:]
+            meta.pv = PAYLOAD_VERSION
             metaTouched = true
             resetLive()
             try await flush()

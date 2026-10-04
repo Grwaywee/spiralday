@@ -215,18 +215,22 @@ final class DefaultFillTests: XCTestCase {
         XCTAssertEqual(mac.host.book(Self.book), mine)
     }
 
-    func testCreatorsFirstImportTombstonesTheMissingDefaultAndUsesTheDefaultStamp() async throws {
+    /// 그룹을 만든 기기의 첫 가져오기: 형광펜은 그룹의 첫 값 — 모든 항목 · 필드에 진짜 도장 (기본값과 같은 0 의 hex · 6 전체도 사용자의
+    /// 값: 기본값 도장이면 나중에 합류하는 같은 책의 옛 사본(시각 0)이 이긴다), 목록에 없는 기본 형광펜(5)에 지움 표시, 순서
+    func testCreatorsFirstImportTombstonesTheMissingDefaultAndStampsEveryCategory() async throws {
         let server = FakeSyncServer()
         let mac = try await owner(server)
+        let node = await mac.storage.meta?["nodeId"]?.stringValue ?? "?"
         let st = await prefsState(mac)
         let c = st?["c"]?["categories"]
         XCTAssertNotNil(c?["5"]?["d"], "지운 기본 형광펜")
         XCTAssertEqual(c?["5"]?["a"], "")
-        XCTAssertEqual(c?["0"]?["a"]?.stringValue, Stamps.defaultStamp)
-        XCTAssertEqual(c?["0"]?["f"]?["hex"].flatMap(Self.stamp), Stamps.defaultStamp)
-        XCTAssertNotEqual(c?["0"]?["f"]?["name"].flatMap(Self.stamp), Stamps.defaultStamp)
-        XCTAssertNotEqual(c?["7"]?["a"]?.stringValue, Stamps.defaultStamp)
+        for id in ["0", "1", "2", "3", "4", "6", "7"] {
+            XCTAssertEqual(c?[id]?["a"]?.stringValue?.hasSuffix(node), true, "\(id) a")
+            for f in ["name", "hex", "counts"] { XCTAssertEqual(c?[id]?["f"]?[f].flatMap(Self.stamp)?.hasSuffix(node), true, "\(id) \(f)") }
+        }
         XCTAssertEqual(st?["f"]?["o:categories"]?.arrayValue?.first, ["0", "1", "2", "3", "4", "6", "7"])
+        XCTAssertEqual(st?["f"]?["o:categories"]?.arrayValue?.last?.stringValue?.hasSuffix(node), true)
     }
 
     func testRecoveryRestoreDoesNotStampDefaultCategories() async throws {
@@ -621,7 +625,11 @@ final class DefaultFillTests: XCTestCase {
 
     /// 교차 언어 벡터: 기본 형광펜 → 사고 때의 형광펜, ZeroClock("0123456789abcdef"), 빈 상태 (TS default-fill.test.ts 와 같은 글자)
     static let vector =
-        #"{"c":{"categories":{"0":{"a":"00000000000000000000000000000000","f":{"counts":[true,"00000000000000000000000000000000"],"hex":["8EDCD2","00000000000000000000000000000000"],"name":["개발 업무","00000000000000020123456789abcdef"]}},"1":{"a":"00000000000000000000000000000000","f":{"counts":[true,"00000000000000000000000000000000"],"hex":["F8B38A","00000000000000000000000000000000"],"name":["외부 일정","00000000000000030123456789abcdef"]}},"2":{"a":"00000000000000000000000000000000","f":{"counts":[true,"00000000000000000000000000000000"],"hex":["A9CFF3","00000000000000000000000000000000"],"name":["일반 업무","00000000000000040123456789abcdef"]}},"3":{"a":"00000000000000000000000000000000","f":{"counts":[false,"00000000000000060123456789abcdef"],"hex":["F3DB78","00000000000000000000000000000000"],"name":["개인 일정","00000000000000050123456789abcdef"]}},"4":{"a":"00000000000000000000000000000000","f":{"counts":[false,"00000000000000080123456789abcdef"],"hex":["CDB6EF","00000000000000000000000000000000"],"name":["운동","00000000000000070123456789abcdef"]}},"5":{"a":"","d":"000000000000000a0123456789abcdef","f":{}},"6":{"a":"00000000000000000000000000000000","f":{"counts":[false,"00000000000000000000000000000000"],"hex":["CFCFD4","00000000000000000000000000000000"],"name":["휴식·이동","00000000000000000000000000000000"]}},"7":{"a":"00000000000000090123456789abcdef","f":{"counts":[true,"00000000000000090123456789abcdef"],"hex":["B9E4A8","00000000000000090123456789abcdef"],"name":["비 계획","00000000000000090123456789abcdef"]}}}},"f":{"defaultTheme":[4,"00000000000000010123456789abcdef"],"o:categories":[["0","1","2","3","4","6","7"],"000000000000000b0123456789abcdef"]}}"#
+        #"{"c":{"categories":{"0":{"a":"00000000000000000000000000000000","f":{"counts":[true,"00000000000000000000000000000000"],"hex":["8EDCD2","00000000000000000000000000000000"],"name":["개발 업무","00000000000000020123456789abcdef"]}},"1":{"a":"00000000000000000000000000000000","f":{"counts":[true,"00000000000000000000000000000000"],"hex":["F8B38A","00000000000000000000000000000000"],"name":["외부 일정","00000000000000030123456789abcdef"]}},"2":{"a":"00000000000000000000000000000000","f":{"counts":[true,"00000000000000000000000000000000"],"hex":["A9CFF3","00000000000000000000000000000000"],"name":["일반 업무","00000000000000040123456789abcdef"]}},"3":{"a":"00000000000000000000000000000000","f":{"counts":[false,"00000000000000060123456789abcdef"],"hex":["F3DB78","00000000000000000000000000000000"],"name":["개인 일정","00000000000000050123456789abcdef"]}},"4":{"a":"00000000000000000000000000000000","f":{"counts":[false,"00000000000000080123456789abcdef"],"hex":["CDB6EF","00000000000000000000000000000000"],"name":["운동","00000000000000070123456789abcdef"]}},"5":{"a":"","d":"000000000000000a0123456789abcdef","f":{}},"6":{"a":"00000000000000000000000000000000","f":{"counts":[false,"00000000000000000000000000000000"],"hex":["CFCFD4","00000000000000000000000000000000"],"name":["휴식·이동","00000000000000000000000000000000"]}},"7":{"a":"00000000000000090123456789abcdef","f":{"counts":[true,"00000000000000090123456789abcdef"],"hex":["B9E4A8","00000000000000090123456789abcdef"],"name":["비 계획","00000000000000090123456789abcdef"]}}}},"f":{"defaultTheme":[4,"00000000000000010123456789abcdef"],"o:categories":[["0","1","2","3","4","6","7"],"00000000000000000000000000000000"]}}"#
+
+    /// 교차 언어 벡터: 그룹을 만든 기기의 첫 가져오기 (seed) — 그림자 없음 → 사고 때의 형광펜, 같은 ZeroClock (TS default-fill.test.ts SEED_VECTOR)
+    static let seedVector =
+        #"{"c":{"categories":{"0":{"a":"00000000000000020123456789abcdef","f":{"counts":[true,"00000000000000020123456789abcdef"],"hex":["8EDCD2","00000000000000020123456789abcdef"],"name":["개발 업무","00000000000000020123456789abcdef"]}},"1":{"a":"00000000000000030123456789abcdef","f":{"counts":[true,"00000000000000030123456789abcdef"],"hex":["F8B38A","00000000000000030123456789abcdef"],"name":["외부 일정","00000000000000030123456789abcdef"]}},"2":{"a":"00000000000000040123456789abcdef","f":{"counts":[true,"00000000000000040123456789abcdef"],"hex":["A9CFF3","00000000000000040123456789abcdef"],"name":["일반 업무","00000000000000040123456789abcdef"]}},"3":{"a":"00000000000000050123456789abcdef","f":{"counts":[false,"00000000000000050123456789abcdef"],"hex":["F3DB78","00000000000000050123456789abcdef"],"name":["개인 일정","00000000000000050123456789abcdef"]}},"4":{"a":"00000000000000060123456789abcdef","f":{"counts":[false,"00000000000000060123456789abcdef"],"hex":["CDB6EF","00000000000000060123456789abcdef"],"name":["운동","00000000000000060123456789abcdef"]}},"5":{"a":"","d":"00000000000000090123456789abcdef","f":{}},"6":{"a":"00000000000000070123456789abcdef","f":{"counts":[false,"00000000000000070123456789abcdef"],"hex":["CFCFD4","00000000000000070123456789abcdef"],"name":["휴식·이동","00000000000000070123456789abcdef"]}},"7":{"a":"00000000000000080123456789abcdef","f":{"counts":[true,"00000000000000080123456789abcdef"],"hex":["B9E4A8","00000000000000080123456789abcdef"],"name":["비 계획","00000000000000080123456789abcdef"]}}}},"f":{"defaultTheme":[4,"00000000000000010123456789abcdef"],"o:categories":[["0","1","2","3","4","6","7"],"000000000000000a0123456789abcdef"]}}"#
 
     func testDefaultsToDefaultsIsNoChange() {
         let clock = ZeroClock(node: "0123456789abcdef")
@@ -643,6 +651,16 @@ final class DefaultFillTests: XCTestCase {
                                              clock: ZeroClock(node: "0123456789abcdef"), base: RecState()))
         XCTAssertEqual(CRDT.toJSON(st).canonical, Self.vector)
         XCTAssertEqual(Records.materialize(RecordKeys.parse("p/\(Self.book)")!, st)?["categories"], Self.ownerCats)
+    }
+
+    func testCrossLanguageVectorForTheCreatorsSeed() {
+        var st = RecState()
+        _ = CRDT.mergeInto(&st, Records.diff(.prefs, prev: nil, cur: Records.flattenPrefs(Self.ownerPrefs), clock: ZeroClock(node: "0123456789abcdef"), base: RecState(), seed: true))
+        XCTAssertEqual(CRDT.toJSON(st).canonical, Self.seedVector)
+        XCTAssertEqual(Records.materialize(RecordKeys.parse("p/\(Self.book)")!, st)?["categories"], Self.ownerCats)
+        // 기본 형광펜 그대로면 seed 여도 설정 안 됨
+        XCTAssertTrue(CRDT.isEmptyDelta(Records.diff(.prefs, prev: nil, cur: Records.flattenPrefs(.object(PlannerModel.defaultPrefs())),
+                                                     clock: ZeroClock(node: "0123456789abcdef"), base: RecState(), seed: true)))
     }
 
     /// 기본 형광펜을 보던 기기(그림자 = 빈 목록)가 하나를 고치면, 상태에 이미 있는 다른 기기의 형광펜은 기본값에 지지 않는다 (지운 5 도)

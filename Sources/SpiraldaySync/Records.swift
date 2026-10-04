@@ -380,6 +380,17 @@ public enum Records {
         FlatItem(id: JS.string(c["id"]), f: ["name": c["name"] ?? "", "hex": c["hex"] ?? "", "counts": c["counts"] ?? false])
     }
 
+    /// 상태 → 앱 값에 보이는 항목인지. 살아 있어야 하고, 기본값 도장으로만 더한 항목(a = Stamps.defaultStamp — 기기가 본 기본 형광펜)은
+    /// 그 모음의 순서 목록(o:)이 있으면 그 목록에 있을 때만 보인다. 순서 목록은 누군가 진짜 도장으로 적은 실제 목록이라, 거기에 없는
+    /// 기본 id 는 그 목록을 가진 기기에 없던 형광펜이다 — 예전 엔진은 그룹을 만들기 전에 지운 형광펜에 지움 표시를 남기지 않았다
+    /// (2026-10-04 사고의 5). 순서 목록이 없으면 보인다. 비공개 docs/sync-engine.md §4.1 · §5 — TS isShown 과 같다
+    public static func isShown(_ st: RecState, _ col: String, _ id: String, _ it: ItemState) -> Bool {
+        guard it.isAlive else { return false }
+        guard it.a == Stamps.defaultStamp else { return true }
+        guard case let .array(order)? = st.f[OP + col]?.value else { return true }
+        return order.contains(.string(id))
+    }
+
     public static func flattenPrefs(_ v: JSONValue?) -> Flat {
         var s: [String: JSONValue] = [:]
         var c: [String: [FlatItem]] = ["categories": [], "ddays": []]
@@ -464,8 +475,12 @@ public enum Records {
     ///     이기지 못하며, 지운 기본 형광펜(작은 정수 id)을 다른 기기가 채운 기본값이 되살리지 못한다 (지움 도장 > 기본값 도장).
     ///     상태에 그 id 가 지운 채 있으면 지움을 다시 적지 않고, 상태에 살아 있는 형광펜이 하나도 없을 때만 (모두 지운 뒤 앱이 채운
     ///     기본 형광펜을 고침 — 보이는 기본 형광펜이 곧 그 목록이다) 새 항목처럼 다시 더한다. 살아 있는 형광펜이 있으면 이 기기가 본
-    ///     기본 목록은 받기 전의 옛 모습이라 지운 id 를 되살리지 않는다 (기본값 도장 a < 지움 도장).
-    public static func diff(_ kind: RecordKind, prev: Flat?, cur: Flat, clock: StampSource, base: RecState? = nil) -> RecState {
+    ///     기본 목록은 받기 전의 옛 모습이라 지운 id 를 되살리지 않는다 (기본값 도장 a < 지움 도장). "살아 있는" 은 보이는 것 (isShown).
+    ///     순서(o:)를 적어야 하면 기본값 도장으로 — 이 기기가 본 기본 목록의 순서는 다른 기기가 진짜로 적은 순서를 이기지 않는다.
+    ///   - seed (그룹을 만든 기기의 첫 가져오기 — 진짜 도장): 지난 값이 기본 형광펜이고 지금 값이 다르면 지금 있는 항목은 모두 새 항목
+    ///     (a · 모든 필드에 새 도장 — 기본값과 같은 필드도 사용자의 값), 목록에 없는 기본 id 는 지움, 순서도 적는다. 기본값 도장으로
+    ///     적으면 나중에 합류하는 같은 책의 옛 사본(시각 0 도장)이 그 필드를 이긴다. TS DiffOptions.seed 와 같다
+    public static func diff(_ kind: RecordKind, prev: Flat?, cur: Flat, clock: StampSource, base: RecState? = nil, seed: Bool = false) -> RecState {
         let schema = schema(kind)
         var out = RecState()
         let ps = prev?.s ?? [:]
@@ -480,14 +495,20 @@ public enum Records {
             let cItems = cur.c[col] ?? []
             /// 기본 형광펜(설정 안 됨)에서 바뀜: 지난 값 = 기본 형광펜, 그대로인 기본값은 기본값 도장으로
             var implicit = false
+            /// 그룹을 만든 기기의 첫 가져오기: 지금 목록에 없는 기본 형광펜 (지움 표시)
+            var seedGone: [FlatItem] = []
             let had = base?.c[col] ?? [:]
-            /// 상태에 지운 채 있는 항목 · 그것을 다시 더할지 (살아 있는 형광펜이 하나도 없을 때 — 보이는 기본 형광펜이 곧 그 목록)
+            /// 상태에 지운 채 있는 항목 · 그것을 다시 더할지 (보이는 형광펜이 하나도 없을 때 — 보이는 기본 형광펜이 곧 그 목록)
             func gone(_ id: String) -> Bool { had[id].map { !$0.isAlive } ?? false }
-            let noneAlive = !had.values.contains(where: \.isAlive)
+            let noneAlive = base.map { b in !had.contains { isShown(b, col, $0.key, $0.value) } } ?? true
             if kind == .prefs, col == "categories" {
                 let prevDefault = pItems.isEmpty || isDefaultCategoryList(pItems)
                 if prevDefault, isDefaultCategoryList(cItems) { continue } // 그대로 기본 형광펜 (순서도)
-                if prevDefault {
+                if prevDefault, seed {
+                    let ids = Set(cItems.map(\.id))
+                    seedGone = defaultCategoryItems.filter { !ids.contains($0.id) }
+                    pItems = []
+                } else if prevDefault {
                     pItems = defaultCategoryItems
                     implicit = true
                 }
@@ -526,18 +547,19 @@ public enum Records {
                     delta[it.id] = ItemState(a: st, f: f)
                 }
             }
-            for p in pItems where !cIdSet.contains(p.id) && delta[p.id] == nil {
-                if implicit, gone(p.id) { continue } // 이미 지운 기본 형광펜
+            for p in pItems + seedGone where !cIdSet.contains(p.id) && delta[p.id] == nil {
+                if implicit || !seedGone.isEmpty, gone(p.id) { continue } // 이미 지운 기본 형광펜
                 delta[p.id] = ItemState(a: "", d: clock.next(), f: [:])
             }
             if !delta.isEmpty { out.c[col] = delta }
             if schema.ordered.contains(col) {
-                // 기대하는 순서: 지난 순서(남은 것) + 새 항목은 뒤에. 새 항목이 있거나 다르면 순서를 통째로 적는다
+                // 기대하는 순서: 지난 순서(남은 것) + 새 항목은 뒤에. 새 항목이 있거나 다르면 순서를 통째로 적는다.
+                // 기본 형광펜을 보던 기기(implicit)의 순서는 기본값 도장 — 진짜로 적은 순서를 이기지 않는다 (isShown)
                 let kept = pItems.filter { cIdSet.contains($0.id) }.map(\.id)
                 let added = cIds.filter { pMap[$0] == nil }
                 let expected = kept + added
                 if !added.isEmpty || !sameIds(expected, cIds) {
-                    out.f[OP + col] = FieldEntry(.array(cIds.map { .string($0) }), clock.next())
+                    out.f[OP + col] = FieldEntry(.array(cIds.map { .string($0) }), implicit ? Stamps.defaultStamp : clock.next())
                 }
             }
         }
@@ -584,7 +606,7 @@ public enum Records {
             }
         }
         var out: [LiveItem] = []
-        for (id, it) in items where it.isAlive { out.append(LiveItem(id: id, it: it)) }
+        for (id, it) in items where isShown(st, col, id, it) { out.append(LiveItem(id: id, it: it)) } // 지운 항목 · 그룹 목록에 없던 기본 형광펜
         out.sort { x, y in
             if let sortKey {
                 let d = sortKey(x) - sortKey(y)

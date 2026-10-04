@@ -166,6 +166,24 @@ final class DefaultFillHostTests: XCTestCase {
         XCTAssertEqual(fileCategories(b2, book), Self.ownerCats, "되살린 책 파일")
     }
 
+    /// 파일 없이 연 펼친 책은 엔진이 받아들이기 전까지 updateBook 에도 nil — IME 조합 중이어도 (2026-10-04 사고 검토 W1: 앱이 도는
+    /// 동안 파일을 잃은 책을 펴고, 그 책을 비교하지 않은 바퀴가 다른 기기의 편집을 넣으면 메모리의 빈 책이 옛 그림자와 비교돼 모든 기기에서
+    /// 날 · 형광펜이 지워졌다). 엔진이 받아들인 뒤(missingNoted)에는 메모리 값
+    func testUpdateBookGivesNilForOpenBookOpenedWithoutFileEvenWhileComposing() async throws {
+        final class Seen: @unchecked Sendable { var cur: [JSONValue?] = [] }
+        let (_, b2, book, _) = try await lostOpenFile()
+        let seen = Seen()
+        b2.host.composing = { (key: "c|2026-10-03", text: "가") }
+        try await b2.host.updateBook(id: book.uuidString) { cur in seen.cur.append(cur); return nil }
+        XCTAssertEqual(seen.cur.count, 1)
+        XCTAssertNil(seen.cur[0] ?? nil, "엔진이 받아들이기 전: 빈 책이 아니라 nil")
+        XCTAssertEqual(b2.store.booksOpenedWithoutFile, [book], "넣지 않았으니 그대로")
+        await b2.host.missingNoted(bookId: book.uuidString)
+        b2.host.composing = { nil }
+        try await b2.host.updateBook(id: book.uuidString) { cur in seen.cur.append(cur); return cur }
+        XCTAssertNotNil(seen.cur[1] ?? nil, "받아들인 뒤: 메모리 값")
+    }
+
     /// 엔진이 되살리기 전에 사용자가 빈 책에 쓴 글(저장까지 됨)도 남는다 — 되살린 내용 + 새 글
     func testWhatIsWrittenIntoTheEmptyBookBeforeTheRestoreStays() async throws {
         let (a, b2, book, d1) = try await lostOpenFile()
