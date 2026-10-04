@@ -10,38 +10,76 @@ public final class RingModel: ObservableObject {
     public init() {}
 }
 
+/// 고리의 어느 부분을 그릴지. 종이 가장자리(across = 0)에서 나눈다.
+/// Mac 은 종이 밖 부분만 종이 창 밖의 자식 창에 그리고, 종이 위 부분은 종이 창 안의 넘김 오버레이 아래와
+/// 넘김 스냅숏에 그린다 — 넘어가는 종이가 고리를 저절로 덮게 (2026-10 사장님 피드백 B: 넘어가는 종이 위로 고리가 비침).
+public enum RingPart: Sendable, Equatable {
+    /// 전부 (기본 — iOS · 위젯 · 공유 그림, 처음 안내 창은 예전 그대로)
+    case all
+    /// 종이 가장자리 바깥(across < 0)만: 뒤 가닥 · 고리 끝 · 종이 밖으로 나온 앞 가닥
+    case outsidePaper
+    /// 종이 위(across ≥ 0)만: 종이 위를 지나 구멍으로 들어가는 앞 가닥과 그 그림자
+    case overPaper
+}
+
 /// 쌍으로 된 금속 고리(twin-loop). 구멍에서 나와 종이 가장자리를 넘어 뒤로 감긴다.
 /// 앞쪽 가닥은 종이 위로 보이고, 뒤쪽 가닥은 종이 바깥에서만 보인다.
 public struct RingStrip: View {
     @ObservedObject public var model: RingModel
+    /// 그릴 부분 (기본: 전부)
+    public let part: RingPart
 
-    public init(model: RingModel) {
+    public init(model: RingModel, part: RingPart = .all) {
         self.model = model
+        self.part = part
     }
 
     public var body: some View {
         let kind = model.kind
         let u = model.u
         let outside = model.outside
+        let part = part
         Canvas { ctx, _ in
-            // 디자인 좌표계로: 종이 가장자리 = 0, 바깥 = 음수
-            if kind.edge == .leading {
-                ctx.translateBy(x: outside, y: 0)
-            } else {
-                ctx.translateBy(x: 0, y: outside)
-            }
-            ctx.scaleBy(x: u, y: u)
-            for hole in SpiralBinding.holes(kind) {
-                for side: CGFloat in [-1, 1] {
-                    drawLoop(&ctx, kind: kind, hole: hole, side: side)
-                }
-            }
+            Self.draw(&ctx, kind: kind, u: u, outside: outside, part: part)
         }
         .allowsHitTesting(false)
     }
 
+    /// 고리를 그린다. outside = 그리는 곳 안에서 종이 가장자리까지의 거리 (pt — 종이 위에 바로 그리면 0), u = 디자인 단위 → pt
+    public static func draw(_ ctx: inout GraphicsContext, kind: PageKind, u: CGFloat, outside: CGFloat, part: RingPart = .all) {
+        // 디자인 좌표계로: 종이 가장자리 = 0, 바깥 = 음수
+        if kind.edge == .leading {
+            ctx.translateBy(x: outside, y: 0)
+        } else {
+            ctx.translateBy(x: 0, y: outside)
+        }
+        ctx.scaleBy(x: u, y: u)
+        if let keep = clip(part, kind: kind) { ctx.clip(to: Path(keep)) }
+        for hole in SpiralBinding.holes(kind) {
+            for side: CGFloat in [-1, 1] {
+                drawLoop(&ctx, kind: kind, hole: hole, side: side)
+            }
+        }
+    }
+
+    /// 그 부분만 남기는 자리 (디자인 좌표, 종이 가장자리 = 0). 전부면 nil
+    public static func clip(_ part: RingPart, kind: PageKind) -> CGRect? {
+        let far: CGFloat = 100_000
+        let leading = kind.edge == .leading
+        switch part {
+        case .all:
+            return nil
+        case .outsidePaper:
+            return leading ? CGRect(x: -far, y: -far, width: far, height: 2 * far)
+                           : CGRect(x: -far, y: -far, width: 2 * far, height: far)
+        case .overPaper:
+            return leading ? CGRect(x: 0, y: -far, width: far, height: 2 * far)
+                           : CGRect(x: -far, y: 0, width: 2 * far, height: far)
+        }
+    }
+
     /// 한 가닥의 고리. 좌표는 "스프링 방향" 기준 (along = 가장자리를 따라, across = 가장자리에서 안쪽으로)
-    private func drawLoop(_ ctx: inout GraphicsContext, kind: PageKind, hole: CGRect, side: CGFloat) {
+    private static func drawLoop(_ ctx: inout GraphicsContext, kind: PageKind, hole: CGRect, side: CGFloat) {
         let leading = kind.edge == .leading
         let holeAcross = leading ? hole.midX : hole.midY
         let along = (leading ? hole.midY : hole.midX) + side * 4.8

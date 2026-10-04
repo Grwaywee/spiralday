@@ -16,6 +16,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private let snapshotter: PageSnapshotter
     private var palette: PaletteController?
     private var rings: RingWindowController?
+    /// 넘김 스냅숏에 종이 위 고리 앞 가닥을 굽는다 (넘어가는 종이가 고리를 덮게)
+    private let ringBaker = RingSnapshotBaker()
     private var bag = Set<AnyCancellable>()
 
     static let paletteGap: CGFloat = 14
@@ -60,8 +62,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         wire()
         updateTitle()
         palette = PaletteController(parent: window, store: store, state: state, model: .shared)
-        rings = RingWindowController(parent: window)
+        // 종이 밖 고리만 자식 창에 (종이 위 앞 가닥은 RootView 의 넘김 오버레이 아래와 넘김 스냅숏에)
+        rings = RingWindowController(parent: window, part: .outsidePaper)
     }
+
+    /// 자식 창에 그리는 고리 부분 (시험용)
+    var ringPart: RingPart? { rings?.part }
 
     func show() {
         window.makeKeyAndOrderFront(nil)
@@ -84,11 +90,22 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             guard let self, self.state.canStep(delta) else { return nil }
             let size = self.state.curl.pageSize
             let scale = self.window.backingScaleFactor
-            guard let cur = self.snapshotter.image(kind: self.state.kind, index: self.state.index, size: size, scale: scale),
-                  let nb = self.snapshotter.image(kind: self.state.kind, index: self.state.index + delta, size: size, scale: scale)
+            let kind = self.state.kind
+            guard let cur = self.snapshotter.image(kind: kind, index: self.state.index, size: size, scale: scale),
+                  let nb = self.snapshotter.image(kind: kind, index: self.state.index + delta, size: size, scale: scale)
             else { return nil }
-            return PageBitmaps(current: cur, neighbor: nb)
+            // 종이 위 고리 앞 가닥을 두 장 모두에 굽는다: 평평한 곳에서는 고리가 그대로 보이고, 들린 종이(뒷면)는 그 위에 그려진다
+            return PageBitmaps(current: self.ringBaker.bake(cur, kind: kind, size: size, scale: scale),
+                               neighbor: self.ringBaker.bake(nb, kind: kind, size: size, scale: scale))
         }
+        // 둘러보기의 어두운 막이 보이는 동안 종이 밖 고리도 덮는다 (TourLiveStage 의 visible 과 같은 조건)
+        Publishers.CombineLatest4(TourController.shared.$kind.map { $0 != nil }, TourController.shared.$arrived,
+                                  state.curl.$isActive, state.$morphing)
+            .map { running, arrived, turning, morphing in running && arrived && !turning && !morphing }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] dim in self?.rings?.setDimmed(dim) }
+            .store(in: &bag)
         store.objectWillChange
             .sink { [weak self] _ in self?.snapshotter.schedulePrewarm(delay: 0.6) }
             .store(in: &bag)

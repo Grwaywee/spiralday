@@ -14,6 +14,10 @@ struct RootView: View {
                 PaperSurface(kind: state.kind, u: g.size.width / state.kind.design.width)
                 PageView(kind: state.kind, index: state.index)
                     .opacity(state.morphing ? 0 : 1)
+                // 종이 위 스프링 앞 가닥: 넘김 오버레이 아래 (넘어가는 종이가 덮는다 — 넘김 스냅숏에도 같은 가닥을 굽는다).
+                // 종이 밖 부분은 RingWindowController 의 창. 둘러보기 막(TourOverlay)도 이것을 덮는다
+                RingStrandsOverPaper(kind: state.kind, size: g.size)
+                    .opacity(state.morphing ? 0 : 1)
                 CurlOverlay(controller: state.curl)
                     .allowsHitTesting(false)
                 if !state.morphing && state.kind.flips {

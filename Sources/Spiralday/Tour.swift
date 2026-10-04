@@ -883,7 +883,7 @@ private struct TourCurtain: View {
     let size: CGSize
     let holes: [CGRect]
 
-    static let dim = Color(hex: "1D1A26").opacity(0.5)
+    static let dim = TourLayout.curtain
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -913,6 +913,8 @@ private struct TourCurtain: View {
 // MARK: - Layout
 
 enum TourLayout {
+    /// 어두운 막의 색 (종이 위 막 · 종이 밖 스프링 고리 창의 막이 같은 색)
+    static let curtain = Color(hex: "1D1A26").opacity(0.5)
     /// 창 가장자리와 말풍선 사이
     static let margin: CGFloat = 12
     /// 위쪽은 창 버튼(빨노초) 자리를 비운다
