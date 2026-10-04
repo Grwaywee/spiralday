@@ -166,6 +166,13 @@ public final class CurlController: ObservableObject {
 
     public var isIdle: Bool { !isActive }
 
+    /// Single page: the lifted part of the sheet in the frame the overlay shows now (page view coordinates),
+    /// nil while no turn shows or in spread mode. Live updates: `watchLiftedSheet` (CurlSheetShape.swift).
+    public var liftedSheet: CurlSheetShape? {
+        guard let turn, turn.spread == nil else { return nil }
+        return CurlSheetShape(frame: turn.frame, fold: turn.frame.fold(F))
+    }
+
     private var isSpread: Bool { if case .spread = layout { return true } else { return false } }
 
     public init() {}
