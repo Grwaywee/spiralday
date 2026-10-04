@@ -251,6 +251,8 @@ extension SyncEngine {
             await acquireApp()
             let data = await host.readBook(id: id)
             if data != .unreadable { scanBook(id, data, clock) }
+            // 파일 없음을 받아들였다 (되살리기로 함 · 되살릴 것이 없음) → 파일 없이 연 책을 'missing' 으로 알리던 호스트는 이제 메모리 값을 준다
+            if data == .missing, !deletedHint.contains(id) { await host.missingNoted(bookId: id) }
             releaseApp()
         }
         if hints.has(RecordKeys.lib), host.supportsSharedSettings, let s = await host.readSharedSettings() {
@@ -301,8 +303,9 @@ extension SyncEngine {
         }
     }
 
-    /// 책의 모든 레코드를 앱에 다시 넣도록 표시
+    /// 책의 모든 레코드를 앱에 다시 넣도록 표시 (그림자를 지운다 → 넣기 직전의 비교는 시각 0: 동기화된 값이 이긴다)
     func restoreBook(_ bookId: String) {
+        restoreBooks.insert(bookId)
         for k in byBook[bookId] ?? [] {
             guard let e = recs[k] else { continue }
             e.d.apply = true
@@ -429,6 +432,7 @@ extension SyncEngine {
     func pull() async throws {
         let a = try authOrThrow()
         lastPullAt = now()
+        pulledAll = false
         var since = meta.head
         // 서버에서 본 가장 큰 순번 (내가 쓴 것 포함). 서버 head 가 이보다 작으면 서버가 되돌려진 것
         var known = since
@@ -459,6 +463,7 @@ extension SyncEngine {
                 metaTouched = true
                 ownSeqs = ownSeqs.filter { $0 > res.head }
                 advanceHead()
+                pulledAll = true
                 break
             }
             meta.head = since
@@ -729,6 +734,8 @@ extension SyncEngine {
                 continue
             }
             if localBook == nil, info == nil { continue } // 책 정보가 올 때까지 기다린다
+            // 이 기기에 없는 책은 서버 head 까지 다 받은 뒤에 만든다 (그 책의 레코드를 한 번에 — 책 설정이 뒤 쪽에 있어도)
+            if localBook == nil, !pulledAll, !restoreBooks.contains(bookId) { continue }
             // 넣기 전에 다시 본다: 실시간 길이 그 사이 넣었을 수 있다
             let dataRecs = entries.filter { $0.pk.kind != .book && $0.d.apply }
             if !dataRecs.isEmpty || localBook == nil {
@@ -749,11 +756,10 @@ extension SyncEngine {
                         clock: hlc,
                         protection: protectionProbe())
                     try await host.updateBook(id: bookId) { cur in job.run(cur) }
-                    let needsRescan = commit(job)
+                    commit(job)
                     releaseApp()
                     changedBooks.append(bookId)
                     restoreBooks.remove(bookId)
-                    if needsRescan { kick(scan: .some([bookId]), push: true, delay: 50) }
                 } catch {
                     releaseApp()
                     throw error
@@ -791,16 +797,15 @@ extension SyncEngine {
         }
     }
 
-    /// 앱에 넣은 결과를 장부에 돌려놓는다. 다시 비교할 책이면 true
-    func commit(_ job: BookApplyJob) -> Bool {
-        guard let out = job.output() else { return false }
+    /// 앱에 넣은 결과를 장부에 돌려놓는다
+    func commit(_ job: BookApplyJob) {
+        guard let out = job.output() else { return }
         for (key, o) in out.entries { if let e = recs[key] { commitApplied(e, o, live: false) } }
         if let sh = out.newPrefsShadow {
             let e = rec(RecordKeys.prefs(job.bookId))
             e.d.shadow = sh
             touch(e)
         }
-        return out.rescan
     }
 }
 
@@ -817,7 +822,6 @@ struct EntrySnap: Sendable {
 final class BookApplyJob: @unchecked Sendable {
     struct Output {
         var entries: [(String, AppliedRec)]
-        var rescan: Bool
         var newPrefsShadow: Flat?
     }
 
@@ -845,14 +849,15 @@ final class BookApplyJob: @unchecked Sendable {
         lock.withLock {
             // 있던 책인데 파일이 없어졌다 = 그 사이에 지운 것 (되살리기로 한 책이 아니면 만들지 않는다)
             if cur == nil, deleteIfMissing { return nil }
+            // cur = nil: 이 기기에 없던 책 (처음 받은 책 · 파일을 잃은 책). 그 값은 엔진이 만든 빈 책이라 이 기기의 편집이 없다 → 비교하지 않는다
+            let fresh = cur == nil
             var data = cur ?? PlannerModel.emptyPlannerData()
             var results: [(String, AppliedRec)] = []
-            var rescan = false
             let at = protection()
             for w in entries {
                 var d = w.d
                 let pk = w.pk
-                let (value, o) = d.applyTo(pk, key: w.key, appValue: recordValue(pk, inBook: data), clock: clock, protectedAt: at)
+                let (value, o) = d.applyTo(pk, key: w.key, appValue: recordValue(pk, inBook: data), clock: clock, protectedAt: at, fresh: fresh)
                 if o.applied {
                     switch pk.kind {
                     case .day: data = Records.withDay(data, pk.date!, value)
@@ -861,10 +866,9 @@ final class BookApplyJob: @unchecked Sendable {
                     default: break
                     }
                 }
-                if o.rescan { rescan = true }
                 results.append((w.key, o))
             }
-            var o = Output(entries: results, rescan: rescan, newPrefsShadow: nil)
+            var o = Output(entries: results, newPrefsShadow: nil)
             // 새로 만든 책의 기본 설정은 편집이 아니다
             if cur == nil, !prefsKnown { o.newPrefsShadow = Records.flattenPrefs(data["prefs"]) }
             out = o
@@ -902,7 +906,7 @@ final class LibraryApplyJob: @unchecked Sendable {
                 o.real = true
                 var info = info0
                 if let idx = books.firstIndex(where: { JS.string($0["id"]).uppercased() == id }) {
-                    o.delta = w.d.absorb(.book, Records.flattenBook(books[idx]), clock).delta
+                    (o.delta, o.real) = w.d.absorbBeforeApply(.book, Records.flattenBook(books[idx]), clock, fresh: false)
                     guard case let .book(b)? = Records.buildBook(id, w.d.state) else { continue }
                     info = b
                     var next = info.objectValue ?? [:]
@@ -951,7 +955,7 @@ final class SettingsApplyJob: @unchecked Sendable {
             var d = entry.d
             var o = AppliedRec()
             o.before = d.shadow
-            o.delta = d.absorb(.lib, Records.flattenLib(cur), clock).delta
+            (o.delta, o.real) = d.absorbBeforeApply(.lib, Records.flattenLib(cur), clock, fresh: false)
             let built = Records.buildLib(d.state)
             o.shadow = Records.flattenLib(built)
             o.applied = true

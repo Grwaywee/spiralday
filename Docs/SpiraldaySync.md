@@ -119,6 +119,7 @@ try await sync.initialize()                               // 그룹에 들어 �
 | `onDeleted: ((UUID) -> Void)?` | 사용자가 책을 지웠다 (`deleteBook`). 밖에서 지운 책은 알리지 않는다 |
 | `libraryCreated: Bool` | 이번 실행에서 library.json 이 없어 책장을 새로 시작했다 → `libraryRecreated()` |
 | `libraryUnreadable` · `unreadableBooks` | 읽지 못한 파일 (그대로 둔다) |
+| `booksOpenedWithoutFile: Set<UUID>` · `clearOpenedWithoutFile(_:)` | 이번 실행에서 파일 없이 (빈 책으로) 편 책 — 막 만든 책이 아니라 파일을 잃은 책. 호스트는 엔진이 받아들일 때까지(`missingNoted` · `updateBook`) 이 책을 `readBook` 에 `.missing` 으로 알리고 실시간으로 다루지 않는다 (`readLive` → nil · `applyLive` → false). 빈 책을 이 기기의 편집으로 비교하면 다른 기기의 할 일 · COMMENT · 형광펜이 모두 지워진다 — 엔진은 동기화된 내용으로 되살린다 |
 | `applyLibrary(_ merged: Library) -> ExternalApplyResult` | 책장 넣기. 펼친 책(activeID)은 이 기기의 것 그대로 · 빠졌으면 그 책은 저장하지 않고 다른 책을 편다 (`closedBook` · `openedBook`) · 아무 책도 안 폈으면 들어온 내가 만든 첫 책을 편다 · `sampleSeeded` 는 지우지 않음 · 같은 id 는 앞의 것만 · `libraryUnreadable` 이면 아무것도 안 함 · 같으면 아무것도 안 함. 바뀌면 library.json 에 쓰고 `onSaved(nil, true)` |
 | `applyActiveData(_ merged: PlannerData, keepingEditOf: String?) -> ExternalApplyResult` | 펼친 책 넣기 + **바로 저장** (`onSaved(id, true)`). 쓰고 있는 칸(`AppState.editingKey`)은 화면의 글을 지킴 (`keptEdit` — 다음 비교에서 새 편집으로 올라간다), 쓰던 할 일 · 메모가 지워졌으면 `editedItemRemoved`. `lastKind` · `ddaysPerDay` 는 이 기기의 것, 줄 없는 할 일은 줄을 매김, 같으면 아무것도 안 함 |
 | `readBookRaw(_ id: UUID) -> RawBookFile` | `.missing` · `.unreadable` · `.data(Data)` (앱이 읽을 수 있는 것만). **펼친 책이면 지금 내용** (저장 전 편집 포함). 읽지 못하면 책을 열 때처럼 복사본을 남기고 `unreadableBooks` 에 적는다 |
@@ -160,6 +161,7 @@ final class PlannerSyncHost: SyncHost {
 
     func readBook(id: String) async -> BookRead {
         guard let uuid = UUID(uuidString: id) else { return .unreadable }
+        if store.booksOpenedWithoutFile.contains(uuid) { return .missing }   // 파일 없이 연 빈 책: 엔진이 되살린다
         switch store.readBookRaw(uuid) {                       // 펼친 책은 지금 내용
         case .missing: return .missing
         case .unreadable: return .unreadable
@@ -190,6 +192,12 @@ final class PlannerSyncHost: SyncHost {
         } else if cur != nil {
             try store.removeBookFile(uuid)                      // 책장에서 이미 빠진 책
         }
+        if next != nil { store.clearOpenedWithoutFile(uuid) }   // 동기화된 내용을 넣었다
+    }
+
+    /// 엔진이 파일 없음을 받아들였다 (되살리기로 함 · 되살릴 것이 없음) → 이제 보통 책
+    func missingNoted(bookId: String) async {
+        if let uuid = UUID(uuidString: bookId) { store.clearOpenedWithoutFile(uuid) }
     }
 
     func updateLibrary(_ transform: @Sendable (JSONValue) -> JSONValue) async throws {
@@ -497,6 +505,10 @@ draft  = base64url(0x01 ‖ nonce(24, 늘 난수) ‖ XChaCha20-Poly1305(plain, 
 ## TypeScript 엔진과 다른 점
 
 - **같다**: 바이트 규칙 전부, 레코드 payload · 필드 이름 · 기본값, 합치기, 비교 순서(같은 시계면 같은 도장 — TypeScript 엔진이 만든 상태와 바이트까지 같은 것을 테스트로 확인), 안전장치, 페어링 · 복구 흐름, 오류 코드 · 문구.
+- **기본값은 다른 기기의 값을 이기지 않는다** (2026-10-04 형광펜 사고, `Tests/SpiraldaySyncTests/DefaultFillTests.swift` — TS 와 같은 시험 · 교차 언어 벡터):
+  이 기기에 없던 책을 만들 때(`updateBook` 의 cur = nil)는 넣기 직전의 비교를 하지 않는다 · 그림자 없이 넣기 직전에 비교하면(잃은 책 되살리기) 시각 0 도장 ·
+  기본 형광펜 그대로인 목록은 "설정 안 됨" (도장 없음 — 처음 바꿀 때 기본 항목은 `Stamps.defaultStamp`, 목록에 없는 기본 id 는 지움 표시) ·
+  이 기기에 없는 책은 서버 head 까지 다 받은 뒤에 만든다 · 파일 없이 연 책은 호스트가 `.missing` (`missingNoted`).
 - **앱 값을 Swift 가 늘 읽게**: `x:` 필드로 앱이 아는 키를 덮어쓰지 않고, 날짜는 Swift 가 읽는 범위(월 1–12 …, 0000–9999 년)만 넣는다. 둘 다 받은 상태를 꾸며 넣었을 때만 생기는 일이다.
 - **없는 것**: 같은 객체면 비교를 건너뛰기 — Swift 값 타입에는 객체 정체성이 없다. 저장 알림(`localChanged(bookId:)`)으로는 그 책만 비교하고, 모든 책을 비교하는 것은 시작 · `syncNow()` · `resume()` 때뿐이다.
 - **실시간 쓰기의 모양**: 동작 · 바이트는 같고, Swift 에 맞게 —

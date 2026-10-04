@@ -106,7 +106,7 @@ struct RecData: Sendable {
             pend = nil
             return (nil, true)
         }
-        var delta = Records.diff(kind, prev: shadow, cur: cur, clock: clock)
+        var delta = Records.diff(kind, prev: shadow, cur: cur, clock: clock, base: state)
         let had = shadow != nil
         shadow = cur
         if CRDT.isEmptyDelta(delta) { return (nil, !had) }
@@ -116,6 +116,19 @@ struct RecData: Sendable {
         dirty = true
         ver += 1
         return (delta, true)
+    }
+
+    /// 넣기 직전의 비교 (그 사이의 편집을 잃지 않게 — TS absorbBeforeApply 와 같다). (합친 조각, 진짜 시계의 편집인지)
+    ///   - fresh (이 기기에 없던 책 — 엔진이 만든 빈 값): 비교하지 않는다. 그 값의 기본값(형광펜 등)은 이 기기의 편집이 아니다
+    ///   - 그림자가 없다 (이 레코드의 앱 값을 비교한 적이 없다 — 잃은 책 되살리기 등): 시각 0 도장으로 받아들인다 → 받은 값이 이긴다
+    ///     (처음 가져오기와 같은 규칙. 기준 없이 본 앱 값을 이 기기의 새 편집으로 올리면 다른 기기의 더 새 값을 되돌린다)
+    mutating func absorbBeforeApply(_ kind: RecordKind, _ cur: Flat, _ clock: StampSource, fresh: Bool) -> (delta: RecState?, real: Bool) {
+        if fresh { return (nil, false) }
+        if shadow == nil {
+            let node = (clock as? HLC)?.node ?? (clock as? ZeroClock)?.node ?? "0000000000000000"
+            return (absorb(kind, cur, ZeroClock(node: node)).delta, false)
+        }
+        return (absorb(kind, cur, clock).delta, clock is HLC)
     }
 
     var hasContent: Bool { state.x != nil || !state.f.isEmpty || !state.c.isEmpty }
@@ -363,8 +376,11 @@ public actor SyncEngine {
     var wantHeadPull = false
     var retryAt = 0
     var batchOk = true
-    /// 파일이 사라져 동기화된 내용으로 되살릴 책
+    /// 파일이 사라져 · 책장에서 빠져 동기화된 내용으로 되살릴 책
     var restoreBooks = Set<String>()
+    /// 마지막 받기가 서버 head 까지 다 받았다 (이번 실행). 이 기기에 없는 책은 이때만 만든다 — 받기가 중간에 끊겨 그 책의 레코드
+    /// 일부(책 정보 · 하루만, 책 설정은 아직)만 있을 때 만들면 앱이 그 책을 열고 기본 형광펜을 본 채 고칠 수 있다 (TS pulledAll)
+    var pulledAll = false
     var listeners: [UUID: @Sendable (SyncEvent) -> Void] = [:]
     var droppedListeners = Set<UUID>()
     var liveListeners: [UUID: @Sendable (SyncLiveEvent) -> Void] = [:]
@@ -844,6 +860,7 @@ public actor SyncEngine {
             byBook = [:]
             touched = []
             restoreBooks = []
+            pulledAll = false
             try await storage.clear()
             if let credStore { try await credStore.set(nil) }
             meta = Meta(nodeId: meta.nodeId, hlc: hlc.last)
@@ -863,6 +880,7 @@ public actor SyncEngine {
             byBook = [:]
             touched = []
             restoreBooks = []
+            pulledAll = false
             try await storage.clear()
             creds = c
             self.keys = keys

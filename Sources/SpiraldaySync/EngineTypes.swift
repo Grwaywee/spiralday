@@ -52,6 +52,11 @@ public protocol SyncHost: Sendable {
     /// 그 책이 열려 있지 않거나 지금 넣을 수 없으면 transform 을 부르지 않고 false → 엔진은 다음 바퀴의 updateBook 으로 넣는다.
     /// transform 을 부른 뒤에는 꼭 넣고 true (넣지 못하면 updateBook 처럼 던지는 대신 false 로 — 엔진은 넣지 않은 것으로 본다)
     func applyLive(bookId: String, keys: [String], _ transform: @Sendable (_ cur: [String: JSONValue]) -> [String: JSONValue]) async -> Bool
+
+    /// (선택) 엔진이 이 책의 .missing (파일 없음)을 받아들였다: 동기화된 내용으로 되살리기로 했거나(곧 updateBook — 그림자를 비웠다)
+    /// 되살릴 것이 없다. 파일이 없어 빈 책으로 연 책(SpiraldayKit PlannerStore.booksOpenedWithoutFile)을 readBook 에 .missing 으로
+    /// 알리는 호스트는 이 알림 뒤로는 그 책의 메모리 값을 돌려줘도 된다 — 그 빈 값을 비교해도 다른 기기의 기록을 지우지 않는다
+    func missingNoted(bookId: String) async
 }
 
 extension SyncHost {
@@ -61,6 +66,7 @@ extension SyncHost {
     public func updateSharedSettings(_ transform: @Sendable (JSONValue) -> JSONValue) async throws {}
     public func readLive(bookId: String, keys: [String]) async -> [String: JSONValue]? { nil }
     public func applyLive(bookId: String, keys: [String], _ transform: @Sendable ([String: JSONValue]) -> [String: JSONValue]) async -> Bool { false }
+    public func missingNoted(bookId: String) async {}
 }
 
 // MARK: - 실시간 쓰기 (Docs/SpiraldaySync.md §7)

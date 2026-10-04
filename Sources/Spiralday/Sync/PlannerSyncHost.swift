@@ -14,6 +14,9 @@ import SpiraldaySync
 //   · 쓰고 있는 칸(AppState.editingKey)은 SpiraldayKit 이 화면의 글을 지킨다. 그 칸의 글이 다른 기기의 글로 바뀌었으면
 //     (쓰지 않고 포커스만 있던 칸) onEditedFieldReplaced 로 알린다 → 앱이 그 칸의 되돌리기(⌘Z) 기록을 비운다
 //     (되돌리기가 다른 기기의 글을 지우고 옛 글로 돌아가지 않게)
+//   · 파일 없이 연 책 (PlannerStore.booksOpenedWithoutFile — 앱이 꺼진 동안 파일을 잃어 빈 책으로 폄)은 엔진이 받아들일 때까지
+//     (missingNoted · updateBook) readBook 에 .missing — 빈 책을 이 기기의 편집으로 비교해 다른 기기의 할 일 · COMMENT · 형광펜을
+//     지우지 않게. 엔진은 동기화된 내용으로 되살린다 (2026-10-04 형광펜 사고 조사)
 //   · 설정 창의 동기화되는 글 칸(형광펜 이름 · 저장한 D-day 제목 — 칠 때마다 저장소에 쓴다)은 쓰는 칸 지키기 밖이다.
 //     그 값이 다른 기기의 값으로 바뀌었으면 onSettingsTextReplaced 로 새 값들을 알린다 → 앱이 그 칸의 ⌘Z 기록을 비운다
 //   · 쓰는 칸 지키기는 엔진이 정한다 (engine.editingProtected — 마지막 입력부터 5초). 호스트의 안전망(keepingEditOf)은 엔진이
@@ -61,6 +64,8 @@ final class PlannerSyncHost: SyncHost {
 
     func readBook(id: String) async -> BookRead {
         guard let uuid = UUID(uuidString: id) else { return .unreadable }
+        // 파일 없이 연 빈 책은 사용자의 플래너가 아니다: 엔진이 되살린다
+        if store.booksOpenedWithoutFile.contains(uuid) { return .missing }
         if uuid == store.library.activeID, store.unreadableBooks[uuid] == nil {
             // 펼친 책 (저장할 때마다 비교): 지금 내용(저장 전 편집 포함)을 MainActor 에서 값으로만 잡고, 앱 형식 JSON 으로 쓰고
             // 다시 읽는 일은 메인 밖에서 — 몇 년 치 책이어도 타이핑 · 넘김 중에 프레임이 끊기지 않게. 비교에만 쓰는 값이다
@@ -110,6 +115,12 @@ final class PlannerSyncHost: SyncHost {
         } else if cur != nil {
             try store.removeBookFile(uuid)                      // 책장에서 이미 빠진 책
         }
+        if next != nil { store.clearOpenedWithoutFile(uuid) }    // 동기화된 내용을 넣었다 (되살림)
+    }
+
+    func missingNoted(bookId: String) async {
+        guard let uuid = UUID(uuidString: bookId) else { return }
+        store.clearOpenedWithoutFile(uuid)
     }
 
     /// 펼친 책에 넣은 뒤: 쓰던 할 일 · 메모가 지워졌으면 편집을 끝내고, 쓰던 칸(포커스만)의 글이 바뀌었으면 그 칸의 ⌘Z 기록을,
@@ -188,7 +199,8 @@ final class PlannerSyncHost: SyncHost {
 
     private func isOpenBook(_ bookId: String) -> Bool {
         guard let uuid = UUID(uuidString: bookId) else { return false }
-        return uuid == store.library.activeID && store.unreadableBooks[uuid] == nil
+        // 파일 없이 연 책은 실시간으로 다루지 않는다 (엔진이 먼저 updateBook 으로 되살린다)
+        return uuid == store.library.activeID && store.unreadableBooks[uuid] == nil && !store.booksOpenedWithoutFile.contains(uuid)
     }
 
     /// 레코드 키마다 열린 책의 지금 값 (없는 날 · 주는 .null). 책 전체가 아니라 레코드 하나씩 (입력마다 불린다)

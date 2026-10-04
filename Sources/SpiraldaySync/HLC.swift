@@ -10,6 +10,10 @@ public enum Stamps {
     public static let maxC = 0xFFFF
     /// 받은 도장이 이 기기 시계보다 이만큼 넘게 앞서면 시계를 그만큼만 따라간다 (모든 엔진이 같은 값)
     public static let maxDriftMs: Int64 = 24 * 3_600_000
+    /// 기본값 도장 (시각 0 · 카운터 0 · 노드 0): 아무도 정하지 않은 앱 기본값(기본 형광펜)을 상태에 적을 때. 어떤 진짜 도장 ·
+    /// 처음 가져오기 도장(시각 0, 카운터 1 부터)보다 작아서 다른 기기의 값을 이기지 못한다. 이 기기의 편집으로 올리지 않는다 (liftDelta).
+    /// Docs/SpiraldaySync.md · 비공개 docs/sync-engine.md §4.1
+    public static let defaultStamp: Stamp = String(repeating: "0", count: 32)
 
     /// s 바로 다음 도장 (같은 시각 · 카운터 + 1, 이 노드). 끝에 닿으면 그대로
     public static func after(_ s: Stamp, node: String) -> Stamp {

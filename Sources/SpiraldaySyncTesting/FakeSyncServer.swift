@@ -237,6 +237,7 @@ public final class FakeSyncServer: @unchecked Sendable {
     var recovery: [String: (gid: String, wrappedKey: String, authHash: String)] = [:]
     public let limits: FakeServerLimits
     private var _batch = true
+    private var _changesPageLimit: Int?
     private var _conflicts = 0
     private var _log: [LogEntry] = []
     private var claimHits: [String: [Int]] = [:]
@@ -325,6 +326,12 @@ public final class FakeSyncServer: @unchecked Sendable {
     public var batch: Bool {
         get { lock.withLock { _batch } }
         set { lock.withLock { _batch = newValue } }
+    }
+
+    /// changes 한 쪽의 최대 레코드 수 (요청한 limit 보다 작으면 이것 — 받기를 여러 쪽으로 나누는 시험). nil = 요청한 대로
+    public var changesPageLimit: Int? {
+        get { lock.withLock { _changesPageLimit } }
+        set { lock.withLock { _changesPageLimit = newValue } }
     }
 
     /// baseSeq 가 맞지 않아 거절한 쓰기 수
@@ -761,7 +768,7 @@ public final class FakeSyncServer: @unchecked Sendable {
             if c == "changes", seg.count == 4, m == "GET" {
                 let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let since = Int(q.first { $0.name == "since" }?.value ?? "0") ?? -1
-                let limit = min(1000, max(1, Int(q.first { $0.name == "limit" }?.value ?? "500") ?? 500))
+                let limit = min(_changesPageLimit ?? 1000, 1000, max(1, Int(q.first { $0.name == "limit" }?.value ?? "500") ?? 500))
                 guard since >= 0 else { throw HttpErr(status: 400, code: "invalid_field", message: "since: 0 이상의 정수여야 합니다") }
                 let changes = g.records.filter { $0.value.seq > since }.sorted { $0.value.seq < $1.value.seq }.prefix(limit)
                 let last = changes.last?.value.seq ?? g.head

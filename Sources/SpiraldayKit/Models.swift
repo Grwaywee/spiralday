@@ -588,6 +588,10 @@ public final class PlannerStore: ObservableObject {
     public var onUnreadableBook: ((UnreadableFile) -> Void)?
     /// 메모리 전용일 때 펼치지 않은 책의 내용 (파일 대신)
     var memoryBooks: [UUID: PlannerData] = [:]
+    /// 이번 실행에서 파일 없이 (빈 책으로) 편 책 — 막 만든 책이 아니라 파일을 잃은 책 (createBook 은 바로 쓴다).
+    /// 동기화는 이 책을 동기화된 내용으로 되살린다: 그 엔진이 파일 없음을 받아들일 때까지(clearOpenedWithoutFile) 동기화 호스트는
+    /// 이 책을 빈 책이 아니라 "파일 없음" 으로 알린다 — 빈 책이 다른 기기에 지움 · 기본 형광펜으로 가지 않게 (2026-10-04 형광펜 사고 조사)
+    public private(set) var booksOpenedWithoutFile: Set<UUID> = []
 
     // MARK: 바뀐 것 알림 · 밖에서 넣기 (ExternalChanges.swift)
 
@@ -773,8 +777,10 @@ public final class PlannerStore: ObservableObject {
     func openActiveBook(notifying: Bool) {
         var skipped: Set<UUID> = []
         while let id = library.activeID {
+            let lost = bookFileMissing(id)
             if let d = loadBook(id) {
                 data = d
+                if lost { booksOpenedWithoutFile.insert(id) }
                 return
             }
             skipped.insert(id)
@@ -875,6 +881,17 @@ public final class PlannerStore: ObservableObject {
     func bookURL(_ id: UUID) -> URL? { folder?.appendingPathComponent("books/\(id.uuidString).json") }
     /// 펼친 책의 저장 파일
     public var activeBookURL: URL? { library.activeID.flatMap(bookURL) }
+
+    /// 책 파일이 없는지 (저장 폴더를 쓸 때만 — 메모리 전용이면 false)
+    func bookFileMissing(_ id: UUID) -> Bool {
+        guard folder != nil, let url = bookURL(id) else { return false }
+        return !FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// 동기화가 파일 없이 연 책(booksOpenedWithoutFile)을 받아들였다 (되살렸거나 되살릴 것이 없다) — 이제 보통 책이다
+    public func clearOpenedWithoutFile(_ id: UUID) {
+        booksOpenedWithoutFile.remove(id)
+    }
 
     /// 책 내용을 읽는다. 파일이 아직 없으면 (막 만든 책) 빈 내용.
     /// 파일이 있는데 읽지 못하면 nil: 원본은 손대지 않고 복사본을 남기며, 앱이 도는 동안 그 파일에 쓰지 않도록
@@ -1039,10 +1056,12 @@ public final class PlannerStore: ObservableObject {
         guard id != library.activeID else { return true }
         guard library.books.contains(where: { $0.id == id }) else { return false }
         // 지금 책을 저장하기 전에 먼저 읽어 본다 (읽지 못하면 아무것도 바꾸지 않는다)
+        let lost = bookFileMissing(id)
         guard let next = loadBook(id) else {
             if let bad = unreadableBooks[id] { onUnreadableBook?(bad) }
             return false
         }
+        if lost { booksOpenedWithoutFile.insert(id) }
         saveNow()
         stashMemoryBook()
         library.activeID = id
@@ -1056,6 +1075,7 @@ public final class PlannerStore: ObservableObject {
     /// (없으면 예시 플래너를) 펼친다.
     /// 읽지 못한 책도 사용자가 고르면 지운다. 그때 남긴 복사본(.unreadable-…)은 지우지 않는다.
     public func deleteBook(_ id: UUID) {
+        booksOpenedWithoutFile.remove(id)
         let next = fallbackBook(excluding: id)?.id
         library.books.removeAll { $0.id == id }
         memoryBooks[id] = nil

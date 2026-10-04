@@ -363,6 +363,23 @@ public enum Records {
         scalarOrder: ["defaultTheme", "mottoText"],
         itemOrder: ["categories": ["name", "hex", "counts"], "ddays": ["title", "date", "source"]])
 
+    /// 형광펜 목록이 앱의 기본 형광펜 그대로인지 (같은 순서 · id · name · hex · counts, 모르는 키 없음).
+    /// 그대로면 "아무도 정하지 않은 값" 이다 — 앱(디코더 · 새 책 · 빈 목록 채우기)이 채운 값과 사용자가 둔 값을 구별할 수 없다.
+    /// 비교는 이것을 도장이 없는 "설정 안 됨" 으로 본다 (비공개 docs/sync-engine.md §4.1). 2026-10-04 사고: 처음 켠 기기가 채운
+    /// 기본 형광펜이 그룹을 만든 기기의 형광펜을 이겼다. TS isDefaultCategoryList 와 같다
+    public static func isDefaultCategoryList(_ items: [FlatItem]) -> Bool {
+        guard items.count == defaultCategoryItems.count else { return false }
+        for (it, d) in zip(items, defaultCategoryItems) {
+            guard it.id == d.id, it.f.count == 3, it.f["name"] == d.f["name"], it.f["hex"] == d.f["hex"], it.f["counts"] == d.f["counts"] else { return false }
+        }
+        return true
+    }
+
+    /// 기본 형광펜의 평평한 모양 ("설정 안 됨" 에서 바뀔 때의 지난 값)
+    static let defaultCategoryItems: [FlatItem] = PlannerModel.defaultCategories.map { c in
+        FlatItem(id: JS.string(c["id"]), f: ["name": c["name"] ?? "", "hex": c["hex"] ?? "", "counts": c["counts"] ?? false])
+    }
+
     public static func flattenPrefs(_ v: JSONValue?) -> Flat {
         var s: [String: JSONValue] = [:]
         var c: [String: [FlatItem]] = ["categories": [], "ddays": []]
@@ -437,7 +454,18 @@ public enum Records {
     /// 새 항목: a 와 모든 필드에 같은 새 도장. 사라진 항목: d. 고친 필드: 새 도장. 도장은 앱의 순서대로 매긴다.
     /// 그림자에 있던 x: 필드(모르는 키)가 지금 값에 없으면 바뀐 것으로 보지 않는다 — 모르는 키를 버리는 앱
     /// (모델로 읽고 다시 쓰는 iOS · Windows)이 새 버전 기기의 값을 null 로 지우지 않게. 지우려면 null 을 넘긴다
-    public static func diff(_ kind: RecordKind, prev: Flat?, cur: Flat, clock: StampSource) -> RecState {
+    ///
+    /// 책 설정의 형광펜 (비공개 docs/sync-engine.md §4.1 — TS diffFlat 과 같은 바이트). base = 그 레코드의 지금 상태 (없으면 빈 상태):
+    ///   - 지난 값이 기본 형광펜(또는 빈 목록 — 설정 안 됨)이고 지금도 기본 형광펜 그대로면 바뀐 것이 없다. 앱이 채운 기본값은 도장을 받지 않는다.
+    ///   - 지난 값이 기본 형광펜(설정 안 됨)이고 지금 값이 다르면 (사용자가 처음 형광펜을 고침 · 그룹을 만든 기기의 첫 가져오기):
+    ///     지난 값 = 기본 형광펜으로 비교하되, 지금도 있는 기본 항목은 a 와 그대로인 필드를 기본값 도장(Stamps.defaultStamp, 어떤 도장보다
+    ///     작다)으로, 바뀐 필드만 새 도장으로 모두 적는다 (반쪽 항목이 없게). 목록에 없는 기본 id 는 지움(새 도장).
+    ///     그래서 두 기기가 따로 기본 형광펜의 서로 다른 것을 고쳐도 둘 다 남고(필드마다), 이 기기가 본 기본값은 다른 기기의 진짜 값을
+    ///     이기지 못하며, 지운 기본 형광펜(작은 정수 id)을 다른 기기가 채운 기본값이 되살리지 못한다 (지움 도장 > 기본값 도장).
+    ///     상태에 그 id 가 지운 채 있으면 지움을 다시 적지 않고, 상태에 살아 있는 형광펜이 하나도 없을 때만 (모두 지운 뒤 앱이 채운
+    ///     기본 형광펜을 고침 — 보이는 기본 형광펜이 곧 그 목록이다) 새 항목처럼 다시 더한다. 살아 있는 형광펜이 있으면 이 기기가 본
+    ///     기본 목록은 받기 전의 옛 모습이라 지운 id 를 되살리지 않는다 (기본값 도장 a < 지움 도장).
+    public static func diff(_ kind: RecordKind, prev: Flat?, cur: Flat, clock: StampSource, base: RecState? = nil) -> RecState {
         let schema = schema(kind)
         var out = RecState()
         let ps = prev?.s ?? [:]
@@ -448,8 +476,22 @@ public enum Records {
             if pv != cv { out.f[k] = FieldEntry(cv, clock.next()) }
         }
         for (col, defs) in schema.items {
-            let pItems = prev?.c[col] ?? []
+            var pItems = prev?.c[col] ?? []
             let cItems = cur.c[col] ?? []
+            /// 기본 형광펜(설정 안 됨)에서 바뀜: 지난 값 = 기본 형광펜, 그대로인 기본값은 기본값 도장으로
+            var implicit = false
+            let had = base?.c[col] ?? [:]
+            /// 상태에 지운 채 있는 항목 · 그것을 다시 더할지 (살아 있는 형광펜이 하나도 없을 때 — 보이는 기본 형광펜이 곧 그 목록)
+            func gone(_ id: String) -> Bool { had[id].map { !$0.isAlive } ?? false }
+            let noneAlive = !had.values.contains(where: \.isAlive)
+            if kind == .prefs, col == "categories" {
+                let prevDefault = pItems.isEmpty || isDefaultCategoryList(pItems)
+                if prevDefault, isDefaultCategoryList(cItems) { continue } // 그대로 기본 형광펜 (순서도)
+                if prevDefault {
+                    pItems = defaultCategoryItems
+                    implicit = true
+                }
+            }
             var pMap: [String: FlatItem] = [:]
             for i in pItems { pMap[i.id] = i }
             var cIds: [String] = []
@@ -459,15 +501,23 @@ public enum Records {
                 if cIdSet.contains(it.id) { continue } // 같은 id 가 둘이면 앞의 것만
                 cIdSet.insert(it.id)
                 cIds.append(it.id)
-                if let p = pMap[it.id] {
+                if let p = pMap[it.id], !(implicit && noneAlive && gone(it.id)) {
                     var f: [String: FieldEntry] = [:]
                     for k in diffKeys(it.f, p.f, known: schema.itemOrder[col] ?? []) {
                         if it.f[k] == nil, k.hasPrefix(XP) { continue }
                         let pv = p.f[k] ?? defs[k] ?? .null
                         let cv = it.f[k] ?? defs[k] ?? .null
-                        if pv != cv { f[k] = FieldEntry(cv, clock.next()) }
+                        if pv != cv {
+                            f[k] = FieldEntry(cv, clock.next())
+                        } else if implicit {
+                            f[k] = FieldEntry(cv, Stamps.defaultStamp)
+                        }
                     }
-                    if !f.isEmpty { delta[it.id] = ItemState(a: "", f: f) }
+                    if implicit {
+                        delta[it.id] = ItemState(a: Stamps.defaultStamp, f: f)
+                    } else if !f.isEmpty {
+                        delta[it.id] = ItemState(a: "", f: f)
+                    }
                 } else {
                     let st = clock.next()
                     var f: [String: FieldEntry] = [:]
@@ -477,6 +527,7 @@ public enum Records {
                 }
             }
             for p in pItems where !cIdSet.contains(p.id) && delta[p.id] == nil {
+                if implicit, gone(p.id) { continue } // 이미 지운 기본 형광펜
                 delta[p.id] = ItemState(a: "", d: clock.next(), f: [:])
             }
             if !delta.isEmpty { out.c[col] = delta }
@@ -716,7 +767,7 @@ public enum Records {
         if let cur = o["prefs"]?.objectValue {
             for k in PREFS_LOCAL { if let v = cur[k] { prefs[k] = v } }
         }
-        // 형광펜이 하나도 없으면 앱이 기본값으로 되돌린다 (그 되돌림은 다음 비교 때 새로 더한 것으로 올라간다)
+        // 형광펜이 하나도 없으면(설정 안 됨 · 모두 지움) 앱에는 기본 형광펜. 비교는 이 기본 형광펜을 편집으로 보지 않는다 (diff, §4.1)
         if prefs["categories"]?.arrayValue?.isEmpty ?? true { prefs["categories"] = .array(PlannerModel.defaultCategories) }
         o["prefs"] = .object(prefs)
         return .object(o)
@@ -740,7 +791,12 @@ public enum Records {
         switch pk.kind {
         case .day: return buildDay(st)
         case .week: return buildWeek(st)
-        case .prefs: return st.x != nil ? nil : .object(buildPrefs(st))
+        case .prefs:
+            if st.x != nil { return nil }
+            // 앱이 보는 그대로: 형광펜이 없으면(설정 안 됨) 앱의 기본 형광펜 (withPrefs 와 같다 — 넣을 값 pend · 맞추기 비교가 앱 값과 같게)
+            var p = buildPrefs(st)
+            if p["categories"]?.arrayValue?.isEmpty ?? true { p["categories"] = .array(PlannerModel.defaultCategories) }
+            return .object(p)
         case .book:
             switch buildBook(pk.bookId!, st) {
             case let .book(b)?: return b

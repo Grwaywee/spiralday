@@ -197,8 +197,9 @@ public enum CRDT {
     /// 보통은 아무것도 하지 않는다 (HLC 가 본 모든 도장보다 큰 도장을 준다). 시계가 크게 앞선 기기의 도장을 HLC 가
     /// 다 따라가지 않을 때 "본 뒤에 고친 것이 이긴다" 를 필드마다 지킨다
     public static func liftDelta(_ delta: inout RecState, _ state: RecState, node: String) {
+        // 기본값 도장(Stamps.defaultStamp — 아무도 정하지 않은 기본값)은 올리지 않는다: 그것은 이 기기의 편집이 아니다
         func above(_ s: Stamp, _ floor: Stamp?) -> Stamp {
-            guard let floor, Stamps.isStamp(floor), !JS.less(floor, s) else { return s }
+            guard s != Stamps.defaultStamp, let floor, Stamps.isStamp(floor), !JS.less(floor, s) else { return s }
             return Stamps.after(floor, node: node)
         }
         for k in Array(delta.f.keys) {
@@ -209,7 +210,7 @@ public enum CRDT {
             for id in Array(delta.c[name]!.keys) {
                 guard let cur = have[id] else { continue }
                 var it = delta.c[name]![id]!
-                if !it.a.isEmpty {
+                if !it.a.isEmpty, it.a != Stamps.defaultStamp {
                     // 더하기(다시 더하기): 있던 a · d 보다 크게. 필드도 a 보다 작으면 지운 도장 이하로 버려지므로 함께 올린다
                     let a = above(above(it.a, cur.a.isEmpty ? nil : cur.a), cur.d)
                     it.a = a

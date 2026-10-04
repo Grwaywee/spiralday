@@ -604,7 +604,6 @@ extension SyncEngine {
                 touch(e)
                 // 앱 메모리가 앞섰다 (저장된 그림자 · pend) → 앱 파일보다 먼저 엔진 저장소에 (이 기기의 편집을 함께 받아들였으면 그 간격으로)
                 scheduleLiveFlush(received: out.delta == nil)
-                if out.rescan { kick(scan: .some([bookId]), delay: 50) }
                 emitLive(.applied(bookId: bookId))
                 return
             }
@@ -845,14 +844,13 @@ struct AppliedRec: Sendable {
     var held = false
     /// 넣은 값을 만든 상태 (넣는 동안 엔진의 상태가 더 나아갔으면 다시 넣는다)
     var builtFrom = RecState()
-    /// 다시 비교할 책 (형광펜을 모두 지운 설정 — 앱이 기본값으로 되돌린다)
-    var rescan = false
 }
 
 extension RecData {
-    /// 레코드 하나를 앱 값으로: 그 순간의 앱 값을 먼저 비교해(그 사이의 편집을 잃지 않게) 상태에 합치고, 쓰고 있는 칸(protectedAt)은
-    /// 앱 값 그대로 둔다 (그림자도 앱 값 — 다시 올리지 않는다). 돌려주는 값: 넣을 앱 값 (하루 · 한 주 = 레코드 JSON 또는 nil, 설정 = 상태로 만든 prefs)
-    mutating func applyTo(_ pk: ParsedKey, key: String, appValue: JSONValue?, clock: StampSource, protectedAt: FieldAddress?) -> (value: JSONValue?, out: AppliedRec) {
+    /// 레코드 하나를 앱 값으로: 그 순간의 앱 값을 먼저 비교해(그 사이의 편집을 잃지 않게 — absorbBeforeApply) 상태에 합치고,
+    /// 쓰고 있는 칸(protectedAt)은 앱 값 그대로 둔다 (그림자도 앱 값 — 다시 올리지 않는다). fresh = 이 기기에 없던 책 (비교하지 않는다).
+    /// 돌려주는 값: 넣을 앱 값 (하루 · 한 주 = 레코드 JSON 또는 nil, 설정 = 상태로 만든 prefs)
+    mutating func applyTo(_ pk: ParsedKey, key: String, appValue: JSONValue?, clock: StampSource, protectedAt: FieldAddress?, fresh: Bool = false) -> (value: JSONValue?, out: AppliedRec) {
         var out = AppliedRec()
         out.before = shadow
         out.real = clock is HLC
@@ -860,7 +858,7 @@ extension RecData {
         switch pk.kind {
         case .day, .week:
             let app = Records.flattenOf(pk, appValue)
-            out.delta = absorb(pk.kind, app, clock).delta
+            (out.delta, out.real) = absorbBeforeApply(pk.kind, app, clock, fresh: fresh)
             let (st, held) = protectedState(state, key: key, kind: pk.kind, cur: app, at: protectedAt)
             value = pk.kind == .day ? Records.buildDay(st) : Records.buildWeek(st)
             out.shadow = Records.flattenOf(pk, value)
@@ -869,14 +867,14 @@ extension RecData {
         case .prefs:
             if state.x == nil {
                 let app = Records.flattenPrefs(appValue)
-                out.delta = absorb(.prefs, app, clock).delta
+                (out.delta, out.real) = absorbBeforeApply(.prefs, app, clock, fresh: fresh)
                 let (st, held) = protectedState(state, key: key, kind: .prefs, cur: app, at: protectedAt)
                 let built = Records.buildPrefs(st)
                 value = .object(built)
+                // 형광펜이 없으면(설정 안 됨) 그림자도 빈 목록 — 앱이 채운 기본 형광펜은 비교가 설정 안 됨으로 본다 (§4.1)
                 out.shadow = Records.flattenPrefs(.object(built))
                 out.held = held
                 out.applied = true
-                if built["categories"]?.arrayValue?.isEmpty ?? true { out.rescan = true }
             }
         default:
             break
