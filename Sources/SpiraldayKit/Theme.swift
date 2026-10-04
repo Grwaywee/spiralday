@@ -231,6 +231,17 @@ public struct NoiseLayer: View {
 // MARK: - Spiral binding (창 가장자리 = 스프링 쪽)
 
 public enum SpiralBinding {
+    /// 종이에 뚫린 구멍 (디자인 단위). 양면 종이의 뒷면(verso — 펼친 책의 왼쪽 · 위 쪽)은 구멍이 반대 가장자리에 있다.
+    public static func holes(_ kind: PageKind, side: PaperSide) -> [CGRect] {
+        let recto = holes(kind)
+        guard side == .verso else { return recto }
+        let d = kind.design
+        return recto.map { r in
+            kind.edge == .leading ? CGRect(x: d.width - r.maxX, y: r.minY, width: r.width, height: r.height)
+                                  : CGRect(x: r.minX, y: d.height - r.maxY, width: r.width, height: r.height)
+        }
+    }
+
     /// 종이에 뚫린 구멍 (디자인 단위)
     public static func holes(_ kind: PageKind) -> [CGRect] {
         switch kind {
@@ -253,6 +264,8 @@ public struct PaperSurface: View {
     public let kind: PageKind
     public let u: CGFloat
     @Environment(\.isPrinting) private var isPrinting
+    /// 펼친 책의 왼쪽 · 위 쪽(verso)이면 구멍 · 제본 쪽 그늘이 반대 가장자리에 (기본 recto = 지금 그대로)
+    @Environment(\.paperSide) private var side
 
     public init(kind: PageKind, u: CGFloat) {
         self.kind = kind
@@ -272,11 +285,10 @@ public struct PaperSurface: View {
             Ink.paper
             NoiseLayer(opacity: 0.5).blendMode(.multiply)
             LinearGradient(colors: [.black.opacity(0.05), .clear],
-                           startPoint: kind.edge == .top ? .top : .leading,
-                           endPoint: kind.edge == .top ? UnitPoint(x: 0.5, y: 0.05) : UnitPoint(x: 0.05, y: 0.5))
-            Canvas { ctx, _ in
+                           startPoint: gradientStart, endPoint: gradientEnd)
+            Canvas { [side] ctx, _ in
                 ctx.scaleBy(x: u, y: u)
-                for r in SpiralBinding.holes(kind) {
+                for r in SpiralBinding.holes(kind, side: side) {
                     ctx.fill(Path(roundedRect: r, cornerRadius: 3), with: .color(Color(hex: "4E5057").opacity(0.85)))
                     ctx.stroke(Path(roundedRect: r.insetBy(dx: -0.8, dy: -0.8), cornerRadius: 3.5),
                                with: .color(.black.opacity(0.07)), lineWidth: 1.2)
@@ -284,6 +296,25 @@ public struct PaperSurface: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// 제본 쪽 옅은 그늘 (recto: 왼쪽 · 위에서, verso: 오른쪽 · 아래에서)
+    private var gradientStart: UnitPoint {
+        switch (kind.edge, side) {
+        case (.top, .recto): .top
+        case (.leading, .recto): .leading
+        case (.top, .verso): .bottom
+        case (.leading, .verso): .trailing
+        }
+    }
+
+    private var gradientEnd: UnitPoint {
+        switch (kind.edge, side) {
+        case (.top, .recto): UnitPoint(x: 0.5, y: 0.05)
+        case (.leading, .recto): UnitPoint(x: 0.05, y: 0.5)
+        case (.top, .verso): UnitPoint(x: 0.5, y: 0.95)
+        case (.leading, .verso): UnitPoint(x: 0.95, y: 0.5)
+        }
     }
 }
 
@@ -315,6 +346,13 @@ public struct HighlighterBar: View {
 // MARK: - Environment
 
 private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
+private struct PaperSideKey: EnvironmentKey { static let defaultValue = PaperSide.recto }
+
+/// 양면 종이의 어느 면인지. 펼친 책(iPad 가로 일간 · 세로 주간)의 왼쪽 · 위 쪽이 verso — 구멍이 반대 가장자리에 있다.
+/// 한 장으로 놓는 곳(Mac · 폰 · 한 장 놓기)은 늘 recto.
+public enum PaperSide: String, Sendable {
+    case recto, verso
+}
 private struct PrintKey: EnvironmentKey { static let defaultValue = false }
 
 extension EnvironmentValues {
@@ -322,6 +360,12 @@ extension EnvironmentValues {
     public var isSnapshot: Bool {
         get { self[SnapshotKey.self] }
         set { self[SnapshotKey.self] = newValue }
+    }
+
+    /// 종이 면 (PaperSurface 의 구멍 · 제본 쪽 그늘). 기본 recto
+    public var paperSide: PaperSide {
+        get { self[PaperSideKey.self] }
+        set { self[PaperSideKey.self] = newValue }
     }
 
     /// PDF 로 뽑는 중이면 true (흰 종이, 종이 결·스프링 구멍 없이)

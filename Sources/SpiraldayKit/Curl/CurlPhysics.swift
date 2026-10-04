@@ -32,25 +32,62 @@ enum CurlMath {
 
 // MARK: - Frame (page space ↔ screen)
 
+/// Where a completed turn leaves the page.
+enum CurlLanding {
+    /// Single page (Mac · phone · single-page desks): the page slides out behind the binding rings.
+    case behindBinding
+    /// Open book (spread mode): the sheet turns over the gutter and lies mirrored on the opposite page.
+    case mirrored
+}
+
 struct CurlFrame {
     let edge: BindingEdge
     /// Page view size in points, screen orientation.
     let view: CGSize
+    /// Spread mode only (nil for a single page — every value below is then exactly the single-page one).
+    private(set) var spread: Spread?
+
+    struct Spread {
+        /// W′ = half gutter + page length away from the binding; H = page length along the binding.
+        var W: Double
+        var H: Double
+        /// g/2: the strip [0, g/2) from the hinge is the virtual band that wraps the rings (never drawn).
+        var halfGutter: Double
+        /// 1 = paper, 2.4 = board (cover / inside back): rounder, less tilt.
+        var stiffness: Double
+    }
+
+    init(edge: BindingEdge, view: CGSize) {
+        self.edge = edge
+        self.view = view
+        self.spread = nil
+    }
+
+    /// An open-book frame: x = distance from the hinge (gutter centre) across the binding, y = along it.
+    static func spread(W: Double, H: Double, halfGutter: Double, stiffness: Double) -> CurlFrame {
+        var f = CurlFrame(edge: .leading, view: CGSize(width: W, height: H))
+        f.spread = Spread(W: W, H: H, halfGutter: halfGutter, stiffness: max(1, stiffness))
+        return f
+    }
+
+    var landing: CurlLanding { spread == nil ? .behindBinding : .mirrored }
 
     /// Extent perpendicular to the binding.
-    var W: Double { Double(edge == .top ? view.height : view.width) }
+    var W: Double { spread?.W ?? Double(edge == .top ? view.height : view.width) }
     /// Extent along the binding.
-    var H: Double { Double(edge == .top ? view.width : view.height) }
-    var isValid: Bool { view.width >= 8 && view.height >= 8 }
+    var H: Double { spread?.H ?? Double(edge == .top ? view.width : view.height) }
+    var isValid: Bool { spread.map { $0.W - $0.halfGutter >= 8 && $0.H >= 8 } ?? (view.width >= 8 && view.height >= 8) }
 
     /// Held corner: the bottom end of the free edge (screen bottom-right for both bindings).
     var K: CurlVec { CurlVec(W, H) }
-    /// Finger position at which the turned page is completely out of the view.
-    var E: CurlVec { CurlVec(-1.08 * W, H) }
+    /// Finger position at which the turned page is completely out of the view
+    /// (spread: the mirrored landing — the sheet lies flat on the opposite page).
+    var E: CurlVec { spread == nil ? CurlVec(-1.08 * W, H) : CurlVec(-W, H) }
     /// Canonical turn arc (cubic Bézier K → c1 → c2 → E): the corner lifts first,
     /// sweeps over in a gentle arc and lands flat behind the binding.
-    var c1: CurlVec { CurlVec(0.55 * W, 0.75 * H) }
-    var c2: CurlVec { CurlVec(-0.35 * W, 0.92 * H) }
+    /// Spread: a symmetric arc — the corner lifts, passes over the gutter and lies down on the other side.
+    var c1: CurlVec { spread == nil ? CurlVec(0.55 * W, 0.75 * H) : CurlVec(0.5 * W, 0.80 * H) }
+    var c2: CurlVec { spread == nil ? CurlVec(-0.35 * W, 0.92 * H) : CurlVec(-0.5 * W, 0.80 * H) }
     /// Horizontal travel of a full turn.
     var span: Double { K.x - E.x }
 
@@ -61,11 +98,14 @@ struct CurlFrame {
     // MARK: fold
 
     static let maxTilt = 35.0 * .pi / 180
-    var rMax: Double { 0.10 * W }
+    /// A board (cover) barely twists.
+    static let boardTilt = 12.0 * .pi / 180
+    var rMax: Double { spread == nil ? 0.10 * W : 0.14 * W }
     var rMin: Double { 0.012 * W }
 
     /// Cylinder fold for a finger position.
     func fold(_ F: CurlVec) -> CurlFold {
+        if let sp = spread { return spreadFold(F, sp) }
         let D = K - F
         guard simd_length(D) > 1e-6 else { return .flat(at: K) }
         // 스프링에서 찢어지지 않게 축 기울기를 제한한다
@@ -78,6 +118,26 @@ struct CurlFrame {
         let r0 = rMin + (rMax - rMin) * sin(.pi * t)
         // 거의 평평할 때는 반지름도 0 으로 (dist/π 로 부드럽게 수렴)
         let r = r0 * (1 - exp(-dist / (.pi * r0)))
+        let d0 = (dist + .pi * r) / 2
+        return CurlFold(axisPoint: K - N * d0, normal: N, radius: r,
+                        effect: CurlMath.smooth(0, 0.05 * W, r))
+    }
+
+    /// Spread fold: the same cylinder, but the radius goes to 0 as the sheet lands (t → 1), so the axis
+    /// reaches the hinge and the back of the sheet is an exact mirror of its page space (sB.x = −q.x) —
+    /// the last frame is pixel-identical to the new live pages.
+    private func spreadFold(_ F: CurlVec, _ sp: Spread) -> CurlFold {
+        let D = K - F
+        guard simd_length(D) > 1e-6 else { return .flat(at: K) }
+        let tilt = sp.stiffness > 1.01 ? Self.boardTilt : Self.maxTilt
+        let angle = min(max(atan2(D.y, D.x), -tilt), tilt)
+        let N = CurlVec(cos(angle), sin(angle))
+        let dist = simd_dot(D, N)
+        guard dist > 1e-6 else { return .flat(at: K) }
+        let t = CurlMath.clamp01((K.x - F.x) / (2 * W))
+        var r0 = sp.stiffness * (rMin + (rMax - rMin) * sin(.pi * t)) * (1 - CurlMath.smooth(0.92, 1, t))
+        r0 = min(r0, 0.25 * W)
+        let r = r0 > 1e-9 ? r0 * (1 - exp(-dist / (.pi * r0))) : 0
         let d0 = (dist + .pi * r) / 2
         return CurlFold(axisPoint: K - N * d0, normal: N, radius: r,
                         effect: CurlMath.smooth(0, 0.05 * W, r))
@@ -198,11 +258,15 @@ struct CurlGlide {
 
     /// Nominal duration of a full, automatic page turn.
     static let fullDuration = 0.66
+    /// Spread mode: a paper sheet, a board (cover), a jump (one sheet carrying many days)
+    static let spreadDuration = 0.70
+    static let boardDuration = 0.80
+    static let jumpDuration = 0.82
 
     /// Glide from any finger state to the turned (E) or flat (K) position, continuing
     /// the current velocity and arriving along the canonical arc.
     static func make(in f: CurlFrame, from F0: CurlVec, velocity V0: CurlVec, toTurned: Bool,
-                     entrySlope: Double = 0) -> CurlGlide? {
+                     entrySlope: Double = 0, full: Double = fullDuration) -> CurlGlide? {
         let goal = toTurned ? f.E : f.K
         let chord = goal - F0
         let dist = simd_length(chord)
@@ -224,7 +288,7 @@ struct CurlGlide {
             dir = CurlMath.normalize(simd_mix(dir, V0 / speed, CurlVec(repeating: a)), dir)
         }
 
-        var duration = fullDuration * (0.34 + 0.66 * min(dist / f.span, 1.15))
+        var duration = full * (0.34 + 0.66 * min(dist / f.span, 1.15))
         // initial slope s'(0) = (V0·dir) T / |B'(0)|, |B'(0)| = 3 lead (negative = moving away first)
         let along = simd_dot(V0, dir)
         var lead = 0.288 * dist
@@ -235,7 +299,8 @@ struct CurlGlide {
         }
         let slope = along * duration / (3 * lead) + entrySlope
         let path = CurlPath(F0, F0 + dir * lead, goal - arrive * (0.356 * dist), goal)
-        let final = toTurned ? CurlTiming.exitSlope : CurlTiming.landingSlope
+        // 펼친 책은 양쪽 모두 반대쪽에 사뿐히 눕는다 (한 장은 넘긴 장이 고리 뒤로 미끄러져 나간다)
+        let final = toTurned && f.landing == .behindBinding ? CurlTiming.exitSlope : CurlTiming.landingSlope
         return CurlGlide(path: path, duration: duration, timing: CurlTiming(initialSlope: slope, finalSlope: final))
     }
 

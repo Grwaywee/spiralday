@@ -61,13 +61,16 @@ public final class PageSnapshotter {
         self.state = state
     }
 
-    private func key(_ kind: PageKind, _ index: Int, _ size: CGSize, _ scale: CGFloat) -> String {
+    private func key(_ kind: PageKind, _ index: Int, _ size: CGSize, _ scale: CGFloat, _ side: PaperSide) -> String {
+        // recto 의 키는 예전 그대로 (verso 만 끝에 면을 붙인다)
         "\(kind.rawValue)|\(index)|\(store.version)|\(Int(size.width.rounded()))x\(Int(size.height.rounded()))@\(scale)"
+            + (side == .verso ? "|verso" : "")
     }
 
-    public func image(kind: PageKind, index: Int, size: CGSize, scale: CGFloat) -> CGImage? {
+    /// 쪽 하나의 비트맵. side: 펼친 책의 왼쪽 · 위 쪽이면 .verso (구멍이 반대 가장자리)
+    public func image(kind: PageKind, index: Int, size: CGSize, scale: CGFloat, side: PaperSide = .recto) -> CGImage? {
         guard size.width > 1, size.height > 1 else { return nil }
-        let k = key(kind, index, size, scale)
+        let k = key(kind, index, size, scale, side)
         if let img = cache[k] {
             order.removeAll { $0 == k }
             order.append(k)
@@ -76,6 +79,7 @@ public final class PageSnapshotter {
         let content = PageView(kind: kind, index: index)
             .frame(width: size.width, height: size.height)
             .environment(\.isSnapshot, true)
+            .environment(\.paperSide, side)
             .environmentObject(store)
             .environmentObject(state)
         let r = ImageRenderer(content: content)
@@ -98,8 +102,9 @@ public final class PageSnapshotter {
 
     private func prewarm(step: Int) {
         let offsets = [0, 1, -1]
+        // 펼친 책(펼침 모드)은 호스트가 자기 쪽들을 미리 그린다
         guard step < offsets.count, state.kind.flips, state.curl.isIdle, !state.morphing,
-              state.editingKey == nil else { return }
+              state.editingKey == nil, state.curl.layout == .page else { return }
         let size = state.curl.pageSize
         // 책 밖(표지 앞, 마지막 장 뒤)은 넘어갈 수 없으니 그리지 않는다
         if step == 0 || state.canStep(offsets[step]) {

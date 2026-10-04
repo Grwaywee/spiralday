@@ -50,6 +50,18 @@ final class CurlMetalView: MTKView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
     #endif
 
+    /// Spread mode (an open book): the overlay is see-through (premultiplied alpha) — the live pages below
+    /// show wherever the turning sheet does not cover. A single page stays opaque (as always).
+    func setTransparent(_ transparent: Bool) {
+        if let metal = layer as? CAMetalLayer { metal.isOpaque = !transparent }
+        #if !os(macOS)
+        isOpaque = !transparent
+        backgroundColor = transparent ? .clear : nil
+        #endif
+        clearColor = transparent ? MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+                                 : MTLClearColor(red: 252 / 255, green: 251 / 255, blue: 247 / 255, alpha: 1)
+    }
+
     /// Runs the display-synchronised loop at the screen's highest refresh rate.
     func run() {
         #if os(macOS)

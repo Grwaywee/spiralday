@@ -18,6 +18,10 @@ final class CurlGPU: @unchecked Sendable {
     private let lock = NSLock()
     private var compiled = false
     private var state: MTLRenderPipelineState?
+    // 펼친 책(iPad) 넘김: 따로 컴파일한다 (한 장 셰이더는 그대로 — Mac 은 이것을 만들지 않는다)
+    private var spreadCompiled = false
+    private var spreadState: MTLRenderPipelineState?
+    private var emptyTexture: MTLTexture?
 
     private init(device: MTLDevice, queue: MTLCommandQueue) {
         self.device = device
@@ -47,6 +51,46 @@ final class CurlGPU: @unchecked Sendable {
             state = compile()
         }
         return state
+    }
+
+    /// Starts compiling the spread pipeline in the background (idempotent).
+    func warmUpSpread() {
+        DispatchQueue.global(qos: .userInitiated).async { _ = self.spreadPipeline }
+    }
+
+    /// The spread (open book) pipeline: premultiplied output over the live pages.
+    var spreadPipeline: MTLRenderPipelineState? {
+        lock.lock()
+        defer { lock.unlock() }
+        if !spreadCompiled {
+            spreadCompiled = true
+            do {
+                let library = try device.makeLibrary(source: CurlSpreadShader.source, options: MTLCompileOptions())
+                let desc = MTLRenderPipelineDescriptor()
+                desc.label = "Spiralday.curl.spread"
+                desc.vertexFunction = library.makeFunction(name: "curl_spread_vertex")
+                desc.fragmentFunction = library.makeFunction(name: "curl_spread_fragment")
+                desc.colorAttachments[0].pixelFormat = pixelFormat
+                spreadState = try device.makeRenderPipelineState(descriptor: desc)
+            } catch {
+                NSLog("Spiralday: spread curl shader unavailable: \(error)")
+                spreadState = nil
+            }
+        }
+        return spreadState
+    }
+
+    /// A 1×1 transparent texture for "nothing revealed" (the desk under the last / first sheet).
+    private func empty() -> MTLTexture? {
+        if let emptyTexture { return emptyTexture }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 1, height: 1, mipmapped: false)
+        desc.usage = .shaderRead
+        desc.storageMode = .shared
+        guard let t = device.makeTexture(descriptor: desc) else { return nil }
+        var zero: UInt32 = 0
+        t.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &zero, bytesPerRow: 4)
+        emptyTexture = t
+        return t
     }
 
     private func compile() -> MTLRenderPipelineState? {
@@ -108,6 +152,65 @@ final class CurlGPU: @unchecked Sendable {
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
+    func encodeSpread(_ enc: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState, uniforms: inout CurlSpreadUniforms,
+                      front: MTLTexture, back: MTLTexture, revealed: MTLTexture?) {
+        enc.setRenderPipelineState(pipeline)
+        enc.setFragmentTexture(front, index: 0)
+        enc.setFragmentTexture(back, index: 1)
+        enc.setFragmentTexture(revealed ?? empty(), index: 2)
+        enc.setFragmentSamplerState(sampler, index: 0)
+        enc.setFragmentBytes(&uniforms, length: MemoryLayout<CurlSpreadUniforms>.stride, index: 0)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    }
+
+    /// Renders spread states into premultiplied sRGB bitmaps of the whole overlay (tests · frame captures). Synchronous.
+    func renderSpreadOffscreen(overlay: CGSize, uniforms: [CurlSpreadUniforms], front: CGImage, back: CGImage,
+                               revealed: CGImage?, scale: CGFloat) -> [CGImage] {
+        guard let pipeline = spreadPipeline, !uniforms.isEmpty, let upload = queue.makeCommandBuffer(),
+              let frontTex = makeTexture(front, commandBuffer: upload),
+              let backTex = makeTexture(back, commandBuffer: upload) else { return [] }
+        let revealedTex = revealed.flatMap { makeTexture($0, commandBuffer: upload) }
+        upload.commit()
+
+        let w = max(1, Int((overlay.width * scale).rounded()))
+        let h = max(1, Int((overlay.height * scale).rounded()))
+        let bytesPerRow = (w * 4 + 255) & ~255
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: pixelFormat, width: w, height: h, mipmapped: false)
+        desc.usage = .renderTarget
+        desc.storageMode = .private
+        guard let target = device.makeTexture(descriptor: desc),
+              let readback = device.makeBuffer(length: bytesPerRow * h, options: .storageModeShared),
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return [] }
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+
+        var images: [CGImage] = []
+        for var u in uniforms {
+            u.pixelScale = SIMD2(Float(Double(w) / Double(overlay.width)), Float(Double(h) / Double(overlay.height)))
+            guard let cb = queue.makeCommandBuffer() else { break }
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = target
+            pass.colorAttachments[0].loadAction = .dontCare
+            pass.colorAttachments[0].storeAction = .store
+            guard let enc = cb.makeRenderCommandEncoder(descriptor: pass) else { break }
+            encodeSpread(enc, pipeline: pipeline, uniforms: &u, front: frontTex, back: backTex, revealed: revealedTex)
+            enc.endEncoding()
+            guard let blit = cb.makeBlitCommandEncoder() else { break }
+            blit.copy(from: target, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                      sourceSize: MTLSize(width: w, height: h, depth: 1), to: readback, destinationOffset: 0,
+                      destinationBytesPerRow: bytesPerRow, destinationBytesPerImage: bytesPerRow * h)
+            blit.endEncoding()
+            cb.commit()
+            cb.waitUntilCompleted()
+            let data = Data(bytes: readback.contents(), count: bytesPerRow * h) as CFData
+            guard let provider = CGDataProvider(data: data),
+                  let img = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                                    space: space, bitmapInfo: info, provider: provider, decode: nil,
+                                    shouldInterpolate: false, intent: .defaultIntent) else { break }
+            images.append(img)
+        }
+        return images
+    }
+
     /// Renders curl states into sRGB bitmaps (README / snapshot tests). Synchronous.
     func renderOffscreen(frame: CurlFrame, folds: [CurlFold], top: CGImage, under: CGImage, scale: CGFloat) -> [CGImage] {
         guard let pipeline, !folds.isEmpty, let upload = queue.makeCommandBuffer(),
@@ -161,7 +264,10 @@ final class CurlGPU: @unchecked Sendable {
 @MainActor
 final class CurlTextureCache {
     private var entries: [(image: CGImage, texture: MTLTexture)] = []
-    private let capacity = 4
+    /// 4 for a single page; an open book holds three pages per turn (front · back · revealed) → 6
+    var capacity = 4 {
+        didSet { while entries.count > capacity { entries.removeFirst() } }
+    }
 
     func texture(for image: CGImage, gpu: CurlGPU) -> MTLTexture? {
         if let i = entries.firstIndex(where: { $0.image === image }) {

@@ -6,6 +6,19 @@ import UIKit
 #endif
 import Combine
 
+/// 넘김을 가로채는 호스트 (iPad 의 펼친 책). 책은 펼침 단위로 넘기고 쪽 번호(index)는 초점 쪽으로만 쓴다.
+/// Mac · 폰 · 한 장 놓기는 달지 않는다 (nil → AppState 가 지금처럼 한 장씩 넘긴다).
+@MainActor
+public protocol PageTurnRouter: AnyObject {
+    /// 지금 이 쪽(일간 · 주간)을 책이 넘기는지
+    func routes(_ kind: PageKind) -> Bool
+    func canTurn(_ dir: FlipDirection) -> Bool
+    func turn(_ dir: FlipDirection)
+    func goToday()
+    /// 쪽 번호로 점프 (표지 · 첫 장 보이기 등)
+    func show(index: Int)
+}
+
 @MainActor
 public final class AppState: ObservableObject {
     @Published public private(set) var kind: PageKind
@@ -42,6 +55,14 @@ public final class AppState: ObservableObject {
     public var onPageChange: (() -> Void)?
     /// 단축키(1–7 · E)로 도구를 바꿨을 때 (접힌 팔레트를 잠깐 펼쳐 보여 준다)
     public var onToolShortcut: (() -> Void)?
+    /// 넘김을 가로채는 책 (iPad 펼친 책). flip · goToday · showFront 가 맨 처음 이것을 본다 (끝 진동 검사보다 먼저)
+    public weak var turnRouter: PageTurnRouter?
+
+    /// 지금 쪽을 넘기는 책 (없으면 nil)
+    private var router: PageTurnRouter? {
+        guard let r = turnRouter, r.routes(kind) else { return nil }
+        return r
+    }
 
     #if os(macOS)
     private var monitors: [Any] = []
@@ -114,6 +135,21 @@ public final class AppState: ObservableObject {
 
     /// 지금 페이지에서 delta 장 넘길 수 있는지
     public func canStep(_ delta: Int) -> Bool { kind.flips && pageRange(kind).contains(index + delta) }
+
+    /// 그 방향으로 넘길 수 있는지 (책이 넘기면 책의 펼침 기준, 아니면 한 장)
+    public func canFlip(_ dir: FlipDirection) -> Bool {
+        if let r = router { return r.canTurn(dir) }
+        return canStep(dir.delta)
+    }
+
+    /// 초점 쪽 바꾸기 (넘기지 않고 번호만 — 책의 펼침이 바뀌었을 때 · 펼친 두 쪽 중 다른 쪽을 쓸 때). 범위 안으로
+    public func focus(index i: Int) {
+        guard kind.flips else { return }
+        let c = clampPage(i, kind)
+        guard c != index else { return }
+        if kind == .weekly { weekIndex = c } else { dayIndex = c }
+        onPageChange?()
+    }
 
     private func clampDay(_ i: Int) -> Int { min(max(i, dayRange.lowerBound), dayRange.upperBound) }
     private func clampWeek(_ i: Int) -> Int { min(max(i, weekRange.lowerBound), weekRange.upperBound) }
@@ -205,6 +241,7 @@ public final class AppState: ObservableObject {
 
     public func flip(_ dir: FlipDirection) {
         guard !morphing, kind.flips else { return }
+        if let r = router { r.turn(dir); return }
         guard canStep(dir.delta) else { bump(); return }
         curl.flip(dir)
     }
@@ -217,6 +254,7 @@ public final class AppState: ObservableObject {
             setKind(lastPageKind)
             return
         }
+        if let r = router { r.goToday(); return }
         let target = kind == .weekly ? clampWeek(0) : clampDay(0)
         let delta = target - index
         if delta == 0 { return }
@@ -290,6 +328,10 @@ public final class AppState: ObservableObject {
         }
         endEditing()
         let i = frontIndex(page, target)
+        if target == kind && !morphing, let r = router {
+            r.show(index: i)
+            return
+        }
         if target == kind && !morphing {
             let delta = i - index
             guard delta != 0 else { return }
