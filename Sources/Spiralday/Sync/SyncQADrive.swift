@@ -8,11 +8,14 @@ import SpiraldaySync
 // ─────────────────────────────────────────────────────────────────────────────
 // 디버그 빌드만: 여러 기기 동기화 검증(여러 기기를 한꺼번에 모는 바깥 스크립트)이 이 Mac 앱을 몰 수 있게 하는 통로.
 //
-//   Spiralday --sync-drive <폴더> [--sync-drive-keychain com.spiralday.mac.sync.qa.<이름>]
+//   Spiralday --sync-drive <폴더> [--sync-drive-keychain com.spiralday.mac.sync.qa.<이름>] [--sync-drive-creds-file <폴더 안의 파일>]
 //
 // 따로 된 것만 쓴다:
 //   · 플래너 파일    <폴더>/data (앱의 데이터 폴더 ~/Library/Application Support/Spiralday 는 거절)
-//   · 동기화 비밀    로그인 키체인의 테스트용 서비스 이름 (com.spiralday.mac.sync.qa. 로 시작해야 한다 — 앱의 com.spiralday.sync 는 거절)
+//   · 동기화 비밀    로그인 키체인의 테스트용 서비스 이름 (com.spiralday.mac.sync.qa. 로 시작해야 한다 — 앱의 com.spiralday.sync 는 거절).
+//                    --sync-drive-creds-file 이면 키체인 대신 <폴더> 안의 그 파일 (0600) — 서명이 다른 두 빌드(예: 고치기 전 1.1.0 → 고친 빌드)가
+//                    같은 그룹 · 같은 SyncState 를 이어 쓰는 검증용. 로그인 키체인 항목은 만든 실행 파일에 묶여 있어 다른 빌드가 읽으면
+//                    사용자 화면에 키체인 허락 창이 뜬다 (출시 앱은 같은 Developer ID 라 업데이트해도 그대로 읽는다)
 //   · 동기화 설정 값 <폴더>/sync-defaults.plist (앱의 설정 파일이 아니라 — 껐다 켜도 그룹이 남게)
 //   · 창            화면 밖에 둔다 (앱을 앞으로 가져오지 않는다 — 쓰던 사람의 화면 · 포커스를 건드리지 않는다)
 // 통계 · 업데이트 확인 · ⭐ 부탁 · 처음 안내 · 둘러보기는 켜지 않는다.
@@ -29,6 +32,8 @@ enum SyncQADriveLaunch {
         let dir: URL
         let dataDir: URL
         let keychainService: String
+        /// --sync-drive-creds-file: 그룹 비밀을 둘 파일 (nil = 키체인)
+        var credentialsFile: URL? = nil
     }
 
     /// 실행 인수에서 (없으면 nil — 보통 실행). 맞지 않으면 까닭을 찍고 끝낸다
@@ -58,17 +63,51 @@ enum SyncQADriveLaunch {
             service = args[k + 1]
         }
         try? FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
-        return Config(dir: dir, dataDir: data, keychainService: service)
+        var credentialsFile: URL?
+        if let k = args.firstIndex(of: "--sync-drive-creds-file") {
+            // 견주기는 심볼릭 링크를 푼 폴더로 (/tmp → /private/tmp — 아직 없는 파일은 standardized 가 풀지 않는다)
+            let file = k + 1 < args.count ? URL(fileURLWithPath: args[k + 1]) : nil
+            let parent = (file?.deletingLastPathComponent().resolvingSymlinksInPath().path ?? "") + "/"
+            let root = dir.resolvingSymlinksInPath().path + "/"
+            let dataRoot = data.resolvingSymlinksInPath().path + "/"
+            guard let file, parent.hasPrefix(root), !parent.hasPrefix(dataRoot) else {
+                print("--sync-drive-creds-file 은 <폴더> 안(data 밖)의 파일이어야 해요")
+                exit(2)
+            }
+            credentialsFile = file
+        }
+        return Config(dir: dir, dataDir: data, keychainService: service, credentialsFile: credentialsFile)
     }
 
     /// 이 실행의 동기화 컨트롤러: 테스트용 키체인 이름 · 폴더 안의 설정 값 · 폴더 안의 SyncState
     static func controller(store: PlannerStore, config: Config) -> SyncController {
         let defaults = SyncFileDefaults(config.dir.appendingPathComponent("sync-defaults.plist"))
-        guard let env = SyncController.Environment.live(store: store, keychainService: config.keychainService, defaults: defaults) else {
+        guard var env = SyncController.Environment.live(store: store, keychainService: config.keychainService, defaults: defaults) else {
             print("저장 폴더가 없어요")
             exit(2)
         }
+        if let file = config.credentialsFile { env.credentials = SyncQADriveFileCredentials(url: file) }
         return SyncController(store: store, env: env)
+    }
+}
+
+/// --sync-drive-creds-file: 그룹 비밀(그룹 id · 기기 id · 토큰 · 그룹 키)을 검증 폴더 안의 파일 하나에 (0600, 원자적으로)
+struct SyncQADriveFileCredentials: CredentialStore {
+    let url: URL
+
+    func get() async throws -> Credentials? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let c = try? JSONDecoder().decode(Credentials.self, from: data) else { throw CredentialsUnreadable() }
+        return c
+    }
+
+    func set(_ c: Credentials?) async throws {
+        guard let c else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        try JSONEncoder().encode(c).write(to: url, options: [.atomic])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }
 
