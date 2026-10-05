@@ -437,18 +437,23 @@ enum CurlSpreadShader {
         float covB = U.lifted > 0.5 ? saturate(sdBpx + 0.5) * covSil * upOK : 0.0;
 
         // ── shadows ─────────────────────────────────────────────────────────
+        // While the strip lies on its own page (θ = 0, most of a turn) nothing stands at the coil: like the single page,
+        // the leaf casts its shadow only beyond its roll — none into the open gap or on the other page (no gutter shade,
+        // owner 2026-10-05). Only as the strip rises about the coil does its shadow reach across (stand 0 → 1).
+        float stand = smoothstep(0.0, M_PI_2_F, th);
+        float ownSide = q.x >= hg ? 1.0 : stand;
         // the rolled part over the revealed page (beyond the top of the roll; past upright: beyond the strip's edge)
         float dropW = 0.012 * W + 1.6 * r;
         float beyond = upright ? (q.x - hg * cT) * N.x : dS - r;
         float g = 1.0 - smoothstep(0.0, dropW, max(beyond, 0.0));
         float h = smoothstep(-0.5 * dropW, 0.2 * dropW, sdF);
-        float drop = 0.30 * fx * g * g * h;
+        float drop = 0.30 * fx * g * g * h * ownSide;
         // the flap lying above: soft shadow around its edge, on whichever side it is (both pages)
         float outB = max(-sdBpx, 0.0) * px;
         bool underFlap = upright ? dS <= rsT : dS <= r;
         float flap = underFlap ? 0.22 * fx * (1.0 - smoothstep(0.0, 1.5 + 1.1 * r + 0.02 * W, outB)) : 0.0;
-        // occlusion where the leaf stands up from the coil (both pages)
-        float hingeOcc = 0.10 * fx * (1.0 - smoothstep(0.0, 0.08 * W, abs(q.x)));
+        // occlusion where the strip stands up from the coil (both pages) — none while it lies on its page
+        float hingeOcc = 0.10 * fx * stand * (1.0 - smoothstep(0.0, 0.08 * W, abs(q.x)));
 
         // ── what is below the leaf ──────────────────────────────────────────
         bool inLift = uvR.x >= 0.0 && uvR.x <= 1.0 && uvR.y >= 0.0 && uvR.y <= 1.0;

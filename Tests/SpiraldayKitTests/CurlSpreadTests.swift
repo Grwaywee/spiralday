@@ -344,6 +344,36 @@ final class CurlSpreadTests: XCTestCase {
         XCTAssertLessThanOrEqual(maxDiff(frames[0], b.spread.versoRect, scale: 2, b.nextVerso), 1)
     }
 
+    /// 스프링 노트에는 골 음영이 없다 (소유자 2026-10-05): 구멍 띠가 제 쪽에 누워 있는 동안(넘김의 대부분) 잎은 한 장처럼
+    /// 말린 부분 너머에만 그림자를 드리운다 — 틈(책상)과 반대쪽 쪽은 어두워지지 않는다. 띠가 코일을 돌 때에야 틈 너머로 그림자가 간다.
+    func testNoGutterShadeWhileTheStripLiesOnItsPage() throws {
+        try XCTSkipIf(CurlGPU.shared == nil, "Metal 없음")
+        for horizontal in [false, true] {
+            let b = book(horizontal: horizontal)
+            let g = b.spread
+            for direction in [FlipDirection.forward, .backward] {
+                let fwd = direction == .forward
+                let bitmaps = fwd ? SpreadBitmaps(front: b.recto, back: b.nextVerso, revealed: b.nextRecto)
+                                  : SpreadBitmaps(front: b.verso, back: b.nextRecto, revealed: b.nextVerso)
+                let opp = fwd ? g.versoRect : g.rectoRect
+                let gap = horizontal
+                    ? CGRect(x: g.versoRect.minX, y: g.versoRect.maxY, width: g.versoRect.width, height: g.rectoRect.minY - g.versoRect.maxY)
+                    : CGRect(x: g.versoRect.maxX, y: g.versoRect.minY, width: g.rectoRect.minX - g.versoRect.maxX, height: g.versoRect.height)
+                let progress = [0.1, 0.3]
+                let frames = CurlController.renderSpreadStills(bitmaps, spread: g, direction: direction, scale: 2, progress: progress)
+                XCTAssertEqual(frames.count, progress.count)
+                for (i, p) in progress.enumerated() {
+                    let leaf = CurlSpreadLeaf.turn(spread: g, direction: direction, progress: p)
+                    XCTAssertEqual(leaf.holeAngle, 0, "\(p): 띠는 아직 제 쪽에")
+                    XCTAssertFalse(leaf.isFlat, "\(p): 잎은 말려 있다")
+                    let name = "\(horizontal ? "weekly" : "daily") \(fwd ? "fwd" : "back") \(p)"
+                    XCTAssertEqual(maxAlpha(frames[i], gap, scale: 2), 0, "\(name): 틈은 쉴 때 그대로 (골 음영 없음)")
+                    XCTAssertEqual(maxAlpha(frames[i], opp, scale: 2), 0, "\(name): 반대쪽 쪽도 그대로")
+                }
+            }
+        }
+    }
+
     func testTimedSpreadFramesRender() throws {
         try XCTSkipIf(CurlGPU.shared == nil, "Metal 없음")
         let b = book(horizontal: false)
