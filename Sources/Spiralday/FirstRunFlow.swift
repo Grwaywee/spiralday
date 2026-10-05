@@ -122,4 +122,26 @@ enum FirstRunFlow {
 
     /// 기다리는 동안 이만큼 지나도 플래너가 오지 않으면 [새 플래너 만들기] 를 보인다
     static let waitingPatience: TimeInterval = 30
+
+    /// 합류 · 복구 코드가 끝나 시트를 닫았다 (공유 벡터 afterJoin) — 그룹에 들어간 뒤의 sheetClosed
+    static func afterJoin(restored: Bool, hasUserBook: Bool) -> FirstRunStage {
+        sheetClosed(.planner, inGroup: true, hasUserBook: hasUserBook, outcome: restored ? .restored : .joined)
+    }
+
+    /// 처음 안내를 마쳤다 (§3.4 [펼치기] · 시작하기 · 창 닫기): O = true, 둘러보기 T 가 없으면 due — 있던 T 는 그대로
+    static func finish(tour: FirstRunTourStatus?) -> (onboardingDone: Bool, tour: FirstRunTourStatus) {
+        (true, tour ?? .due)
+    }
+}
+
+/// 둘러보기 상태 T (docs/mobile-tour.md §3.2 · §4.8). Mac 은 plannerTourDone 하나로 적는다:
+/// 없음 · false = due (본 창을 열 때 저절로 시작), true = 이미 시작했다 (running · done · skipped — Mac 은 시작할 때 적는다)
+enum FirstRunTourStatus: String, CaseIterable, Sendable {
+    case due, running, done, skipped
+
+    /// Mac 이 적어 둔 plannerTourDone → T
+    static func mac(plannerTourDone: Bool?) -> FirstRunTourStatus { plannerTourDone == true ? .done : .due }
+
+    /// Mac 에서 같은 뜻인지 (running · done · skipped 는 모두 "다시 저절로 뜨지 않는다")
+    var startedOnMac: Bool { self != .due }
 }

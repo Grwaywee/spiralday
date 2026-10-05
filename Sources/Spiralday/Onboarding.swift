@@ -98,7 +98,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
         // 합류 코드를 입력하던 중에 닫았으면 그 입력은 버린다 (승인을 기다리는 흐름은 설정 → 동기화에 그대로 남는다)
         if let sync, sync.flow == nil, sync.localStep != nil { sync.localStep = nil }
         model?.stop()
-        UserDefaults.standard.set(true, forKey: Self.doneKey)
+        Self.recordFinished(.standard)
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         self.window = nil
@@ -119,6 +119,15 @@ final class OnboardingController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         finish(closing: true)
+    }
+
+    /// 처음 안내를 마쳤다고 적는다 (FirstRunFlow.finish — iOS · Android 와 같은 규칙): O = true. 둘러보기는 Mac 에서 plannerTourDone 이고
+    /// 적지 않은 채로 두면 due (본 창을 열 때 저절로) — 이미 시작했거나 끝낸 둘러보기는 그대로 둔다
+    static func recordFinished(_ defaults: UserDefaults) {
+        let before = FirstRunTourStatus.mac(plannerTourDone: defaults.object(forKey: TourController.doneKey) as? Bool)
+        let f = FirstRunFlow.finish(tour: before)
+        defaults.set(f.onboardingDone, forKey: doneKey)
+        if f.tour.startedOnMac != before.startedOnMac { defaults.set(f.tour.startedOnMac, forKey: TourController.doneKey) }
     }
 
     /// 안내를 마칠 때 (시작하기 · 창 닫기): 내 플래너가 없으면 기본 플래너를 만든다 — 다만 동기화로 합류하는 중이면 만들지 않는다
@@ -242,7 +251,9 @@ final class OnboardingModel: ObservableObject {
         }
     }
 
-    enum PlannerMode { case create, existing }
+    /// 플래너 단계의 모양: 만들기 양식 · 내 플래너 · 받는 중 (합류했는데 그룹의 플래너가 아직 없다 — 만들기 양식 대신.
+    /// [새 플래너 만들기] 는 30초가 지나야 — docs/mobile-tour.md §3.2 · 사장님 결정 2)
+    enum PlannerMode { case create, existing, waiting }
 
     static let turn = Animation.spring(response: 0.46, dampingFraction: 0.88)
 
@@ -287,6 +298,7 @@ final class OnboardingModel: ObservableObject {
         plannerMode = store.userBooks.isEmpty ? .create : .existing
         userBookIDs = store.userBooks.map(\.id)
         if step == .welcome { placeStart() }
+        if step == .planner { plannerMode = plannerModeOnArrival }
         watch()
     }
 
@@ -307,6 +319,16 @@ final class OnboardingModel: ObservableObject {
     var isComposingExtra: Bool { plannerMode == .create && !store.userBooks.isEmpty }
     /// 플래너가 오기를 기다리는 중 (합류했는데 아직 내 플래너가 없다)
     var waitingForBook: Bool { readyVariant == .waiting && needsBook }
+    /// 받는 중에 [새 플래너 만들기] 로 만들기 양식을 연 상태 ([취소] 는 받는 중으로 돌아간다)
+    var isCreatingInsteadOfWaiting: Bool { plannerMode == .create && cameFromWaiting && waitingForBook }
+
+    /// 플래너 단계에 들어갈 때의 모양: 내 플래너가 있으면 그 책, 그룹의 플래너를 받는 중이면 받는 중 카드
+    /// ([이전] · Esc · 점으로 와도 30초 전에는 만들기 양식을 열지 않는다 — 빈 '내 플래너' 가 그룹 전체에 퍼지지 않게), 아니면 만들기
+    var plannerModeOnArrival: PlannerMode {
+        if !needsBook { return .existing }
+        if waitingForBook && !cameFromWaiting { return .waiting }
+        return .create
+    }
     /// "다른 기기의 플래너를 동기화로 가져오기" 를 보일지: 동기화를 쓸 수 있고, 아직 그룹 밖이고, 내 플래너가 없을 때 (처음 켬)
     var canJoin: Bool { !replay && needsBook && !inGroup && sync?.available == true && sync?.ready == true }
     /// 안내를 마칠 때 기본 플래너를 만들면 안 되는지: 그룹에 들어 있거나 합류 · 복구 흐름이 아직 도는 중
@@ -355,7 +377,7 @@ final class OnboardingModel: ObservableObject {
         return !isCreating || draft.isValid
     }
     var showsBack: Bool { step != .welcome }
-    var backTitle: String { step == .planner && isComposingExtra ? "취소" : "이전" }
+    var backTitle: String { step == .planner && (isComposingExtra || isCreatingInsteadOfWaiting) ? "취소" : "이전" }
     var showsSkip: Bool { !blocking && step != .ready && !isCreating }
 
     // MARK: actions
@@ -365,10 +387,7 @@ final class OnboardingModel: ObservableObject {
         case .planner where plannerMode == .create: create()
         case .ready where waitingForBook:
             // 30초가 지나도 오지 않았다: 새 플래너를 만들어 시작한다 (받은 플래너는 나중에 책장에 들어온다)
-            guard waitingLate else { return }
-            cameFromWaiting = true
-            draft = Self.freshDraft(store)
-            go(.planner)
+            createInstead()
         case .ready: onFinish?()
         default: go(step.next)
         }
@@ -385,14 +404,34 @@ final class OnboardingModel: ObservableObject {
             withAnimation(.snappy(duration: 0.3)) { plannerMode = .existing }
             return
         }
+        if step == .planner && isCreatingInsteadOfWaiting {
+            // [새 플래너 만들기] 를 그만둔다: 받는 중으로 (온 곳은 준비 끝)
+            cameFromWaiting = false
+            go(.ready)
+            return
+        }
         go(Step(rawValue: step.rawValue - 1))
     }
 
     func skip() { go(.ready) }
 
     func composeAnother() {
+        // 받는 중에는 한 권 더 만들기가 없다 (만들기는 30초 뒤의 [새 플래너 만들기] 로만)
+        guard plannerMode == .existing, !needsBook else { return }
         draft = Self.freshDraft(store)
         withAnimation(.snappy(duration: 0.3)) { plannerMode = .create }
+    }
+
+    /// 받는 중 30초 뒤 [새 플래너 만들기] (준비 끝 · 플래너 단계의 받는 중 카드): 만들기 양식으로
+    func createInstead() {
+        guard waitingForBook, waitingLate else { return }
+        cameFromWaiting = true
+        draft = Self.freshDraft(store)
+        if step == .planner {
+            withAnimation(.snappy(duration: 0.3)) { plannerMode = .create }
+        } else {
+            go(.planner)
+        }
     }
 
     func go(_ target: Step?) {
@@ -402,14 +441,15 @@ final class OnboardingModel: ObservableObject {
         forward = target.rawValue > step.rawValue
         // 방향을 먼저 반영한 뒤에 장을 바꾼다 (나가는 장이 알맞은 쪽으로 빠지도록)
         DispatchQueue.main.async { [self] in
-            if target == .planner { plannerMode = needsBook ? .create : .existing }
+            if target == .planner { plannerMode = plannerModeOnArrival }
             withAnimation(Self.turn) { step = target }
             turning = false
         }
     }
 
     private func create() {
-        guard draft.isValid else { return }
+        // 받는 중에는 30초가 지나 [새 플래너 만들기] 를 고른 뒤에만 만든다 (그 전에 만들면 빈 책이 바로 그룹의 모든 기기에 간다)
+        guard draft.isValid, !(waitingForBook && !(cameFromWaiting && waitingLate)) else { return }
         createdID = store.createBook(name: draft.resolvedName, start: draft.start, end: draft.endValue, cover: draft.cover)
         stopWaiting()
         readyVariant = FirstRunFlow.nextFromPlanner(created: true, inGroup: inGroup, outcome: outcome).readyVariant ?? .created
@@ -446,7 +486,7 @@ final class OnboardingModel: ObservableObject {
         readyVariant = v
         if v == .waiting { startWaiting() } else { stopWaiting() }
         if step.rawValue <= Step.planner.rawValue {
-            plannerMode = needsBook ? .create : .existing
+            plannerMode = plannerModeOnArrival
             go(.turn)
         }
     }
@@ -458,9 +498,16 @@ final class OnboardingModel: ObservableObject {
             readyVariant = v
             stopWaiting()
         }
-        // 플래너 단계는 받은 플래너로 바뀐다 (만들던 초안은 버린다 — 받은 플래너로 이어 쓰면 된다)
-        if step == .planner && plannerMode == .create && !needsBook && createdID == nil && inGroup {
+        // 플래너 단계는 받은 플래너로 바뀐다 (만들던 초안 · 받는 중 카드는 버린다 — 받은 플래너로 이어 쓰면 된다)
+        if step == .planner && plannerMode != .existing && !needsBook && createdID == nil && inGroup {
+            cameFromWaiting = false
             withAnimation(.snappy(duration: 0.3)) { plannerMode = .existing }
+        }
+        // 플래너 단계에서 받았다: 준비 끝의 모양도 받은 플래너로 (그 단계의 [다음] 이 닿는 곳 — nextFromPlanner). 받는 중 그대로 두면
+        // 책이 있는데 "플래너를 받는 중이에요…" 가 보인다
+        if step == .planner, readyVariant == .waiting, !needsBook, createdID == nil, inGroup {
+            readyVariant = FirstRunFlow.nextFromPlanner(created: false, inGroup: true, outcome: outcome).readyVariant ?? .joined
+            stopWaiting()
         }
     }
 
@@ -1163,9 +1210,17 @@ private struct PlannerPage: View {
     @EnvironmentObject private var store: PlannerStore
 
     var body: some View {
+        if model.plannerMode == .waiting {
+            WaitingForGroupBook(model: model)
+        } else {
+            page
+        }
+    }
+
+    private var page: some View {
         let creating = model.plannerMode == .create
         let book = creating ? model.draft.preview : (model.myBook ?? model.draft.preview)
-        HStack(alignment: .top, spacing: 34) {
+        return HStack(alignment: .top, spacing: 34) {
             VStack(spacing: 16) {
                 BookCover(book: book, width: 170)
                     .rotationEffect(.degrees(-2))
@@ -1193,6 +1248,66 @@ private struct PlannerPage: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .transition(.opacity)
         }
+    }
+}
+
+/// 플래너 단계 · 받는 중: 합류했는데 그룹의 플래너가 아직 오지 않았다. 만들기 양식 대신 이 카드 —
+/// [이전] · Esc · 점으로 와도 30초 전에는 책을 만들 수 없다 (만든 빈 책이 바로 그룹의 모든 기기에 간다). 30초 뒤에만 [새 플래너 만들기]
+private struct WaitingForGroupBook: View {
+    @ObservedObject var model: OnboardingModel
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 34) {
+            VStack(spacing: 16) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Ink.faint, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .frame(width: 150, height: 196)
+                        .rotationEffect(.degrees(-2))
+                    if model.waitingLate {
+                        Image(systemName: "wifi.exclamationmark")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(Ink.soft)
+                    } else {
+                        ProgressView().controlSize(.regular)
+                    }
+                }
+                .frame(width: 170, height: 210)
+                Text("도착하면 이 자리에\n그룹의 플래너가 보여요")
+                    .font(Fonts.hand(16))
+                    .foregroundStyle(Ink.soft)
+                    .multilineTextAlignment(.center)
+                    .fixedSize()
+            }
+            .frame(width: 186)
+            .padding(.top, 4)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Headline(text: ReadyPage.headline(.waiting, late: model.waitingLate),
+                         tint: OnboardingModel.Step.planner.tint, size: 32)
+                BodyText(text: ReadyPage.message(.waiting, late: model.waitingLate), size: 12.5)
+                    .padding(.top, 8)
+                PenNote(text: "기다리는 동안 다음 장의 사용법을 봐도 돼요")
+                    .padding(.top, 18)
+                if model.waitingLate {
+                    Button(action: model.createInstead) {
+                        Label("새 플래너 만들기", systemImage: "plus")
+                            .font(Fonts.print(12.5, .demiBold))
+                            .foregroundStyle(Ink.print)
+                            .padding(.horizontal, 14)
+                            .frame(height: 30)
+                            .background(Capsule().strokeBorder(Ink.print.opacity(0.28), lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(PressStyle())
+                    .padding(.top, 16)
+                    .accessibilityIdentifier("firstRun.planner.createInstead")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .transition(.opacity)
+        }
+        .accessibilityIdentifier("firstRun.planner.waiting")
     }
 }
 
@@ -2534,11 +2649,8 @@ private struct MiniDailySchematic: View {
 
 // MARK: - 7 시작하기
 
-private struct ReadyPage: View {
-    @ObservedObject var model: OnboardingModel
-    @EnvironmentObject private var store: PlannerStore
-
-    /// 준비 끝의 모양 (비공개 docs/mobile-tour.md §3.5 — iOS · Android 와 같은 말)
+/// 준비 끝의 문구 (비공개 docs/mobile-tour.md §3.5 — iOS · Android 와 같은 말, 공유 벡터 mobile-tour.json "ready")
+enum OnboardingCopy {
     static func headline(_ v: FirstRunReady, late: Bool) -> String {
         switch v {
         case .created: "준비 끝!"
@@ -2557,6 +2669,14 @@ private struct ReadyPage: View {
                             : "그룹에 들어왔어요. 플래너가 도착하면 바로 펼칠 수 있어요."
         }
     }
+}
+
+private struct ReadyPage: View {
+    @ObservedObject var model: OnboardingModel
+    @EnvironmentObject private var store: PlannerStore
+
+    static func headline(_ v: FirstRunReady, late: Bool) -> String { OnboardingCopy.headline(v, late: late) }
+    static func message(_ v: FirstRunReady, late: Bool) -> String { OnboardingCopy.message(v, late: late) }
 
     var body: some View {
         if model.waitingForBook {

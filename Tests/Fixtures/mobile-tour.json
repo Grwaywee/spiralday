@@ -1,9 +1,8 @@
 {
-  "_doc": "docs/mobile-tour.md 의 가이드 투어 · 처음 안내 공유 시험 벡터 (iOS Tests/AppTests/GuideTourTests · Android vitest 가 같은 파일을 본다). KO 문구는 원문 그대로.",
-  "version": 1,
+  "about": "docs/mobile-tour.md — the guided tour and the first run, shared by the iOS app (Tests/AppTests/GuideTourTests) and Android (web/tests/mobileTour.test.ts). The SAME FILE, byte for byte, in both worktrees (sync · integration): change it in both or in neither. Korean is the original. Steps are the counted ones (the start and end cards are 'intro' and 'end').",
+  "version": 2,
   "steps": {
     "phone": [
-      "intro",
       "chrome.book",
       "chrome.kind",
       "daily.turn",
@@ -13,11 +12,9 @@
       "daily.dday",
       "daily.share",
       "weekly.flip",
-      "chrome.settings",
-      "end"
+      "chrome.settings"
     ],
-    "tablet": [
-      "intro",
+    "tabletRail": [
       "chrome.book",
       "chrome.kind",
       "daily.turn",
@@ -26,11 +23,9 @@
       "daily.write",
       "daily.dday",
       "weekly.flip",
-      "chrome.settings",
-      "end"
+      "chrome.settings"
     ],
-    "tabletNarrow": [
-      "intro",
+    "tabletBar": [
       "chrome.book",
       "chrome.kind",
       "daily.turn",
@@ -39,281 +34,1017 @@
       "daily.write",
       "daily.dday",
       "weekly.flip",
-      "chrome.settings",
-      "end"
+      "chrome.settings"
     ]
   },
-  "copy": {
-    "phone": [
-      {
-        "id": "intro",
+  "words": {
+    "intro": {
+      "sample": {
         "title": "짧게 둘러볼까요?",
         "body": "1분이면 돼요. 예시 플래너를 잠깐 펼쳐서 화면을 하나씩 짚어 드릴게요. 다 보면 내 플래너로 돌아와요."
       },
-      {
-        "id": "chrome.book",
+      "noSample": {
+        "title": "짧게 둘러볼까요?",
+        "body": "1분이면 돼요. 화면을 하나씩 짚어 드릴게요."
+      }
+    },
+    "end": {
+      "sample": {
+        "title": "다 둘러봤어요!",
+        "body": "이제 보던 플래너로 돌아갈게요. 예시 플래너는 책장에 그대로 있어요."
+      },
+      "noSample": {
+        "title": "다 둘러봤어요!",
+        "body": "이제 보던 페이지로 돌아갈게요."
+      }
+    },
+    "phone": {
+      "chrome.book": {
         "title": "펼친 플래너",
         "body": "지금 펼친 플래너예요. 누르면 다른 플래너로 바꾸거나 새로 만들어요. 지금은 예시 플래너를 펼쳐 뒀어요."
       },
-      {
-        "id": "chrome.kind",
+      "chrome.kind": {
         "title": "주간 · 일간 · 홈",
         "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
       },
-      {
-        "id": "daily.turn",
+      "daily.turn": {
         "title": "옆으로 넘기기",
         "body": "종이 가운데를 왼쪽으로 쓸면 다음 날, 오른쪽으로 쓸면 전날이에요. 한 장 넘겨 보세요."
       },
-      {
-        "id": "tools.case",
+      "tools.case": {
         "title": "필통",
         "body": "형광펜과 지우개 · 글씨 · 밥시간이 들어 있어요. 위에 뜬 이름표가 지금 든 도구와 그 색이에요. 형광펜을 하나 골라 보세요."
       },
-      {
-        "id": "daily.paint",
+      "daily.paint": {
         "title": "타임테이블 칠하기",
         "body": "한 줄이 한 시간, 한 칸이 10분이에요. 칸을 손가락으로 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
       },
-      {
-        "id": "daily.write",
+      "daily.write": {
         "title": "할 일 적기",
         "body": "빈 줄을 눌러 한 줄 적어 보세요. 오른쪽 칸은 ○ △ × → 표시예요. 위의 쓰기 · 시간으로 오가고, ⤡ 를 누르면 한 장 전체로 돌아가요."
       },
-      {
-        "id": "daily.dday",
+      "daily.dday": {
         "title": "D-DAY",
         "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
       },
-      {
-        "id": "daily.share",
+      "daily.share": {
         "title": "이미지로 공유",
         "body": "오늘 장을 이미지로 만들어요. 스토리에 꽉 차는 9:16, 인스타그램 피드에 딱 맞는 3:4 중에 골라요."
       },
-      {
-        "id": "weekly.flip",
+      "weekly.flip": {
         "title": "주간은 위아래로",
         "body": "주간은 위쪽이 묶여 있어요. 위로 쓸어 올리면 다음 주, 내리면 지난주예요. 옆으로 밀면 요일마다 멈춰요. 한 주 넘겨 보세요."
       },
-      {
-        "id": "chrome.settings",
+      "chrome.settings": {
         "title": "설정과 동기화",
         "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
-      },
-      {
-        "id": "end",
-        "title": "다 둘러봤어요!",
-        "body": "이제 보던 플래너로 돌아갈게요. 예시 플래너는 책장에 그대로 있어요."
       }
-    ],
-    "tablet": [
-      {
-        "id": "intro",
-        "title": "짧게 둘러볼까요?",
-        "body": "1분이면 돼요. 예시 플래너를 잠깐 펼쳐서 화면을 하나씩 짚어 드릴게요. 다 보면 내 플래너로 돌아와요."
-      },
-      {
-        "id": "chrome.book",
+    },
+    "phoneNoSample": {
+      "chrome.book": {
         "title": "펼친 플래너",
-        "body": "레일 맨 위의 책이 펼친 플래너예요. 누르면 플래너를 바꾸고, 펜슬과 손 · 설정도 여기 있어요."
+        "body": "지금 펼친 플래너예요. 누르면 다른 플래너로 바꾸거나 새로 만들어요."
       },
-      {
-        "id": "chrome.kind",
+      "chrome.kind": {
         "title": "주간 · 일간 · 홈",
         "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
       },
-      {
-        "id": "daily.turn",
+      "daily.turn": {
         "title": "옆으로 넘기기",
-        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+        "body": "종이 가운데를 왼쪽으로 쓸면 다음 날, 오른쪽으로 쓸면 전날이에요. 한 장 넘겨 보세요."
       },
-      {
-        "id": "tools.case",
-        "title": "레일의 도구",
-        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 형광펜을 하나 골라 보세요."
+      "tools.case": {
+        "title": "필통",
+        "body": "형광펜과 지우개 · 글씨 · 밥시간이 들어 있어요. 위에 뜬 이름표가 지금 든 도구와 그 색이에요. 형광펜을 하나 골라 보세요."
       },
-      {
-        "id": "daily.paint",
+      "daily.paint": {
         "title": "타임테이블 칠하기",
-        "body": "펜슬이나 손가락으로 칸을 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 칸을 끌어 칠하고, 같은 색으로 다시 칠하면 지워져요."
       },
-      {
-        "id": "daily.write",
+      "daily.write": {
         "title": "할 일 적기",
-        "body": "줄을 눌러 키보드로 적거나, Apple Pencil 로 줄 위에 바로 손글씨를 써요. 한 줄 적어 보세요."
+        "body": "줄을 누르면 바로 적어요. 오른쪽 칸은 ○ △ × → 표시예요. 위의 쓰기 · 시간으로 오가고, ⤡ 를 누르면 한 장 전체로 돌아가요."
       },
-      {
-        "id": "daily.dday",
+      "daily.dday": {
         "title": "D-DAY",
         "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
       },
-      {
-        "id": "weekly.flip",
+      "daily.share": {
+        "title": "이미지로 공유",
+        "body": "오늘 장을 이미지로 만들어요. 스토리에 꽉 차는 9:16, 인스타그램 피드에 딱 맞는 3:4 중에 골라요."
+      },
+      "weekly.flip": {
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 위로 쓸어 올리면 다음 주, 내리면 지난주예요. 옆으로 밀면 요일마다 멈춰요. 한 주 넘겨 보세요."
+      },
+      "chrome.settings": {
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      }
+    },
+    "phoneShareInMenu": {
+      "title": "이미지로 공유",
+      "body": "플래너 단추의 메뉴에서 ‘이미지로 공유’를 고르면 오늘 장을 9:16 이나 3:4 이미지로 만들어요."
+    },
+    "phoneAndroidWeekly": {
+      "title": "주간은 위아래로",
+      "body": "주간은 위쪽이 묶여 있어요. 위로 쓸어 올리면 다음 주, 내리면 지난주예요. 옆으로 밀면 요일마다 멈춰요. 한 주 넘겨 보세요. 아래 띠의 ‹ › 로도 넘겨요."
+    },
+    "ipadRail": {
+      "chrome.book": {
+        "title": "펼친 플래너",
+        "body": "레일 맨 위의 책이 펼친 플래너예요. 누르면 플래너를 바꾸고, 펜슬과 손 · 설정도 여기 있어요. 지금은 예시 플래너를 펼쳐 뒀어요."
+      },
+      "chrome.kind": {
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
+      },
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      "tools.case": {
+        "title": "레일의 도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 형광펜을 하나 골라 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 펜슬이나 손가락으로 칸을 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+      },
+      "daily.write": {
+        "title": "할 일 적기",
+        "body": "줄을 눌러 키보드로 적거나, Apple Pencil 로 줄 위에 바로 손글씨를 써요. 한 줄 적어 보세요."
+      },
+      "daily.dday": {
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      "weekly.flip": {
         "title": "주간은 위아래로",
         "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
       },
-      {
-        "id": "chrome.settings",
+      "chrome.settings": {
         "title": "설정과 동기화",
         "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
-      },
-      {
-        "id": "end",
-        "title": "다 둘러봤어요!",
-        "body": "이제 보던 플래너로 돌아갈게요. 예시 플래너는 책장에 그대로 있어요."
       }
+    },
+    "ipadBar": {
+      "chrome.book": {
+        "title": "펼친 플래너",
+        "body": "더 보기 메뉴 맨 위에 펼친 플래너가 있어요. 지금은 예시 플래너를 펼쳐 뒀어요."
+      },
+      "chrome.kind": {
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
+      },
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      "tools.case": {
+        "title": "도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 도구 메뉴에서 형광펜을 골라 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 펜슬이나 손가락으로 칸을 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+      },
+      "daily.write": {
+        "title": "할 일 적기",
+        "body": "줄을 눌러 키보드로 적거나, Apple Pencil 로 줄 위에 바로 손글씨를 써요. 한 줄 적어 보세요."
+      },
+      "daily.dday": {
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      "weekly.flip": {
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+      },
+      "chrome.settings": {
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      }
+    },
+    "ipadRailNoSample": {
+      "chrome.book": {
+        "title": "펼친 플래너",
+        "body": "레일 맨 위의 책이 펼친 플래너예요. 누르면 플래너를 바꾸고, 펜슬과 손 · 설정도 여기 있어요."
+      },
+      "chrome.kind": {
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
+      },
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      "tools.case": {
+        "title": "레일의 도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 형광펜을 하나 골라 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 칸을 끌어 칠하고, 같은 색으로 다시 칠하면 지워져요."
+      },
+      "daily.write": {
+        "title": "할 일 적기",
+        "body": "줄을 눌러 키보드로 적거나, Apple Pencil 로 줄 위에 바로 손글씨를 써요."
+      },
+      "daily.dday": {
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      "weekly.flip": {
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+      },
+      "chrome.settings": {
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      }
+    },
+    "ipadPencilOnly": {
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. Apple Pencil 로 칸을 끌어 칠해 보세요. 손가락은 넘기고 누르는 데 써요."
+      }
+    },
+    "androidTabletRail": {
+      "chrome.book": {
+        "title": "펼친 플래너",
+        "body": "레일 맨 위의 책이 펼친 플래너예요. 누르면 플래너를 바꾸고, 손과 펜 · 설정도 여기 있어요. 지금은 예시 플래너를 펼쳐 뒀어요."
+      },
+      "chrome.kind": {
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요. 두 손가락을 오므려도 일간 → 주간 → 홈으로 바뀌어요."
+      },
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      "tools.case": {
+        "title": "레일의 도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 형광펜을 하나 골라 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 펜이나 손가락으로 칸을 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+      },
+      "daily.write": {
+        "title": "할 일 적기",
+        "body": "빈 줄을 눌러 한 줄 적어 보세요. 오른쪽 칸은 ○ △ × → 표시예요."
+      },
+      "daily.dday": {
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      "weekly.flip": {
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+      },
+      "chrome.settings": {
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      }
+    },
+    "androidTabletBar": {
+      "chrome.book": {
+        "title": "펼친 플래너",
+        "body": "더 보기 메뉴 맨 위에 펼친 플래너가 있어요. 지금은 예시 플래너를 펼쳐 뒀어요."
+      },
+      "chrome.kind": {
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요. 두 손가락을 오므려도 일간 → 주간 → 홈으로 바뀌어요."
+      },
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      "tools.case": {
+        "title": "도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 도구 메뉴에서 형광펜을 골라 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 펜이나 손가락으로 칸을 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+      },
+      "daily.write": {
+        "title": "할 일 적기",
+        "body": "빈 줄을 눌러 한 줄 적어 보세요. 오른쪽 칸은 ○ △ × → 표시예요."
+      },
+      "daily.dday": {
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      "weekly.flip": {
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+      },
+      "chrome.settings": {
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      }
+    },
+    "androidTabletRailNoSample": {
+      "chrome.book": {
+        "title": "펼친 플래너",
+        "body": "레일 맨 위의 책이 펼친 플래너예요. 누르면 플래너를 바꾸고, 손과 펜 · 설정도 여기 있어요."
+      },
+      "chrome.kind": {
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요. 두 손가락을 오므려도 일간 → 주간 → 홈으로 바뀌어요."
+      },
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      "tools.case": {
+        "title": "레일의 도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 형광펜을 하나 골라 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 칸을 끌어 칠하고, 같은 색으로 다시 칠하면 지워져요."
+      },
+      "daily.write": {
+        "title": "할 일 적기",
+        "body": "줄을 누르면 바로 적어요. 오른쪽 칸은 ○ △ × → 표시예요."
+      },
+      "daily.dday": {
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      "weekly.flip": {
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+      },
+      "chrome.settings": {
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      }
+    },
+    "androidTabletSingleWeekly": {
+      "title": "한 주 넘기기",
+      "body": "종이 바깥 가장자리를 잡고 옆으로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+    },
+    "androidTabletPen": {
+      "daily.turn": {
+        "title": "옆으로 넘기기",
+        "body": "손가락으로 종이를 옆으로 쓸면 넘어가요. 한 장 넘겨 보세요."
+      },
+      "daily.paint": {
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 펜으로 칸을 끌어 칠해 보세요. 손가락은 넘기고 누르는 데 써요."
+      },
+      "weekly.flip": {
+        "title": "한 주 넘기기",
+        "body": "손가락으로 종이를 옆으로 쓸면 다음 주예요. 한 주 넘겨 보세요."
+      }
+    },
+    "screenReader": {
+      "iosPhone": {
+        "daily.turn": "종이 가운데를 왼쪽으로 쓸면 다음 날, 오른쪽으로 쓸면 전날이에요. 한 장 넘겨 보세요. VoiceOver 에서는 위아래로 쓸어 ‘다음 날’ 동작을 고르고 두 번 탭해요.",
+        "weekly.flip": "주간은 위쪽이 묶여 있어요. 위로 쓸어 올리면 다음 주, 내리면 지난주예요. 옆으로 밀면 요일마다 멈춰요. 한 주 넘겨 보세요. VoiceOver 에서는 위아래로 쓸어 ‘다음 주’ 동작을 고르고 두 번 탭해요."
+      },
+      "ipad": {
+        "daily.turn": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요. VoiceOver 에서는 ‘넘겨 보기’ 단추로 넘겨요.",
+        "weekly.flip": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요. VoiceOver 에서는 ‘넘겨 보기’ 단추로 넘겨요."
+      },
+      "androidPhone": {
+        "daily.turn": "종이 가운데를 왼쪽으로 쓸면 다음 날, 오른쪽으로 쓸면 전날이에요. 한 장 넘겨 보세요. TalkBack 에서는 ‘넘겨 보기’ 단추로 넘겨요.",
+        "weekly.flip": "주간은 위쪽이 묶여 있어요. 위로 쓸어 올리면 다음 주, 내리면 지난주예요. 옆으로 밀면 요일마다 멈춰요. 한 주 넘겨 보세요. 아래 띠의 ‹ › 로도 넘겨요."
+      },
+      "androidTablet": {
+        "daily.turn": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요. TalkBack 에서는 ‘넘겨 보기’ 단추로 넘겨요.",
+        "weekly.flip": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요. TalkBack 에서는 ‘넘겨 보기’ 단추로 넘겨요."
+      }
+    },
+    "tabletParity": [
+      "daily.turn",
+      "tools.case",
+      "daily.dday",
+      "weekly.flip",
+      "chrome.settings"
     ]
   },
+  "anchors": {
+    "phone": {
+      "daily.turn": [
+        "paper.page"
+      ],
+      "weekly.flip": [
+        "paper.page",
+        "week.strip"
+      ]
+    },
+    "tablet": {
+      "daily.turn": [
+        "paper.outerEdge"
+      ],
+      "weekly.flip": [
+        "paper.bottomEdge"
+      ]
+    }
+  },
+  "ready": {
+    "created": {
+      "title": "준비 끝!",
+      "body": "이제 첫 장을 펼쳐 볼까요? 오늘 할 일부터 한 줄 적어 보세요."
+    },
+    "joined": {
+      "title": "플래너를 가져왔어요!",
+      "body": "다른 기기에서 쓰던 플래너가 이 기기에도 펼쳐져요. 한쪽에서 적으면 다른 쪽에도 곧 나타나요."
+    },
+    "restored": {
+      "title": "플래너를 되찾았어요!",
+      "body": "복구 코드로 동기화 그룹에 다시 들어왔어요. 그동안 적은 기록이 그대로 펼쳐져요."
+    },
+    "waiting": {
+      "title": "플래너를 받는 중이에요…",
+      "body": "그룹에 들어왔어요. 플래너가 도착하면 바로 펼칠 수 있어요."
+    },
+    "waitedOut": {
+      "title": "아직 플래너가 오지 않았어요",
+      "body": "인터넷 연결을 확인해 주세요. 기다리는 동안 새 플래너를 만들어 시작할 수도 있어요."
+    }
+  },
+  "phoneTips": [
+    "쓰고 싶은 곳을 누르면 그 자리로 다가가요.",
+    "종이를 옆으로 쓸면 날이, 주간은 위아래로 쓸면 주가 넘어가요.",
+    "아래 필통에서 펜을 고르면 타임테이블을 칠해요."
+  ],
   "firstRun": {
     "start": [
       {
         "userBook": true,
         "inGroup": true,
-        "stage": "ready.joined"
+        "expect": {
+          "step": "ready",
+          "variant": "joined"
+        }
       },
       {
         "userBook": true,
         "inGroup": false,
-        "stage": "ready.created"
+        "expect": {
+          "step": "ready",
+          "variant": "created"
+        }
       },
       {
         "userBook": false,
         "inGroup": true,
-        "stage": "ready.waiting"
+        "expect": {
+          "step": "ready",
+          "variant": "waiting"
+        }
       },
       {
         "userBook": false,
         "inGroup": false,
-        "stage": "welcome"
+        "expect": {
+          "step": "welcome"
+        }
+      }
+    ],
+    "afterJoin": [
+      {
+        "how": "join",
+        "userBook": true,
+        "expect": {
+          "step": "ready",
+          "variant": "joined"
+        }
+      },
+      {
+        "how": "join",
+        "userBook": false,
+        "expect": {
+          "step": "ready",
+          "variant": "waiting"
+        }
+      },
+      {
+        "how": "restore",
+        "userBook": true,
+        "expect": {
+          "step": "ready",
+          "variant": "restored"
+        }
+      },
+      {
+        "how": "restore",
+        "userBook": false,
+        "expect": {
+          "step": "ready",
+          "variant": "waiting"
+        }
       }
     ],
     "sheetClosed": [
       {
-        "from": "planner",
+        "from": {
+          "step": "planner"
+        },
         "inGroup": true,
         "userBook": true,
         "outcome": "joined",
-        "to": "ready.joined"
+        "expect": {
+          "step": "ready",
+          "variant": "joined"
+        }
       },
       {
-        "from": "planner",
+        "from": {
+          "step": "planner"
+        },
         "inGroup": true,
         "userBook": true,
         "outcome": "restored",
-        "to": "ready.restored"
+        "expect": {
+          "step": "ready",
+          "variant": "restored"
+        }
       },
       {
-        "from": "planner",
+        "from": {
+          "step": "planner"
+        },
         "inGroup": true,
         "userBook": false,
         "outcome": "joined",
-        "to": "ready.waiting"
+        "expect": {
+          "step": "ready",
+          "variant": "waiting"
+        }
       },
       {
-        "from": "planner",
+        "from": {
+          "step": "planner"
+        },
         "inGroup": false,
         "userBook": false,
         "outcome": null,
-        "to": "planner"
+        "expect": {
+          "step": "planner"
+        }
       }
     ],
     "bookArrived": [
       {
-        "from": "welcome",
+        "from": {
+          "step": "welcome"
+        },
         "inGroup": true,
         "outcome": null,
-        "to": "ready.joined"
+        "expect": {
+          "step": "ready",
+          "variant": "joined"
+        }
       },
       {
-        "from": "welcome",
+        "from": {
+          "step": "welcome"
+        },
         "inGroup": false,
         "outcome": null,
-        "to": "welcome"
+        "expect": {
+          "step": "welcome"
+        }
       },
       {
-        "from": "ready.waiting",
+        "from": {
+          "step": "ready",
+          "variant": "waiting"
+        },
         "inGroup": true,
         "outcome": "restored",
-        "to": "ready.restored"
+        "expect": {
+          "step": "ready",
+          "variant": "restored"
+        }
       },
       {
-        "from": "ready.waiting",
+        "from": {
+          "step": "ready",
+          "variant": "waiting"
+        },
         "inGroup": true,
         "outcome": "joined",
-        "to": "ready.joined"
+        "expect": {
+          "step": "ready",
+          "variant": "joined"
+        }
       },
       {
-        "from": "planner",
+        "from": {
+          "step": "planner"
+        },
         "inGroup": true,
         "outcome": null,
-        "to": "planner"
+        "expect": {
+          "step": "planner"
+        }
+      }
+    ],
+    "finish": [
+      {
+        "status": null,
+        "expect": {
+          "onboardingDone": true,
+          "status": "due"
+        }
+      },
+      {
+        "status": "due",
+        "expect": {
+          "onboardingDone": true,
+          "status": "due"
+        }
+      },
+      {
+        "status": "running",
+        "expect": {
+          "onboardingDone": true,
+          "status": "running"
+        }
+      },
+      {
+        "status": "done",
+        "expect": {
+          "onboardingDone": true,
+          "status": "done"
+        }
+      },
+      {
+        "status": "skipped",
+        "expect": {
+          "onboardingDone": true,
+          "status": "skipped"
+        }
+      }
+    ],
+    "migrate": [
+      {
+        "onboardingDone": null,
+        "userBookAtLaunch": true,
+        "expect": {
+          "onboardingDone": true,
+          "status": "due"
+        }
+      },
+      {
+        "onboardingDone": null,
+        "userBookAtLaunch": false,
+        "expect": null
+      },
+      {
+        "onboardingDone": true,
+        "userBookAtLaunch": true,
+        "expect": null
+      },
+      {
+        "onboardingDone": true,
+        "userBookAtLaunch": false,
+        "expect": null
+      },
+      {
+        "onboardingDone": false,
+        "userBookAtLaunch": true,
+        "expect": null
+      },
+      {
+        "onboardingDone": false,
+        "userBookAtLaunch": false,
+        "expect": null
       }
     ]
   },
-  "launch": [
+  "tourLaunch": [
     {
-      "status": null,
       "onboardingDone": true,
       "userBook": true,
+      "status": null,
       "resumeAsks": 0,
-      "action": "intro",
-      "newStatus": "due"
+      "expect": {
+        "action": "intro",
+        "status": "due"
+      }
     },
     {
+      "onboardingDone": true,
+      "userBook": true,
       "status": "due",
-      "onboardingDone": true,
-      "userBook": true,
       "resumeAsks": 0,
-      "action": "intro",
-      "newStatus": "due"
+      "expect": {
+        "action": "intro",
+        "status": "due"
+      }
     },
     {
-      "status": "running",
       "onboardingDone": true,
       "userBook": true,
-      "resumeAsks": 1,
-      "action": "resume",
-      "newStatus": "running"
+      "status": "running",
+      "resumeAsks": 0,
+      "expect": {
+        "action": "resume",
+        "status": "running"
+      }
     },
     {
-      "status": "running",
       "onboardingDone": true,
       "userBook": true,
+      "status": "running",
+      "resumeAsks": 2,
+      "expect": {
+        "action": "resume",
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": true,
+      "status": "running",
       "resumeAsks": 3,
-      "action": "none",
-      "newStatus": "skipped"
+      "expect": {
+        "action": null,
+        "status": "skipped"
+      }
     },
     {
+      "onboardingDone": true,
+      "userBook": true,
       "status": "done",
-      "onboardingDone": true,
-      "userBook": true,
       "resumeAsks": 0,
-      "action": "none",
-      "newStatus": "done"
+      "expect": {
+        "action": null,
+        "status": "done"
+      }
     },
     {
+      "onboardingDone": true,
+      "userBook": true,
       "status": "skipped",
-      "onboardingDone": true,
-      "userBook": true,
       "resumeAsks": 0,
-      "action": "none",
-      "newStatus": "skipped"
+      "expect": {
+        "action": null,
+        "status": "skipped"
+      }
     },
     {
-      "status": null,
-      "onboardingDone": false,
-      "userBook": true,
-      "resumeAsks": 0,
-      "action": "none",
-      "newStatus": null
-    },
-    {
-      "status": null,
       "onboardingDone": true,
       "userBook": false,
+      "status": null,
       "resumeAsks": 0,
-      "action": "none",
-      "newStatus": null
+      "expect": {
+        "action": null,
+        "status": null
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": false,
+      "status": "due",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "due"
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": false,
+      "status": "running",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": false,
+      "status": "running",
+      "resumeAsks": 2,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": false,
+      "status": "running",
+      "resumeAsks": 3,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": false,
+      "status": "done",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "done"
+      }
+    },
+    {
+      "onboardingDone": true,
+      "userBook": false,
+      "status": "skipped",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "skipped"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": null,
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": null
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": "due",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "due"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": "running",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": "running",
+      "resumeAsks": 2,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": "running",
+      "resumeAsks": 3,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": "done",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "done"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": true,
+      "status": "skipped",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "skipped"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": null,
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": null
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": "due",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "due"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": "running",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": "running",
+      "resumeAsks": 2,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": "running",
+      "resumeAsks": 3,
+      "expect": {
+        "action": null,
+        "status": "running"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": "done",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "done"
+      }
+    },
+    {
+      "onboardingDone": false,
+      "userBook": false,
+      "status": "skipped",
+      "resumeAsks": 0,
+      "expect": {
+        "action": null,
+        "status": "skipped"
+      }
+    }
+  ],
+  "tourEnd": [
+    {
+      "how": "finished",
+      "replay": false,
+      "before": "running",
+      "expect": "done"
+    },
+    {
+      "how": "skipped",
+      "replay": false,
+      "before": "running",
+      "expect": "skipped"
+    },
+    {
+      "how": "finished",
+      "replay": true,
+      "before": "skipped",
+      "expect": "done"
+    },
+    {
+      "how": "finished",
+      "replay": true,
+      "before": "due",
+      "expect": "done"
+    },
+    {
+      "how": "skipped",
+      "replay": true,
+      "before": "done",
+      "expect": "done"
+    },
+    {
+      "how": "skipped",
+      "replay": true,
+      "before": "due",
+      "expect": "due"
+    },
+    {
+      "how": "skipped",
+      "replay": true,
+      "before": null,
+      "expect": null
     }
   ],
   "weekSwipe": [
@@ -336,6 +1067,16 @@
       "dx": 40,
       "dy": -40,
       "dir": null
+    },
+    {
+      "dx": 10,
+      "dy": 11.9,
+      "dir": null
+    },
+    {
+      "dx": 10,
+      "dy": 12.1,
+      "dir": "backward"
     },
     {
       "dx": -30,

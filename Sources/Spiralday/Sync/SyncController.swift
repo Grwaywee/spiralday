@@ -411,15 +411,54 @@ final class SyncController: ObservableObject {
         if now != untouchedLocalBooks { untouchedLocalBooks = now }
     }
 
+    /// 합치기 직전에 뺀 막 만든 그대로인 내 플래너 — 합류 · 되살리기가 실패하면 같은 id · 같은 자리 · 같은 내용으로 되돌린다
+    struct DroppedBooks {
+        /// 빼기 전의 책장 (자리 · 펼친 책)
+        let library: Library
+        /// 뺀 책의 내용 (앱 파일 형식)
+        let files: [UUID: Data]
+        let openArrivingBook: Bool
+    }
+
     /// 합치기 직전: 고른 대로 막 만든 그대로인 내 플래너를 지운다 (백업은 그 전에 만들었다). 내 플래너가 남지 않으면 들어오는 첫 권을 편다.
-    /// 아직 그룹에 들어가기 전이라 엔진에는 아무것도 가지 않는다 (deleted 는 그룹에 있을 때만 알린다)
-    private func dropUntouchedBeforeMerging() {
-        guard dropUntouchedBooks else { return }
+    /// 아직 그룹에 들어가기 전이라 엔진에는 아무것도 가지 않는다 (deleted 는 그룹에 있을 때만 알린다).
+    /// 뺀 것을 돌려준다 — 그룹에 들어가지 못하면 (지난 · 다른 그룹의 복구 코드, 승인 기한 지남, 네트워크) undoDrop 으로 되돌린다.
+    /// 스위치 설명대로 "합치지 않고" 지우는 것이지, 합치기가 일어나지 않았는데 지우는 것이 아니다 (2026-10-05 검토)
+    private func dropUntouchedBeforeMerging() -> DroppedBooks? {
+        guard dropUntouchedBooks else { return nil }
         let drop = store.untouchedUserBooks()
-        guard !drop.isEmpty else { return }
+        guard !drop.isEmpty else { return nil }
+        var files: [UUID: Data] = [:]
+        for b in drop {
+            if case .data(let raw) = store.readBookRaw(b.id) {
+                files[b.id] = raw
+            } else if let raw = try? PlannerStore.encodeFile(PlannerData()) {
+                files[b.id] = raw                               // 메모리 저장소에서 펼친 적 없는 새 책 (빈 책 그대로)
+            }
+        }
+        let dropped = DroppedBooks(library: store.library, files: files, openArrivingBook: openArrivingBook)
         for b in drop { store.deleteBook(b.id) }
         untouchedLocalBooks = []
         if store.userBooks.isEmpty { openArrivingBook = true }
+        return dropped
+    }
+
+    /// 그룹에 들어가지 못했다: 뺀 책을 같은 id · 같은 자리 · 같은 내용으로 되돌리고, 펼쳐 있었으면 다시 편다.
+    /// 그룹 밖이라 엔진에는 아무것도 가지 않는다 (onSaved · onDeleted 는 그룹에 있을 때만 알린다)
+    private func undoDrop(_ d: DroppedBooks?) {
+        guard let d, !inGroup else { return }
+        let ids = Set(d.files.keys)
+        for (id, raw) in d.files where !store.library.books.contains(where: { $0.id == id }) {
+            do { try store.writeBookRaw(id, raw) } catch { NSLog("Spiralday 동기화: 뺀 빈 플래너를 되돌리지 못함 \(id): \(error)") }
+        }
+        var next = store.library
+        for (i, b) in d.library.books.enumerated() where ids.contains(b.id) && !next.books.contains(where: { $0.id == b.id }) {
+            next.books.insert(b, at: min(i, next.books.count))
+        }
+        store.applyLibrary(next)
+        if let active = d.library.activeID, ids.contains(active) { store.activate(active) }
+        openArrivingBook = d.openArrivingBook
+        refreshUntouchedLocalBooks()
     }
 
     /// 엔진이 있는지 (테스트: 꺼져 있으면 만들지 않는다)
@@ -1222,10 +1261,11 @@ final class SyncController: ObservableObject {
             }
         }
         flow = .join(stage: .accepting(devices: devices, deadline: deadline), localBooks: books)
-        dropUntouchedBeforeMerging()
+        let dropped = dropUntouchedBeforeMerging()
         do {
             try await join.accept()
         } catch {
+            undoDrop(dropped)
             self.join = nil
             let msg = SyncText.errorText(error, .join)
             if seq == flowSeq { flow = .join(stage: .error(msg), localBooks: books) }
@@ -1257,6 +1297,7 @@ final class SyncController: ObservableObject {
         var evicted: String?
         var backup: SyncBackupSnapshot?
         var backupError: Error?
+        var dropped: DroppedBooks?
         let r = await run(.restore) {
             await forgetStaleCredentials()
             let e = try await ensureEngine()
@@ -1269,11 +1310,14 @@ final class SyncController: ObservableObject {
                     return
                 }
             }
-            dropUntouchedBeforeMerging()
+            dropped = dropUntouchedBeforeMerging()
             evicted = try await e.restoreFromRecovery(code: code, deviceName: name).evicted
         }
         if let backupError { return .noBackup(backupError) }
-        guard r.ok else { return r }
+        guard r.ok else {
+            undoDrop(dropped)
+            return r
+        }
         deviceName = name
         groupURL = engineURL?.absoluteString
         rememberMachine()
