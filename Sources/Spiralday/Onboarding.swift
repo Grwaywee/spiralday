@@ -1,12 +1,15 @@
 import AppKit
+import Combine
 import SwiftUI
 import SpiraldayKit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 처음 실행할 때의 안내. 본 창처럼 스프링이 달린 종이 한 장 위에 그린 작은 창에서
-//   1 환영 → 2 플래너 만들기 → 3–6 사용법 네 장 → 7 시작하기
-// 플래너(책)가 한 권도 없으면 2 에서 만들기 전에는 앞으로 넘어갈 수 없다.
+//   1 환영 → 2 플래너 만들기 (또는 다른 기기의 플래너를 동기화로 가져오기) → 3–6 사용법 네 장 → 7 시작하기 → 둘러보기
+// 플래너(책)가 한 권도 없으면 2 에서 만들거나 동기화로 합류하기 전에는 앞으로 넘어갈 수 없다.
 // 앱이 꽂아 둔 예시 플래너는 세지 않는다 (예시만 있어도 처음처럼 내 플래너부터 만든다).
+// 동기화로 합류하면 책을 억지로 만들지 않고 3–6 사용법을 지나 7 의 모양(가져왔어요 · 되찾았어요 · 받는 중)으로 간다 —
+// iOS · Android 와 같은 상태 기계 (FirstRunFlow, 비공개 docs/mobile-tour.md §3). 받는 중이면 30초 뒤에만 [새 플래너 만들기].
 // ─────────────────────────────────────────────────────────────────────────────
 
 // MARK: - Window
@@ -27,13 +30,16 @@ final class OnboardingController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var rings: RingWindowController?
     private var store: PlannerStore?
+    private var sync: SyncController?
     private var model: OnboardingModel?
     private var completions: [() -> Void] = []
     private var keyMonitor: Any?
 
     private override init() { super.init() }
 
-    func show(store: PlannerStore, state: AppState, completion: @escaping () -> Void) {
+    /// sync: 동기화 (있으면 2 단계에서 "다른 기기의 플래너를 동기화로 가져오기"). replay: 설정 → 튜토리얼의 ‘처음 안내’ 다시 보기
+    func show(store: PlannerStore, state: AppState, sync: SyncController? = nil, replay: Bool = false,
+              completion: @escaping () -> Void) {
         completions.append(completion)
         if !NSApp.isActive { NSApp.activate() }
         if let window {
@@ -43,7 +49,8 @@ final class OnboardingController: NSObject, NSWindowDelegate {
         // 첫 실행에서는 이 창이 본 창보다 먼저 그려지므로 손글씨 글꼴부터 등록한다
         Fonts.activate {}
         self.store = store
-        let model = OnboardingModel(store: store)
+        self.sync = sync
+        let model = OnboardingModel(store: store, sync: sync, replay: replay)
         model.onFinish = { [weak self] in self?.finish(closing: false) }
         self.model = model
 
@@ -85,15 +92,19 @@ final class OnboardingController: NSObject, NSWindowDelegate {
     /// ‘시작하기’ 또는 창 닫기
     private func finish(closing: Bool) {
         guard let window else { return }
-        if let store, store.userBooks.isEmpty {
-            store.createBook(name: BookDraft.defaultName, start: Date(), end: nil)
+        if let store {
+            Self.settleBooksOnFinish(store: store, sync: sync, joining: model?.isJoining ?? false)
         }
+        // 합류 코드를 입력하던 중에 닫았으면 그 입력은 버린다 (승인을 기다리는 흐름은 설정 → 동기화에 그대로 남는다)
+        if let sync, sync.flow == nil, sync.localStep != nil { sync.localStep = nil }
+        model?.stop()
         UserDefaults.standard.set(true, forKey: Self.doneKey)
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         self.window = nil
         model = nil
         store = nil
+        sync = nil
         let done = completions
         completions = []
         // 본 창을 먼저 열고 나서 이 창을 닫는다 (창이 하나도 없는 순간 앱이 끝나지 않도록)
@@ -108,6 +119,19 @@ final class OnboardingController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         finish(closing: true)
+    }
+
+    /// 안내를 마칠 때 (시작하기 · 창 닫기): 내 플래너가 없으면 기본 플래너를 만든다 — 다만 동기화로 합류하는 중이면 만들지 않는다
+    /// (빈 '내 플래너' 가 그룹의 모든 기기에 퍼지지 않게, 사장님 피드백 I · O). 그때는 예시 플래너를 펼쳐 두고, 그룹의 플래너가 들어오면
+    /// 그 첫 권을 편다 (SyncController.openArrivingBook)
+    static func settleBooksOnFinish(store: PlannerStore, sync: SyncController?, joining: Bool) {
+        guard store.userBooks.isEmpty else { return }
+        if joining, let sync {
+            sync.openArrivingBook = true
+            if store.activeBook == nil, let sample = store.books.first(where: \.isSample) { store.activate(sample.id) }
+            return
+        }
+        store.createBook(name: BookDraft.defaultName, start: Date(), end: nil)
     }
 
     // MARK: keyboard
@@ -229,17 +253,41 @@ final class OnboardingModel: ObservableObject {
     @Published var draft: BookDraft
     /// 이 안내에서 만든 책 (다시 돌아오면 "만들었어요" 로 보여 준다)
     @Published private(set) var createdID: UUID?
+    /// 7 준비 끝의 모양 (만듦 · 가져옴 · 되찾음 · 받는 중) — 상태 기계 FirstRunFlow 의 ready(*)
+    @Published private(set) var readyVariant: FirstRunReady = .created
+    /// 받는 중인데 30초가 지났다 ([새 플래너 만들기] · [계속 기다리기])
+    @Published private(set) var waitingLate = false
+    /// 동기화 합류 시트가 떠 있다 (코드 입력 → 승인 → 합치기)
+    @Published var showsSyncSheet = false
 
     let store: PlannerStore
+    /// 동기화 (없으면 합류 길을 보이지 않는다 — 스냅샷 · 데모)
+    let sync: SyncController?
+    /// 설정 → 튜토리얼에서 다시 보기 (늘 환영부터, 준비 끝은 늘 "준비 끝!")
+    let replay: Bool
     var onFinish: (() -> Void)?
     private var turning = false
+    /// 합류 시트에서 끝난 흐름 (합류 · 복구 코드)
+    private(set) var outcome: FirstRunSyncOutcome?
+    /// 사용자가 단계를 옮겼는지 (동기화가 늦게 준비돼도 그 뒤로는 시작 단계를 다시 정하지 않는다)
+    private var moved = false
+    /// 받는 중에서 [새 플래너 만들기] 로 플래너 단계에 왔다 (만들면 사용법을 다시 거치지 않고 준비 끝으로)
+    private var cameFromWaiting = false
+    private var waitWork: DispatchWorkItem?
+    private var bag = Set<AnyCancellable>()
+    private var userBookIDs: [UUID]
 
     /// step: 스냅샷에서 다른 장부터 그려 볼 때
-    init(store: PlannerStore, step: Step = .welcome) {
+    init(store: PlannerStore, step: Step = .welcome, sync: SyncController? = nil, replay: Bool = false) {
         self.store = store
+        self.sync = sync
+        self.replay = replay
         self.step = step
         draft = Self.freshDraft(store)
         plannerMode = store.userBooks.isEmpty ? .create : .existing
+        userBookIDs = store.userBooks.map(\.id)
+        if step == .welcome { placeStart() }
+        watch()
     }
 
     /// 새 초안. 첫 플래너는 예시 플래너와 상관없이 늘 같은 이름·표지("내 플래너", 체리)로 시작하고,
@@ -248,11 +296,42 @@ final class OnboardingModel: ObservableObject {
         BookDraft.fresh(avoiding: store.userBooks.isEmpty ? [] : store.books)
     }
 
-    /// 내 플래너가 한 권도 없다 (예시 플래너는 세지 않는다) → 만들기 전에는 앞으로 못 간다
+    /// 내 플래너가 한 권도 없다 (예시 플래너는 세지 않는다)
     var needsBook: Bool { store.userBooks.isEmpty }
+    /// 동기화 그룹에 들어 있다 (합류 · 복구 코드 · 다시 깐 앱이 그룹에 다시 붙음)
+    var inGroup: Bool { sync?.inGroup ?? false }
+    /// 플래너가 없어서 앞으로 못 간다 — 만들거나 동기화로 합류하면 풀린다 (합류했으면 플래너가 오는 동안 사용법을 볼 수 있다)
+    var blocking: Bool { needsBook && !inGroup }
     var isCreating: Bool { step == .planner && plannerMode == .create }
     /// 이미 내 플래너가 있는데 한 권 더 만드는 중
     var isComposingExtra: Bool { plannerMode == .create && !store.userBooks.isEmpty }
+    /// 플래너가 오기를 기다리는 중 (합류했는데 아직 내 플래너가 없다)
+    var waitingForBook: Bool { readyVariant == .waiting && needsBook }
+    /// "다른 기기의 플래너를 동기화로 가져오기" 를 보일지: 동기화를 쓸 수 있고, 아직 그룹 밖이고, 내 플래너가 없을 때 (처음 켬)
+    var canJoin: Bool { !replay && needsBook && !inGroup && sync?.available == true && sync?.ready == true }
+    /// 안내를 마칠 때 기본 플래너를 만들면 안 되는지: 그룹에 들어 있거나 합류 · 복구 흐름이 아직 도는 중
+    var isJoining: Bool {
+        guard let sync else { return false }
+        if sync.inGroup { return true }
+        switch sync.flow {
+        case .join(let stage, _)?:
+            switch stage {
+            case .denied, .expired, .error: return false
+            default: return true
+            }
+        case .restore?: return true
+        default: return false
+        }
+    }
+
+    /// 상태 기계의 단계 (Mac 의 3–7 은 모두 ready — 사용법을 지나 닿는 준비 끝)
+    var stage: FirstRunStage {
+        switch step {
+        case .welcome: .welcome
+        case .planner: .planner
+        default: .ready(readyVariant)
+        }
+    }
 
     /// 이 안내에서 보여 줄 내 플래너: 펼친 책이 내 책이면 그 책, 예시 플래너를 펼쳐 뒀으면 내 첫 책
     var myBook: BookInfo? {
@@ -260,26 +339,36 @@ final class OnboardingModel: ObservableObject {
         return store.userBooks.first
     }
 
-    func canVisit(_ s: Step) -> Bool { s.rawValue <= Step.planner.rawValue || !needsBook }
+    func canVisit(_ s: Step) -> Bool { s.rawValue <= Step.planner.rawValue || !blocking }
 
     var primaryTitle: String {
         switch step {
         case .planner where plannerMode == .create: "플래너 만들기"
+        case .ready where waitingForBook && waitingLate: "새 플래너 만들기"
         case .ready: "시작하기"
         default: "다음"
         }
     }
 
-    var canPrimary: Bool { !isCreating || draft.isValid }
+    var canPrimary: Bool {
+        if step == .ready && waitingForBook { return waitingLate }
+        return !isCreating || draft.isValid
+    }
     var showsBack: Bool { step != .welcome }
     var backTitle: String { step == .planner && isComposingExtra ? "취소" : "이전" }
-    var showsSkip: Bool { !needsBook && step != .ready && !isCreating }
+    var showsSkip: Bool { !blocking && step != .ready && !isCreating }
 
     // MARK: actions
 
     func primary() {
         switch step {
         case .planner where plannerMode == .create: create()
+        case .ready where waitingForBook:
+            // 30초가 지나도 오지 않았다: 새 플래너를 만들어 시작한다 (받은 플래너는 나중에 책장에 들어온다)
+            guard waitingLate else { return }
+            cameFromWaiting = true
+            draft = Self.freshDraft(store)
+            go(.planner)
         case .ready: onFinish?()
         default: go(step.next)
         }
@@ -308,6 +397,7 @@ final class OnboardingModel: ObservableObject {
 
     func go(_ target: Step?) {
         guard let target, target != step, canVisit(target), !turning else { return }
+        moved = true
         turning = true
         forward = target.rawValue > step.rawValue
         // 방향을 먼저 반영한 뒤에 장을 바꾼다 (나가는 장이 알맞은 쪽으로 빠지도록)
@@ -321,7 +411,158 @@ final class OnboardingModel: ObservableObject {
     private func create() {
         guard draft.isValid else { return }
         createdID = store.createBook(name: draft.resolvedName, start: draft.start, end: draft.endValue, cover: draft.cover)
-        go(.turn)
+        stopWaiting()
+        readyVariant = FirstRunFlow.nextFromPlanner(created: true, inGroup: inGroup, outcome: outcome).readyVariant ?? .created
+        // 받는 중에서 왔으면 사용법은 이미 봤다: 바로 준비 끝으로
+        let next: Step = cameFromWaiting ? .ready : .turn
+        cameFromWaiting = false
+        go(next)
+    }
+
+    // MARK: 동기화로 합류하기 (다른 기기에서 이미 쓰는 플래너를 가져온다)
+
+    /// "다른 기기의 플래너를 동기화로 가져오기": 합류 시트를 연다 (코드 입력 → 승인 → 합치기 — 설정 → 동기화와 같은 화면)
+    func openJoin(restore: Bool = false) {
+        guard let sync, canJoin else { return }
+        sync.localStep = restore ? .restore : .join
+        showsSyncSheet = true
+    }
+
+    /// 시트를 사용자가 닫았다 (Esc · 바깥): 입력 중이면 버리고, 흐름이 끝났으면 정리한다 — 그 뒤 sheetClosed
+    func dismissSyncSheet() {
+        guard let sync else { showsSyncSheet = false; return }
+        if sync.flow == nil {
+            sync.localStep = nil
+        } else if sync.flow?.busy != true {
+            Task { await sync.endFlow() }
+        }
+    }
+
+    /// 합류 시트가 닫혔다 (§3.4): 그룹에 들어갔으면 사용법(3–6)을 지나 준비 끝의 모양으로, 못 들어갔으면 그대로
+    func sheetClosed() {
+        showsSyncSheet = false
+        let next = FirstRunFlow.sheetClosed(stage, inGroup: inGroup, hasUserBook: !needsBook, outcome: outcome)
+        guard case .ready(let v) = next, next != stage else { return }
+        readyVariant = v
+        if v == .waiting { startWaiting() } else { stopWaiting() }
+        if step.rawValue <= Step.planner.rawValue {
+            plannerMode = needsBook ? .create : .existing
+            go(.turn)
+        }
+    }
+
+    /// 시트 없이 동기화로 내 플래너가 들어왔다 (기다리던 플래너가 도착함 · 다시 깐 앱이 그룹에 다시 붙음)
+    private func bookArrived() {
+        let next = FirstRunFlow.bookArrived(stage, inGroup: inGroup, outcome: outcome)
+        if case .ready(let v) = next {
+            readyVariant = v
+            stopWaiting()
+        }
+        // 플래너 단계는 받은 플래너로 바뀐다 (만들던 초안은 버린다 — 받은 플래너로 이어 쓰면 된다)
+        if step == .planner && plannerMode == .create && !needsBook && createdID == nil && inGroup {
+            withAnimation(.snappy(duration: 0.3)) { plannerMode = .existing }
+        }
+    }
+
+    /// 켤 때 시작할 단계 (§3.3): 내 플래너 × 동기화 그룹. 다시 보기는 늘 환영부터
+    private func placeStart() {
+        guard !replay else { return }
+        let s = FirstRunFlow.startStage(hasUserBook: !needsBook, inGroup: inGroup)
+        switch s {
+        case .ready(.waiting):
+            // 합류했는데 플래너를 받기 전에 꺼졌다: 받는 중부터 (사용법은 점으로 다시 볼 수 있다)
+            readyVariant = .waiting
+            step = .ready
+            startWaiting()
+        case .ready(let v):
+            // 플래너가 있으면 처음 안내를 처음부터 (2 는 그 플래너를 보여 준다) — 끝의 모양만 정한다
+            readyVariant = v
+        default:
+            break
+        }
+    }
+
+    /// 받는 중: 30초가 지나도 오지 않으면 [새 플래너 만들기] 를 보인다
+    func startWaiting(late: Bool = false) {
+        waitWork?.cancel()
+        waitingLate = late
+        guard !late else { return }
+        let w = DispatchWorkItem { [weak self] in
+            withAnimation(.snappy(duration: 0.3)) { self?.waitingLate = true }
+        }
+        waitWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + FirstRunFlow.waitingPatience, execute: w)
+    }
+
+    /// [계속 기다리기]
+    func keepWaiting() { startWaiting() }
+
+    private func stopWaiting() {
+        waitWork?.cancel()
+        waitWork = nil
+        waitingLate = false
+    }
+
+    /// 창을 닫을 때
+    func stop() {
+        waitWork?.cancel()
+        waitWork = nil
+        bag.removeAll()
+    }
+
+    private func watch() {
+        store.$library
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let ids = self.store.userBooks.map(\.id)
+                // 새로 생긴 내 플래너 가운데 이 안내에서 만든 것이 아닌 것 = 동기화로 들어온 것
+                let came = Set(ids).subtracting(self.userBookIDs).subtracting([self.createdID].compactMap { $0 })
+                self.userBookIDs = ids
+                if !came.isEmpty, !self.showsSyncSheet { self.bookArrived() }
+            }
+            .store(in: &bag)
+        guard let sync else { return }
+        // 합류 길(canJoin) · 그룹(inGroup) 은 동기화의 값이라, 바뀌면 이 안내도 다시 그린다
+        sync.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &bag)
+        sync.$flow
+            .sink { [weak self] f in
+                switch f {
+                case .join(.done, _)?: self?.outcome = .joined
+                case .restore?: self?.outcome = .restored
+                default: break
+                }
+            }
+            .store(in: &bag)
+        // 시트의 흐름이 끝났다 ([확인] · [처음으로] · 취소): 입력 단계도 흐름도 없으면 닫는다.
+        // 받은 값이 아니라 그때의 값을 본다 — 합류를 시작하면 입력 단계를 먼저 비우고 바로 흐름을 넣는데, 그 사이의 (없음, 없음) 을
+        // 끝으로 읽으면 안 된다
+        Publishers.CombineLatest(sync.$localStep, sync.$flow)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak sync] _, _ in
+                guard let self, let sync, self.showsSyncSheet, sync.localStep == nil, sync.flow == nil else { return }
+                self.sheetClosed()
+            }
+            .store(in: &bag)
+        // 동기화 상태를 늦게 읽었으면 (다시 깐 앱이 그룹에 다시 붙음) 환영에서 한 번 더 본다
+        sync.$ready
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] ready in
+                guard let self, ready, !self.moved, self.step == .welcome else { return }
+                self.placeStart()
+            }
+            .store(in: &bag)
+    }
+}
+
+private extension FirstRunStage {
+    var readyVariant: FirstRunReady? {
+        if case .ready(let v) = self { return v }
+        return nil
     }
 }
 
@@ -436,6 +677,77 @@ struct OnboardingView: View {
         .ignoresSafeArea()
         .environment(\.locale, Locale(identifier: "ko_KR"))
         .environment(\.calendar, Dates.cal)
+        .sheet(isPresented: Binding(get: { model.showsSyncSheet }, set: { if !$0 { model.dismissSyncSheet() } })) {
+            if let sync = model.sync {
+                FirstRunSyncSheet(sync: sync)
+            }
+        }
+    }
+}
+
+/// 처음 안내의 동기화 합류 시트: 설정 → 동기화와 같은 화면 (8자리 코드 · 연결 글 → 확인 숫자 → 승인 → 합치기 설명 → 합치고 시작하기,
+/// 또는 복구 코드로 되살리기). 흐름이 끝나 [확인] · [처음으로] 를 누르거나 입력을 취소하면 닫히고, 안내가 그 결과로 이어진다
+struct FirstRunSyncSheet: View {
+    @ObservedObject var sync: SyncController
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Group {
+                if let flow = sync.flow {
+                    SyncFlowScreen(flow: flow)
+                } else if sync.localStep == .restore {
+                    SyncRestoreInput()
+                } else {
+                    SyncJoinInput()
+                }
+            }
+            .formStyle(.grouped)
+            .frame(maxHeight: .infinity)
+            if sync.flow == nil {
+                HStack {
+                    Button(sync.localStep == .restore ? "8자리 코드로 합류하기" : "복구 코드로 되살리기") {
+                        sync.localStep = sync.localStep == .restore ? .join : .restore
+                    }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("firstRun.sync.switch")
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 14)
+            }
+        }
+        .frame(width: 560, height: 500)
+        .environmentObject(sync)
+        .environment(\.locale, Locale(identifier: "ko_KR"))
+    }
+}
+
+/// "다른 기기에서 이미 써요 → 동기화로 가져오기" (환영 · 플래너 만들기 단계)
+private struct JoinLink: View {
+    @ObservedObject var model: OnboardingModel
+    var compact = false
+    @State private var hover = false
+
+    var body: some View {
+        if model.canJoin {
+            Button { model.openJoin() } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(compact ? "다른 기기에서 쓰던 플래너\n동기화로 가져오기" : "다른 기기에서 이미 써요 — 그 플래너를 동기화로 가져오기")
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(Fonts.print(12, .medium))
+                .foregroundStyle(hover ? Ink.print : Ink.soft)
+                .underline(hover)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hover = $0 }
+            .help("다른 기기에 합류하면 그 기기의 플래너를 받아 와요 (새 플래너를 만들지 않아요)")
+            .accessibilityIdentifier("firstRun.syncJoin")
+        }
     }
 }
 
@@ -475,7 +787,7 @@ private struct OnboardingPage: View {
                 .padding(.bottom, 26)
             Group {
                 switch step {
-                case .welcome: WelcomePage()
+                case .welcome: WelcomePage(model: model)
                 case .planner: PlannerPage(model: model)
                 case .turn: TurnPage()
                 case .highlight: HighlightPage()
@@ -635,8 +947,19 @@ private struct OnboardingBar: View {
                     QuietButton(title: "건너뛰기", icon: nil, action: model.skip)
                         .help("사용법을 건너뛰고 마지막 장으로")
                 }
+                if model.step == .ready && model.waitingForBook {
+                    if model.waitingLate {
+                        QuietButton(title: "계속 기다리기", icon: nil, action: model.keepWaiting)
+                            .accessibilityIdentifier("firstRun.keepWaiting")
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("플래너를 받는 중이에요…")
+                    }
+                }
                 PrimaryButton(title: model.primaryTitle, enabled: model.canPrimary, action: model.primary)
                     .help("Return")
+                    .accessibilityIdentifier(model.step == .ready && model.waitingForBook && model.waitingLate ? "firstRun.createInstead" : "firstRun.primary")
             }
         }
         .padding(.horizontal, OB.side - 8)
@@ -648,6 +971,7 @@ private struct OnboardingBar: View {
         }
         .animation(.snappy(duration: 0.25), value: model.step)
         .animation(.snappy(duration: 0.25), value: model.plannerMode)
+        .animation(.snappy(duration: 0.25), value: model.waitingLate)
     }
 }
 
@@ -678,7 +1002,7 @@ private struct PageDots: View {
                     .frame(width: on ? 20 : 7, height: 7)
                     .contentShape(Rectangle().inset(by: -5))
                     .onTapGesture { model.go(s) }
-                    .help(open ? s.title : "플래너를 먼저 만들어 주세요")
+                    .help(open ? s.title : "플래너를 먼저 만들거나 동기화로 가져와 주세요")
                     .accessibilityLabel("\(s.rawValue + 1)쪽, \(s.title)")
                     .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
             }
@@ -752,6 +1076,8 @@ private struct PressStyle: ButtonStyle {
 // MARK: - 1 환영
 
 private struct WelcomePage: View {
+    @ObservedObject var model: OnboardingModel
+
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
@@ -786,6 +1112,8 @@ private struct WelcomePage: View {
                     promise(.moved, "시작일부터 한 장씩, 책처럼 넘겨 써요")
                 }
                 .padding(.top, 30)
+                JoinLink(model: model)
+                    .padding(.top, 26)
             }
             .padding(.top, 6)
             Spacer(minLength: 0)
@@ -847,6 +1175,10 @@ private struct PlannerPage: View {
                     .foregroundStyle(Ink.soft)
                     .multilineTextAlignment(.center)
                     .fixedSize()
+                if creating {
+                    JoinLink(model: model, compact: true)
+                        .padding(.top, 6)
+                }
             }
             .frame(width: 186)
             .padding(.top, 4)
@@ -2206,9 +2538,73 @@ private struct ReadyPage: View {
     @ObservedObject var model: OnboardingModel
     @EnvironmentObject private var store: PlannerStore
 
+    /// 준비 끝의 모양 (비공개 docs/mobile-tour.md §3.5 — iOS · Android 와 같은 말)
+    static func headline(_ v: FirstRunReady, late: Bool) -> String {
+        switch v {
+        case .created: "준비 끝!"
+        case .joined: "플래너를 가져왔어요!"
+        case .restored: "플래너를 되찾았어요!"
+        case .waiting: late ? "아직 플래너가 오지 않았어요" : "플래너를 받는 중이에요…"
+        }
+    }
+
+    static func message(_ v: FirstRunReady, late: Bool) -> String {
+        switch v {
+        case .created: "이제 첫 장을 펼쳐 볼까요? 오늘 할 일부터 한 줄 적어 보세요."
+        case .joined: "다른 기기에서 쓰던 플래너가 이 Mac 에도 펼쳐져요. 한쪽에서 적으면 다른 쪽에도 곧 나타나요."
+        case .restored: "복구 코드로 동기화 그룹에 다시 들어왔어요. 그동안 적은 기록이 그대로 펼쳐져요."
+        case .waiting: late ? "인터넷 연결을 확인해 주세요. 기다리는 동안 새 플래너를 만들어 시작할 수도 있어요."
+                            : "그룹에 들어왔어요. 플래너가 도착하면 바로 펼칠 수 있어요."
+        }
+    }
+
     var body: some View {
-        let book = model.myBook ?? model.draft.preview
+        if model.waitingForBook {
+            waiting
+        } else {
+            ready
+        }
+    }
+
+    /// 받는 중: 아직 펼칠 플래너가 없다 (표지 자리에 빈 책 · 돌림표)
+    private var waiting: some View {
         HStack(alignment: .top, spacing: 40) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Ink.faint, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .frame(width: 150, height: 196)
+                    .rotationEffect(.degrees(-4))
+                if model.waitingLate {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(Ink.soft)
+                } else {
+                    ProgressView().controlSize(.regular)
+                }
+            }
+            .frame(width: 200, height: 230)
+            .padding(.leading, 12)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Headline(text: Self.headline(.waiting, late: model.waitingLate), tint: OnboardingModel.Step.ready.tint, size: 34)
+                BodyText(text: Self.message(.waiting, late: model.waitingLate), size: 14)
+                    .padding(.top, 12)
+                    .frame(width: 360, alignment: .leading)
+                PenNote(text: "기다리는 동안 앞 장의 사용법을 다시 봐도 돼요")
+                    .frame(width: 360, alignment: .leading)
+                    .padding(.top, 22)
+            }
+            .padding(.top, 8)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("firstRun.ready.waiting")
+    }
+
+    private var ready: some View {
+        let book = model.myBook ?? model.draft.preview
+        let variant = model.replay ? FirstRunReady.created : model.readyVariant
+        let more = variant == .created ? 0 : max(0, store.userBooks.count - 1)
+        return HStack(alignment: .top, spacing: 40) {
             ZStack(alignment: .bottomTrailing) {
                 BookCover(book: book, width: 182)
                     .rotationEffect(.degrees(-4))
@@ -2222,17 +2618,25 @@ private struct ReadyPage: View {
             .padding(.leading, 12)
 
             VStack(alignment: .leading, spacing: 0) {
-                Headline(text: "준비 끝!", tint: OnboardingModel.Step.ready.tint, size: 44)
-                BodyText(text: "이제 첫 장을 펼쳐 볼까요? 오늘 할 일부터 한 줄 적어 보세요.", size: 14)
+                Headline(text: Self.headline(variant, late: false), tint: OnboardingModel.Step.ready.tint, size: variant == .created ? 44 : 36)
+                BodyText(text: Self.message(variant, late: false), size: 14)
                     .padding(.top, 12)
+                    .frame(width: 380, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 0) {
                     FormLabel(text: "MY PLANNER", size: 8.5, rule: 1.2)
                         .padding(.bottom, 8)
-                    Text(book.name)
-                        .font(Fonts.hand(26))
-                        .foregroundStyle(Ink.text)
-                        .lineLimit(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(book.name)
+                            .font(Fonts.hand(26))
+                            .foregroundStyle(Ink.text)
+                            .lineLimit(1)
+                        if more > 0 {
+                            Text("외 \(more)권")
+                                .font(Fonts.print(11, .medium))
+                                .foregroundStyle(Ink.soft)
+                        }
+                    }
                     HStack(spacing: 8) {
                         Text(book.periodText)
                             .font(Fonts.print(12, .medium))

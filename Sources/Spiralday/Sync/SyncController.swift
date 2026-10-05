@@ -398,6 +398,30 @@ final class SyncController: ObservableObject {
     /// 이 Mac 의 내 플래너 이름 (예시 플래너 빼고)
     var localBooks: [String] { store.userBooks.map(\.name) }
 
+    /// 합칠 때 막 만든 그대로인 내 플래너(처음 켤 때 만든 빈 '내 플래너' 등)를 빼고 이 Mac 에서 지울지 (합치기 설명의 스위치, 기본 켬).
+    /// 그대로 합치면 새 기기가 합류할 때마다 그룹의 모든 기기에 빈 플래너가 한 권씩 생긴다 (2026-10-05 사장님 결정 2 (나))
+    @Published var dropUntouchedBooks = true
+    /// 합치기 설명이 보여 주는 막 만든 그대로인 내 플래너 (refreshUntouchedLocalBooks 가 채운다 — 파일을 매 프레임 읽지 않게)
+    @Published private(set) var untouchedLocalBooks: [BookInfo] = []
+    /// 그룹의 플래너가 들어오면 그 첫 권을 펼친다 (합류하며 빈 플래너를 뺐거나, 처음 안내를 받는 중에 닫아 예시 플래너만 펼쳐 둔 때)
+    var openArrivingBook = false
+
+    func refreshUntouchedLocalBooks() {
+        let now = store.untouchedUserBooks()
+        if now != untouchedLocalBooks { untouchedLocalBooks = now }
+    }
+
+    /// 합치기 직전: 고른 대로 막 만든 그대로인 내 플래너를 지운다 (백업은 그 전에 만들었다). 내 플래너가 남지 않으면 들어오는 첫 권을 편다.
+    /// 아직 그룹에 들어가기 전이라 엔진에는 아무것도 가지 않는다 (deleted 는 그룹에 있을 때만 알린다)
+    private func dropUntouchedBeforeMerging() {
+        guard dropUntouchedBooks else { return }
+        let drop = store.untouchedUserBooks()
+        guard !drop.isEmpty else { return }
+        for b in drop { store.deleteBook(b.id) }
+        untouchedLocalBooks = []
+        if store.userBooks.isEmpty { openArrivingBook = true }
+    }
+
     /// 엔진이 있는지 (테스트: 꺼져 있으면 만들지 않는다)
     var hasEngine: Bool { engine != nil }
 
@@ -760,6 +784,16 @@ final class SyncController: ObservableObject {
     }
 
     private func libraryApplied(_ r: ExternalApplyResult, removed: [BookInfo]) {
+        if openArrivingBook, let first = store.userBooks.first {
+            // 그룹의 첫 플래너가 들어왔다: 예시 플래너(또는 빈 종이)를 보고 있으면 그 책을 편다 (한 번만)
+            openArrivingBook = false
+            if store.activeBook?.isSample ?? true, store.activeBook?.id != first.id {
+                DispatchQueue.main.async { [store] in
+                    guard store.activeBook?.isSample ?? true, store.userBooks.contains(where: { $0.id == first.id }) else { return }
+                    store.activate(first.id)
+                }
+            }
+        }
         if r.closedBook != nil {
             // 쓰던 칸은 지운 책의 것이다: 편집을 끝낸다 (남은 키가 새로 편 책의 같은 칸을 가리키지 않게)
             state?.endEditing()
@@ -1110,6 +1144,8 @@ final class SyncController: ObservableObject {
         flowSeq += 1
         let seq = flowSeq
         let books = localBooks
+        dropUntouchedBooks = true
+        refreshUntouchedLocalBooks()
         starting = true
         var pending: PendingJoin?
         let r = await run(.join) {
@@ -1186,6 +1222,7 @@ final class SyncController: ObservableObject {
             }
         }
         flow = .join(stage: .accepting(devices: devices, deadline: deadline), localBooks: books)
+        dropUntouchedBeforeMerging()
         do {
             try await join.accept()
         } catch {
@@ -1232,6 +1269,7 @@ final class SyncController: ObservableObject {
                     return
                 }
             }
+            dropUntouchedBeforeMerging()
             evicted = try await e.restoreFromRecovery(code: code, deviceName: name).evicted
         }
         if let backupError { return .noBackup(backupError) }

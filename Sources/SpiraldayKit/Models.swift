@@ -417,6 +417,16 @@ public struct PlannerData: Codable, Equatable, Sendable {
         self.weeks = weeks
         self.prefs = prefs
     }
+
+    /// 막 만든 그대로인지: 날 · 주에 적거나 칠하거나 고른 것이 없고 (D-day · DAY OFF 도), 형광펜 · 기본 컬러 · 저장한 D-day ·
+    /// 첫 장의 말이 새 책 그대로다. 동기화에 합류할 때 이런 플래너(처음 켤 때 만든 빈 '내 플래너')는 그룹의 모든 기기에
+    /// 퍼지지 않게 빼자고 한다 (2026-10-05 사장님 결정 2 (나)). 하나라도 고쳤으면 그대로 합친다
+    public var isUntouched: Bool {
+        days.values.allSatisfy(\.isEmpty)
+            && weeks.values.allSatisfy { $0.goal.isEmpty && $0.review.isEmpty && $0.stars == 0 }
+            && prefs.categories == Prefs.defaultCategories && prefs.defaultTheme == 0
+            && prefs.ddays.isEmpty && prefs.motto.isEmpty
+    }
 }
 
 // MARK: - Dates
@@ -1090,6 +1100,18 @@ public final class PlannerStore: ObservableObject {
         bump()
         writeLibrary()
         return true
+    }
+
+    /// 막 만든 그대로인 내 플래너 (PlannerData.isUntouched — 예시 · 읽지 못한 책 · 파일을 잃은 책은 빼고). 파일은 읽기만 한다
+    public func untouchedUserBooks() -> [BookInfo] {
+        userBooks.filter { b in
+            guard unreadableBooks[b.id] == nil, !booksOpenedWithoutFile.contains(b.id) else { return false }
+            if b.id == library.activeID { return data.isUntouched }
+            if folder == nil { return (memoryBooks[b.id] ?? PlannerData()).isUntouched }
+            guard let url = bookURL(b.id), let raw = try? Data(contentsOf: url),
+                  let d = try? Self.dec.decode(PlannerData.self, from: raw) else { return false }
+            return d.isUntouched
+        }
     }
 
     /// 책을 지운다 (파일도, D-day 옮기기 백업 사본도). 펼친 책이면 남은 책 가운데 사용자가 만든 첫 책을

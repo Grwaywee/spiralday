@@ -468,6 +468,11 @@ draft  = base64url(0x01 ‖ nonce(24, 늘 난수) ‖ XChaCha20-Poly1305(plain, 
 - 그룹에 들어 있다는 표시(`sync.groupURL`)는 UserDefaults 에 있고 UserDefaults 는 번들 id 마다 따로라서, 키체인 항목 · SyncState 도 번들 id 로 가른다:
   `com.spiralday.app` (build.sh 의 `.app`) 은 `com.spiralday.sync` · `SyncState`, 그 밖의 실행(`swift run` · 테스트)은 `com.spiralday.sync.dev` · `SyncState-dev`.
 - `carryForward` 의 미룸 id 규칙은 SpiraldayKit 에 들어 있어 Mac 앱도 이미 같다 (`PlanTask.carryTaskId`).
+- 처음 안내에서 합류 (`Sources/Spiralday/Onboarding.swift` · `FirstRunFlow.swift`, 시험 `FirstRunJoinTests`): iOS · Android 와 같은 상태 기계
+  (공유 벡터 `Tests/Fixtures/mobile-tour.json`). 합류하는 동안에는 기본 책을 만들지 않고, 3–6 사용법을 지나 준비 끝(가져왔어요 · 되찾았어요 · 받는 중 —
+  30초 뒤에만 [새 플래너 만들기]) → 둘러보기. 창을 닫으면 예시 플래너를 펴 두고 그룹의 첫 플래너가 들어오면 그 책을 편다 (`openArrivingBook`).
+- 합류 · 복구 코드로 합칠 때 막 만든 그대로인 내 플래너(`PlannerData.isUntouched` — 날 · 주 기록 · D-day · 형광펜 · 기본 컬러 · 첫 장의 말이 새 책 그대로)는
+  합치기 설명의 스위치(기본 켬)대로 백업 뒤 · 그룹에 들어가기 전에 지운다 — 새 기기가 합류할 때마다 모든 기기에 빈 ‘내 플래너’ 가 생기던 것.
 - 이 저장소의 Mac 앱이 실제로 붙인 곳은 `Sources/Spiralday/Sync/` 다:
   - `SyncController` — 엔진 하나 · 설정 → 동기화의 단계별 흐름 · 앱 수명. 기본은 꺼짐: 이 설치가 그룹에 들어간 적이 있을 때(UserDefaults `sync.groupURL`)만
     켤 때 키체인을 읽고 엔진을 만든다. 그 전에는 키체인 · 네트워크를 건드리지 않는다. 잠자기(`NSWorkspace.willSleepNotification`) → 저장 · `suspend()`,

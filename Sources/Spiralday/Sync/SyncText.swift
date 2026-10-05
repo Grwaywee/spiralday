@@ -448,6 +448,14 @@ enum SyncText {
         return "플래너 \(books.count)권(\(shown))"
     }
 
+    /// 합치기 설명의 스위치: 막 만든 그대로인 내 플래너를 빼고 이 Mac 에서 지운다 (사장님 결정 2 (나))
+    static func dropUntouchedTitle(_ books: [String]) -> String {
+        let names = books.prefix(2).map { "‘\($0)’" }.joined(separator: ", ") + (books.count > 2 ? " 외 \(books.count - 2)권" : "")
+        return "아직 아무것도 적지 않은 \(names)은(는) 합치지 않고 이 Mac 에서 지우기"
+    }
+
+    static let dropUntouchedDetail = "켜 두면 빈 플래너가 그룹의 다른 기기 책장에 생기지 않아요. 그룹의 플래너를 받아 와서 펼쳐요."
+
     // MARK: 이전 버전
 
     struct VersionRow: Identifiable, Equatable {

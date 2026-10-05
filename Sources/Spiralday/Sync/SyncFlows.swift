@@ -675,9 +675,13 @@ struct SyncMergeNotice<Actions: View>: View {
     let localBooks: [String]
     let head: SyncStepHead
     @ViewBuilder var actions: () -> Actions
+    @EnvironmentObject private var sync: SyncController
 
     var body: some View {
-        let books = SyncText.localBooksText(localBooks)
+        // 막 만든 그대로인 내 플래너 (처음 켤 때 만든 빈 '내 플래너'): 빼기를 켜 두면 합칠 책에서 뺀다
+        let untouched = sync.untouchedLocalBooks.map(\.name)
+        let dropping = sync.dropUntouchedBooks ? Set(sync.untouchedLocalBooks.map(\.name)) : []
+        let books = SyncText.localBooksText(localBooks.filter { !dropping.contains($0) })
         Section {
             VStack(alignment: .leading, spacing: 6) {
                 Text("이 Mac 의 기록과 합쳐요 — 겹치는 칸은 그룹 쪽이 이겨요")
@@ -688,6 +692,18 @@ struct SyncMergeNotice<Actions: View>: View {
                 bullet("예시 플래너는 기기마다 따로라 동기화하지 않아요.")
             }
             .padding(.vertical, 4)
+            if !untouched.isEmpty {
+                Toggle(isOn: $sync.dropUntouchedBooks) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: SyncText.dropUntouchedTitle(untouched))
+                        Text(verbatim: SyncText.dropUntouchedDetail)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityIdentifier("sync.merge.dropUntouched")
+            }
             Text("합치기 직전에 이 Mac 의 플래너를 저절로 백업해 둬요 (데이터 폴더의 SyncBackups). 나중에 설정 → 데이터의 ‘백업 가져오기…’로 그때의 플래너를 새 플래너로 따로 꺼내 볼 수 있어요.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -697,6 +713,7 @@ struct SyncMergeNotice<Actions: View>: View {
         } footer: {
             actions()
         }
+        .onAppear { sync.refreshUntouchedLocalBooks() }
     }
 
     private func bullet(_ s: String) -> some View {

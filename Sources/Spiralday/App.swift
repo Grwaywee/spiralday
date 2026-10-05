@@ -329,7 +329,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // 예시 플래너만 있으면 아직 처음이다: 튜토리얼에서 내 플래너를 만든다
         if !demo && (store.userBooks.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
-            OnboardingController.shared.show(store: store, state: state) { [weak self] in self?.openPlanner() }
+            // 동기화를 넘겨 2 단계에서 "다른 기기의 플래너를 동기화로 가져오기" (합류하면 책을 억지로 만들지 않는다)
+            OnboardingController.shared.show(store: store, state: state, sync: demo ? nil : sync) { [weak self] in self?.openPlanner() }
         } else {
             openPlanner()
         }

@@ -1920,7 +1920,7 @@ private struct SettingsTutorialsPane: View {
     private func replayOnboarding() {
         UserDefaults.standard.set(false, forKey: OnboardingController.doneKey)
         SettingsWindowController.shared.window?.close()
-        OnboardingController.shared.show(store: store, state: state, completion: {})
+        OnboardingController.shared.show(store: store, state: state, replay: true, completion: {})
     }
 }
 

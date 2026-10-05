@@ -1,0 +1,356 @@
+{
+  "_doc": "docs/mobile-tour.md 의 가이드 투어 · 처음 안내 공유 시험 벡터 (iOS Tests/AppTests/GuideTourTests · Android vitest 가 같은 파일을 본다). KO 문구는 원문 그대로.",
+  "version": 1,
+  "steps": {
+    "phone": [
+      "intro",
+      "chrome.book",
+      "chrome.kind",
+      "daily.turn",
+      "tools.case",
+      "daily.paint",
+      "daily.write",
+      "daily.dday",
+      "daily.share",
+      "weekly.flip",
+      "chrome.settings",
+      "end"
+    ],
+    "tablet": [
+      "intro",
+      "chrome.book",
+      "chrome.kind",
+      "daily.turn",
+      "tools.case",
+      "daily.paint",
+      "daily.write",
+      "daily.dday",
+      "weekly.flip",
+      "chrome.settings",
+      "end"
+    ],
+    "tabletNarrow": [
+      "intro",
+      "chrome.book",
+      "chrome.kind",
+      "daily.turn",
+      "tools.case",
+      "daily.paint",
+      "daily.write",
+      "daily.dday",
+      "weekly.flip",
+      "chrome.settings",
+      "end"
+    ]
+  },
+  "copy": {
+    "phone": [
+      {
+        "id": "intro",
+        "title": "짧게 둘러볼까요?",
+        "body": "1분이면 돼요. 예시 플래너를 잠깐 펼쳐서 화면을 하나씩 짚어 드릴게요. 다 보면 내 플래너로 돌아와요."
+      },
+      {
+        "id": "chrome.book",
+        "title": "펼친 플래너",
+        "body": "지금 펼친 플래너예요. 누르면 다른 플래너로 바꾸거나 새로 만들어요. 지금은 예시 플래너를 펼쳐 뒀어요."
+      },
+      {
+        "id": "chrome.kind",
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
+      },
+      {
+        "id": "daily.turn",
+        "title": "옆으로 넘기기",
+        "body": "종이 가운데를 왼쪽으로 쓸면 다음 날, 오른쪽으로 쓸면 전날이에요. 한 장 넘겨 보세요."
+      },
+      {
+        "id": "tools.case",
+        "title": "필통",
+        "body": "형광펜과 지우개 · 글씨 · 밥시간이 들어 있어요. 위에 뜬 이름표가 지금 든 도구와 그 색이에요. 형광펜을 하나 골라 보세요."
+      },
+      {
+        "id": "daily.paint",
+        "title": "타임테이블 칠하기",
+        "body": "한 줄이 한 시간, 한 칸이 10분이에요. 칸을 손가락으로 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+      },
+      {
+        "id": "daily.write",
+        "title": "할 일 적기",
+        "body": "빈 줄을 눌러 한 줄 적어 보세요. 오른쪽 칸은 ○ △ × → 표시예요. 위의 쓰기 · 시간으로 오가고, ⤡ 를 누르면 한 장 전체로 돌아가요."
+      },
+      {
+        "id": "daily.dday",
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      {
+        "id": "daily.share",
+        "title": "이미지로 공유",
+        "body": "오늘 장을 이미지로 만들어요. 스토리에 꽉 차는 9:16, 인스타그램 피드에 딱 맞는 3:4 중에 골라요."
+      },
+      {
+        "id": "weekly.flip",
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 위로 쓸어 올리면 다음 주, 내리면 지난주예요. 옆으로 밀면 요일마다 멈춰요. 한 주 넘겨 보세요."
+      },
+      {
+        "id": "chrome.settings",
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      },
+      {
+        "id": "end",
+        "title": "다 둘러봤어요!",
+        "body": "이제 보던 플래너로 돌아갈게요. 예시 플래너는 책장에 그대로 있어요."
+      }
+    ],
+    "tablet": [
+      {
+        "id": "intro",
+        "title": "짧게 둘러볼까요?",
+        "body": "1분이면 돼요. 예시 플래너를 잠깐 펼쳐서 화면을 하나씩 짚어 드릴게요. 다 보면 내 플래너로 돌아와요."
+      },
+      {
+        "id": "chrome.book",
+        "title": "펼친 플래너",
+        "body": "레일 맨 위의 책이 펼친 플래너예요. 누르면 플래너를 바꾸고, 펜슬과 손 · 설정도 여기 있어요."
+      },
+      {
+        "id": "chrome.kind",
+        "title": "주간 · 일간 · 홈",
+        "body": "한 주를 한 장에, 하루를 한 장에, 그리고 모아 보는 홈. 여기서 오가고, ‘오늘’을 누르면 언제든 오늘로 와요."
+      },
+      {
+        "id": "daily.turn",
+        "title": "옆으로 넘기기",
+        "body": "종이 바깥 가장자리나 아래 모서리를 잡고 옆으로 넘겨요. 한 장 넘겨 보세요."
+      },
+      {
+        "id": "tools.case",
+        "title": "레일의 도구",
+        "body": "오늘의 컬러, 형광펜, 지우개 · 글씨 · 밥이 여기 있어요. 형광펜을 하나 골라 보세요."
+      },
+      {
+        "id": "daily.paint",
+        "title": "타임테이블 칠하기",
+        "body": "펜슬이나 손가락으로 칸을 끌어 칠해 보세요. 같은 색으로 다시 칠하면 지워져요."
+      },
+      {
+        "id": "daily.write",
+        "title": "할 일 적기",
+        "body": "줄을 눌러 키보드로 적거나, Apple Pencil 로 줄 위에 바로 손글씨를 써요. 한 줄 적어 보세요."
+      },
+      {
+        "id": "daily.dday",
+        "title": "D-DAY",
+        "body": "D-DAY 칸을 누르면 이 날에 붙일 D-day 를 골라요. 하루에 두 개까지, 자주 쓰는 건 설정에 저장해 둬요."
+      },
+      {
+        "id": "weekly.flip",
+        "title": "주간은 위아래로",
+        "body": "주간은 위쪽이 묶여 있어요. 아래 가장자리를 잡고 위로 넘기면 다음 주예요. 한 주 넘겨 보세요."
+      },
+      {
+        "id": "chrome.settings",
+        "title": "설정과 동기화",
+        "body": "형광펜 이름과 색, D-day, 플래너, 맥 · 다른 기기와의 동기화가 여기 있어요. 이 둘러보기는 설정 → 도움말에서 다시 볼 수 있어요."
+      },
+      {
+        "id": "end",
+        "title": "다 둘러봤어요!",
+        "body": "이제 보던 플래너로 돌아갈게요. 예시 플래너는 책장에 그대로 있어요."
+      }
+    ]
+  },
+  "firstRun": {
+    "start": [
+      {
+        "userBook": true,
+        "inGroup": true,
+        "stage": "ready.joined"
+      },
+      {
+        "userBook": true,
+        "inGroup": false,
+        "stage": "ready.created"
+      },
+      {
+        "userBook": false,
+        "inGroup": true,
+        "stage": "ready.waiting"
+      },
+      {
+        "userBook": false,
+        "inGroup": false,
+        "stage": "welcome"
+      }
+    ],
+    "sheetClosed": [
+      {
+        "from": "planner",
+        "inGroup": true,
+        "userBook": true,
+        "outcome": "joined",
+        "to": "ready.joined"
+      },
+      {
+        "from": "planner",
+        "inGroup": true,
+        "userBook": true,
+        "outcome": "restored",
+        "to": "ready.restored"
+      },
+      {
+        "from": "planner",
+        "inGroup": true,
+        "userBook": false,
+        "outcome": "joined",
+        "to": "ready.waiting"
+      },
+      {
+        "from": "planner",
+        "inGroup": false,
+        "userBook": false,
+        "outcome": null,
+        "to": "planner"
+      }
+    ],
+    "bookArrived": [
+      {
+        "from": "welcome",
+        "inGroup": true,
+        "outcome": null,
+        "to": "ready.joined"
+      },
+      {
+        "from": "welcome",
+        "inGroup": false,
+        "outcome": null,
+        "to": "welcome"
+      },
+      {
+        "from": "ready.waiting",
+        "inGroup": true,
+        "outcome": "restored",
+        "to": "ready.restored"
+      },
+      {
+        "from": "ready.waiting",
+        "inGroup": true,
+        "outcome": "joined",
+        "to": "ready.joined"
+      },
+      {
+        "from": "planner",
+        "inGroup": true,
+        "outcome": null,
+        "to": "planner"
+      }
+    ]
+  },
+  "launch": [
+    {
+      "status": null,
+      "onboardingDone": true,
+      "userBook": true,
+      "resumeAsks": 0,
+      "action": "intro",
+      "newStatus": "due"
+    },
+    {
+      "status": "due",
+      "onboardingDone": true,
+      "userBook": true,
+      "resumeAsks": 0,
+      "action": "intro",
+      "newStatus": "due"
+    },
+    {
+      "status": "running",
+      "onboardingDone": true,
+      "userBook": true,
+      "resumeAsks": 1,
+      "action": "resume",
+      "newStatus": "running"
+    },
+    {
+      "status": "running",
+      "onboardingDone": true,
+      "userBook": true,
+      "resumeAsks": 3,
+      "action": "none",
+      "newStatus": "skipped"
+    },
+    {
+      "status": "done",
+      "onboardingDone": true,
+      "userBook": true,
+      "resumeAsks": 0,
+      "action": "none",
+      "newStatus": "done"
+    },
+    {
+      "status": "skipped",
+      "onboardingDone": true,
+      "userBook": true,
+      "resumeAsks": 0,
+      "action": "none",
+      "newStatus": "skipped"
+    },
+    {
+      "status": null,
+      "onboardingDone": false,
+      "userBook": true,
+      "resumeAsks": 0,
+      "action": "none",
+      "newStatus": null
+    },
+    {
+      "status": null,
+      "onboardingDone": true,
+      "userBook": false,
+      "resumeAsks": 0,
+      "action": "none",
+      "newStatus": null
+    }
+  ],
+  "weekSwipe": [
+    {
+      "dx": 0,
+      "dy": -40,
+      "dir": "forward"
+    },
+    {
+      "dx": 0,
+      "dy": 40,
+      "dir": "backward"
+    },
+    {
+      "dx": 30,
+      "dy": -40,
+      "dir": "forward"
+    },
+    {
+      "dx": 40,
+      "dy": -40,
+      "dir": null
+    },
+    {
+      "dx": -30,
+      "dy": 40,
+      "dir": "backward"
+    },
+    {
+      "dx": 0.2,
+      "dy": 0.4,
+      "dir": null
+    },
+    {
+      "dx": -35,
+      "dy": 40,
+      "dir": null
+    }
+  ]
+}
