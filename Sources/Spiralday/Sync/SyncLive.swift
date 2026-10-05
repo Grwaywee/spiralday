@@ -326,6 +326,20 @@ final class SyncLiveHints {
     var visiblePanel: NSWindow? { panel?.isVisible == true ? panel : nil }
 }
 
+/// "다른 기기에서 쓰는 중" 알림의 자리 (화면 좌표, 아래가 0)
+enum SyncLiveHintPlacement {
+    /// 칸 오른쪽 위 (칸의 오른쪽 끝에 맞추고, 칸 위쪽 끝 바로 위). 화면(메뉴 막대 · Dock 을 뺀 곳) 밖으로 나가지 않게:
+    /// 위가 모자라면 칸 바로 아래로, 옆은 화면 안으로 민다 (사장님 피드백 J: 팝오버 · 메뉴가 화면 밖으로 나감)
+    static func frame(size: CGSize, field r: NSRect, visible vis: NSRect?) -> NSRect {
+        var f = NSRect(origin: NSPoint(x: max(r.minX, r.maxX - size.width), y: r.maxY + 2), size: size)
+        guard let vis, !vis.isEmpty else { return f }
+        if f.maxY > vis.maxY { f.origin.y = r.minY - 2 - size.height }
+        f.origin.y = min(max(f.minY, vis.minY), vis.maxY - size.height)
+        f.origin.x = min(max(f.minX, vis.minX), vis.maxX - size.width)
+        return f
+    }
+}
+
 /// 알림 패널: 누를 수 없고 키 창이 되지 않는다 (포커스 · 조합 · 되돌리기를 건드리지 않는다)
 private final class HintPanel: NSPanel {
     private let label = NSHostingView(rootView: SyncLiveHintLabel(text: ""))
@@ -351,10 +365,9 @@ private final class HintPanel: NSPanel {
     func show(_ text: String, above field: NSView, in window: NSWindow) {
         label.rootView = SyncLiveHintLabel(text: text)
         let size = label.fittingSize
-        // 칸 오른쪽 위 (칸의 오른쪽 끝에 맞추고, 칸 위쪽 끝 바로 위)
         let r = window.convertToScreen(field.convert(field.bounds, to: nil))
-        let origin = NSPoint(x: max(r.minX, r.maxX - size.width), y: r.maxY + 2)
-        setFrame(NSRect(origin: origin, size: size), display: true)
+        let vis = (window.screen ?? NSScreen.main)?.visibleFrame
+        setFrame(SyncLiveHintPlacement.frame(size: size, field: r, visible: vis), display: true)
         if parent !== window {
             parent?.removeChildWindow(self)
             window.addChildWindow(self, ordered: .above)

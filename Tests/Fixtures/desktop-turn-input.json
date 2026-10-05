@@ -1,0 +1,61 @@
+{
+  "about": "Which desktop inputs turn the page, and which way — the same vectors for Windows (web/src/shell/desktopTurnInput.ts, web/tests/desktopTurnInput.test.ts) and the Mac (AppState.handleKey / handleScroll; paper-planner Tests/Fixtures/desktop-turn-input.json). Owner decisions 4 and 5 (2026-10-05): the weekly page and home are bound at the top and also turn with a vertical two-finger swipe (|dy| > 1.2 |dx|, fingers up = the next week) and the up / down keys (Windows also PageUp / PageDown), keeping the sideways ones; on a Windows touch screen a one-finger drag that does not start in a text field, on the timetable or in a curl corner turns the page (daily sideways, weekly up / down). Pen and mouse are unchanged.",
+  "version": 1,
+  "conventions": {
+    "fingers": "how the fingers move on screen, in points: +x right, +y down. A Windows / browser wheel event reports the content's scroll the other way (natural scrolling): deltaX = -fingers.x, deltaY = -fingers.y. The Mac's scrollingDeltaX / scrollingDeltaY (natural scrolling) follow the fingers.",
+    "expect": "next = forward in the book, prev = back, none = not a page turn",
+    "platforms": "a vector without 'platforms' holds on both; 'windows' only: PageUp / PageDown, mouse wheel notches, touch screens"
+  },
+  "rules": { "dominance": 1.2, "touchSlop": 10, "swipeMaxDelta": 40 },
+  "twoFinger": [
+    { "name": "daily: fingers left = next", "kind": "daily", "fingers": [-8, 1], "expect": "next", "axis": "x" },
+    { "name": "daily: fingers right = previous", "kind": "daily", "fingers": [8, -1], "expect": "prev", "axis": "x" },
+    { "name": "daily: up / down never turns", "kind": "daily", "fingers": [1, -8], "expect": "none" },
+    { "name": "daily: slanted is nothing", "kind": "daily", "fingers": [6, 5.5], "expect": "none" },
+    { "name": "weekly: fingers up = next week", "kind": "weekly", "fingers": [1, -8], "expect": "next", "axis": "y" },
+    { "name": "weekly: fingers down = previous week", "kind": "weekly", "fingers": [-1, 8], "expect": "prev", "axis": "y" },
+    { "name": "weekly: sideways still turns (kept)", "kind": "weekly", "fingers": [-8, 1], "expect": "next", "axis": "x" },
+    { "name": "weekly: |dy| = 1.2 |dx| is not yet vertical", "kind": "weekly", "fingers": [5, 6], "expect": "none" },
+    { "name": "weekly: just past 1.2", "kind": "weekly", "fingers": [5, 6.1], "expect": "prev", "axis": "y" },
+    { "name": "home: vertical is a turn gesture (home is one sheet: nothing turns)", "kind": "home", "fingers": [0, -8], "expect": "next", "axis": "y" }
+  ],
+  "keys": [
+    { "kind": "daily", "key": "ArrowRight", "expect": "next" },
+    { "kind": "daily", "key": "ArrowLeft", "expect": "prev" },
+    { "kind": "daily", "key": "ArrowDown", "expect": "none" },
+    { "kind": "daily", "key": "ArrowUp", "expect": "none" },
+    { "kind": "weekly", "key": "ArrowDown", "expect": "next" },
+    { "kind": "weekly", "key": "ArrowUp", "expect": "prev" },
+    { "kind": "weekly", "key": "ArrowRight", "expect": "next" },
+    { "kind": "weekly", "key": "ArrowLeft", "expect": "prev" },
+    { "kind": "home", "key": "ArrowDown", "expect": "next" },
+    { "kind": "home", "key": "ArrowUp", "expect": "prev" },
+    { "kind": "weekly", "key": "PageDown", "expect": "next", "platforms": ["windows"] },
+    { "kind": "weekly", "key": "PageUp", "expect": "prev", "platforms": ["windows"] },
+    { "kind": "home", "key": "PageDown", "expect": "next", "platforms": ["windows"] },
+    { "kind": "daily", "key": "PageDown", "expect": "none", "platforms": ["windows"] },
+    { "kind": "weekly", "key": "ArrowDown", "typing": true, "expect": "none" }
+  ],
+  "wheelNotch": [
+    { "name": "weekly: mouse wheel down = next week", "kind": "weekly", "fingers": [0, -100], "expect": "next", "platforms": ["windows"] },
+    { "name": "weekly: mouse wheel up = previous week", "kind": "weekly", "fingers": [0, 100], "expect": "prev", "platforms": ["windows"] },
+    { "name": "daily: the vertical wheel never turns", "kind": "daily", "fingers": [0, -100], "expect": "none", "platforms": ["windows"] },
+    { "name": "daily: tilt wheel right = next", "kind": "daily", "fingers": [-100, 0], "expect": "next", "platforms": ["windows"] }
+  ],
+  "touch": [
+    { "name": "daily: a finger dragged left on the paper = next", "kind": "daily", "pointer": "touch", "start": "paper", "fingers": [-40, 4], "expect": "next", "platforms": ["windows"] },
+    { "name": "daily: right = previous", "kind": "daily", "pointer": "touch", "start": "paper", "fingers": [40, -4], "expect": "prev", "platforms": ["windows"] },
+    { "name": "daily: up / down is not a turn", "kind": "daily", "pointer": "touch", "start": "paper", "fingers": [4, -40], "expect": "none", "platforms": ["windows"] },
+    { "name": "daily: within the slop it waits", "kind": "daily", "pointer": "touch", "start": "paper", "fingers": [-6, 0], "expect": "wait", "platforms": ["windows"] },
+    { "name": "daily: from a text field it never turns", "kind": "daily", "pointer": "touch", "start": "field", "fingers": [-60, 0], "expect": "none", "platforms": ["windows"] },
+    { "name": "daily: from the timetable it paints", "kind": "daily", "pointer": "touch", "start": "timetable", "fingers": [-60, 0], "expect": "none", "platforms": ["windows"] },
+    { "name": "daily: a curl corner drags itself", "kind": "daily", "pointer": "touch", "start": "corner", "fingers": [-60, 0], "expect": "none", "platforms": ["windows"] },
+    { "name": "daily: a pen is unchanged", "kind": "daily", "pointer": "pen", "start": "paper", "fingers": [-60, 0], "expect": "none", "platforms": ["windows"] },
+    { "name": "daily: a mouse is unchanged", "kind": "daily", "pointer": "mouse", "start": "paper", "fingers": [-60, 0], "expect": "none", "platforms": ["windows"] },
+    { "name": "weekly: a finger dragged up = next week", "kind": "weekly", "pointer": "touch", "start": "paper", "fingers": [4, -40], "expect": "next", "platforms": ["windows"] },
+    { "name": "weekly: down = previous week", "kind": "weekly", "pointer": "touch", "start": "paper", "fingers": [-4, 40], "expect": "prev", "platforms": ["windows"] },
+    { "name": "weekly: sideways is not a one-finger turn", "kind": "weekly", "pointer": "touch", "start": "paper", "fingers": [-40, 4], "expect": "none", "platforms": ["windows"] },
+    { "name": "weekly: from a day's slots it paints", "kind": "weekly", "pointer": "touch", "start": "timetable", "fingers": [0, -60], "expect": "none", "platforms": ["windows"] },
+    { "name": "home: one sheet, never", "kind": "home", "pointer": "touch", "start": "paper", "fingers": [0, -60], "expect": "none", "platforms": ["windows"] }
+  ]
+}

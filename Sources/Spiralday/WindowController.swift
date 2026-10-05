@@ -59,6 +59,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             window.setFrame(Self.fit(window.frame, kind: kind, edge: PaletteModel.shared.edge, visible: vis), display: false)
         }
 
+        // 이 창(과 팔레트)의 키 · 스크롤만 플래너가 받는다 — PDF 내보내기 · 설정 · 업데이트 창 · 팝오버의 것은 그 창으로
+        state.plannerWindow = window
+        state.isPlannerPanel = { $0 is PalettePanel }
         wire()
         updateTitle()
         palette = PaletteController(parent: window, store: store, state: state, model: .shared)

@@ -159,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Fonts.register()
         let window = SyncQADriveWindow.make(store: store, state: state)
         sync.plannerWindow = { window }
+        state.plannerWindow = window
         state.installMonitors()
         let sy = sync, st = state
         Task { @MainActor in await sy.start(state: st) }

@@ -1,0 +1,298 @@
+{
+  "_doc": "Mac 만의 넘김 입력 벡터 (Tests/SpiraldayKitTests/DesktopInputRoutingTests.swift · Kit DesktopTurnInput · DesktopSwipeTracker). 두 플랫폼이 같이 보는 값은 desktop-turn-input.json (Windows web/tests/fixtures/desktop-turn-input.json 과 같은 파일). 여기에는 Mac 의 창 가리기(어느 창 · 어느 칸의 입력을 플래너가 받는지)와 트랙패드 손짓 단계(began … ended · 관성)만 둔다. dx · dy 는 손가락이 움직인 방향 (dx < 0 왼쪽, dy < 0 위).",
+  "version": 1,
+  "routing": {
+    "_doc": "어느 창 · 어느 칸의 입력을 플래너가 받는지. window: planner = 플래너 종이 창, plannerPanel = 팔레트, other = PDF 내보내기 · 설정 · 업데이트 · 팝오버 · 시트. responder: none · text(글 칸) · composing(한글 조합 중) · datePicker(날짜 고르기).",
+    "key": [
+      {
+        "window": "planner",
+        "responder": "none",
+        "takes": true
+      },
+      {
+        "window": "planner",
+        "responder": "text",
+        "takes": false
+      },
+      {
+        "window": "planner",
+        "responder": "composing",
+        "takes": false
+      },
+      {
+        "window": "planner",
+        "responder": "datePicker",
+        "takes": false
+      },
+      {
+        "window": "plannerPanel",
+        "responder": "none",
+        "takes": true
+      },
+      {
+        "window": "plannerPanel",
+        "responder": "text",
+        "takes": false
+      },
+      {
+        "window": "other",
+        "responder": "none",
+        "takes": false
+      },
+      {
+        "window": "other",
+        "responder": "datePicker",
+        "takes": false
+      },
+      {
+        "window": "other",
+        "responder": "text",
+        "takes": false
+      }
+    ],
+    "scroll": [
+      {
+        "window": "planner",
+        "takes": true
+      },
+      {
+        "window": "plannerPanel",
+        "takes": false
+      },
+      {
+        "window": "other",
+        "takes": false
+      }
+    ]
+  },
+  "gestures": [
+    {
+      "_doc": "주간: 세로 두 손가락은 넘김을 잡고, 끝난 뒤 관성 이벤트도 먹는다",
+      "kind": "weekly",
+      "events": [
+        {
+          "phase": "began",
+          "dx": 0,
+          "dy": 0
+        },
+        {
+          "phase": "changed",
+          "dx": 1,
+          "dy": -6
+        },
+        {
+          "phase": "changed",
+          "dx": 0,
+          "dy": -9
+        },
+        {
+          "phase": "ended",
+          "dx": 0,
+          "dy": 0
+        },
+        {
+          "momentum": true,
+          "dx": 0,
+          "dy": -4
+        },
+        {
+          "momentum": true,
+          "momentumEnded": true,
+          "dx": 0,
+          "dy": 0
+        }
+      ],
+      "expect": [
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": [
+            "began",
+            -6
+          ],
+          "eat": true
+        },
+        {
+          "action": [
+            "changed",
+            -9
+          ],
+          "eat": true
+        },
+        {
+          "action": [
+            "ended",
+            0
+          ],
+          "eat": true
+        },
+        {
+          "action": null,
+          "eat": true
+        },
+        {
+          "action": null,
+          "eat": true
+        }
+      ]
+    },
+    {
+      "_doc": "일간: 세로 두 손가락은 넘기지 않는다 (스크롤 몫 — 먹지 않는다)",
+      "kind": "daily",
+      "events": [
+        {
+          "phase": "began",
+          "dx": 0,
+          "dy": 0
+        },
+        {
+          "phase": "changed",
+          "dx": 0,
+          "dy": -6
+        },
+        {
+          "phase": "changed",
+          "dx": -1,
+          "dy": -9
+        },
+        {
+          "phase": "ended",
+          "dx": 0,
+          "dy": 0
+        },
+        {
+          "momentum": true,
+          "dx": 0,
+          "dy": -4
+        }
+      ],
+      "expect": [
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": null,
+          "eat": false
+        }
+      ]
+    },
+    {
+      "_doc": "한 손짓의 축은 처음 한 번 정한다: 가로로 잡은 뒤의 세로 움직임도 가로 값으로",
+      "kind": "weekly",
+      "events": [
+        {
+          "phase": "began",
+          "dx": 0,
+          "dy": 0
+        },
+        {
+          "phase": "changed",
+          "dx": -8,
+          "dy": 1
+        },
+        {
+          "phase": "changed",
+          "dx": -2,
+          "dy": -10
+        },
+        {
+          "phase": "cancelled",
+          "dx": 0,
+          "dy": 0
+        }
+      ],
+      "expect": [
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": [
+            "began",
+            -8
+          ],
+          "eat": true
+        },
+        {
+          "action": [
+            "changed",
+            -2
+          ],
+          "eat": true
+        },
+        {
+          "action": [
+            "cancelled",
+            0
+          ],
+          "eat": true
+        }
+      ]
+    },
+    {
+      "_doc": "보통 마우스 휠: 가로만 한 장씩 (먹지 않는다), 세로 휠은 넘기지 않는다",
+      "kind": "weekly",
+      "events": [
+        {
+          "phase": "none",
+          "dx": -5,
+          "dy": 0
+        },
+        {
+          "phase": "none",
+          "dx": 4,
+          "dy": 1
+        },
+        {
+          "phase": "none",
+          "dx": 0,
+          "dy": -5
+        },
+        {
+          "phase": "none",
+          "dx": 1.5,
+          "dy": 0
+        }
+      ],
+      "expect": [
+        {
+          "action": [
+            "flip",
+            "forward"
+          ],
+          "eat": false
+        },
+        {
+          "action": [
+            "flip",
+            "backward"
+          ],
+          "eat": false
+        },
+        {
+          "action": null,
+          "eat": false
+        },
+        {
+          "action": null,
+          "eat": false
+        }
+      ]
+    }
+  ]
+}

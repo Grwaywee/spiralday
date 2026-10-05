@@ -66,7 +66,11 @@ public final class AppState: ObservableObject {
 
     #if os(macOS)
     private var monitors: [Any] = []
-    private var swipeActive = false
+    private var swipe = DesktopSwipeTracker()
+    /// 플래너 종이 창 (호스트가 정한다). 이 창의 키 · 스크롤만 플래너가 받는다 — 다른 창(PDF 내보내기 · 설정 · 업데이트 · 팝오버)은 그 창으로
+    public weak var plannerWindow: NSWindow?
+    /// 플래너에 딸린 패널인지 (팔레트 — 키는 플래너 단축키로 본다). 호스트가 정한다
+    public var isPlannerPanel: ((NSWindow) -> Bool)?
     #endif
 
     public init(kind: PageKind = .daily, today: Date = Date()) {
@@ -405,14 +409,42 @@ public final class AppState: ObservableObject {
         } as Any)
     }
 
-    private var isTyping: Bool { NSApp.keyWindow?.firstResponder is NSTextView }
+    /// 입력이 온 창
+    public func inputWindow(_ w: NSWindow?) -> DesktopTurnInput.Window {
+        guard let w else { return .other }
+        if let plannerWindow, w === plannerWindow { return .planner }
+        if isPlannerPanel?(w) == true { return .plannerPanel }
+        return .other
+    }
+
+    /// 그 창에서 입력을 받는 것
+    public static func inputResponder(_ w: NSWindow?) -> DesktopTurnInput.Responder {
+        switch w?.firstResponder {
+        case let tv as NSTextView: return tv.hasMarkedText() ? .composing : .text
+        case is NSDatePicker: return .datePicker
+        default: return .none
+        }
+    }
 
     /// 처리했으면 true (이벤트를 먹는다)
     private func handleKey(_ e: NSEvent) -> Bool {
-        if e.keyCode == 53 { endEditing(); return isTyping }
-        if isTyping || !e.modifierFlags.intersection([.command, .control, .option]).isEmpty { return false }
+        handleKey(window: inputWindow(e.window), responder: Self.inputResponder(e.window), keyCode: e.keyCode,
+                  characters: e.charactersIgnoringModifiers, modifiers: e.modifierFlags)
+    }
+
+    /// 키 하나 (시험이 창 · 칸을 정해 부른다). 처리했으면 true
+    func handleKey(window: DesktopTurnInput.Window, responder: DesktopTurnInput.Responder, keyCode: UInt16,
+                   characters: String?, modifiers: NSEvent.ModifierFlags) -> Bool {
+        if keyCode == 53 {
+            // Esc: 플래너에서 쓰던 글을 마친다 (다른 창의 Esc 는 그 창 몫)
+            guard DesktopTurnInput.escEndsEditing(window: window, responder: responder) else { return false }
+            endEditing()
+            return responder == .text || responder == .composing
+        }
+        guard DesktopTurnInput.plannerTakesKey(window: window, responder: responder),
+              modifiers.intersection([.command, .control, .option]).isEmpty else { return false }
         // 한글 입력 상태에서도 동작하도록 물리 키 코드와 자모 모두 확인
-        switch e.charactersIgnoringModifiers?.lowercased() ?? "" {
+        switch characters?.lowercased() ?? "" {
         case "t", "ㅅ": goToday(); return true
         case "w", "ㅈ": switchKind(.weekly); return true
         case "d", "ㅇ": switchKind(.daily); return true
@@ -420,10 +452,14 @@ public final class AppState: ObservableObject {
         case "e", "ㄷ": pickTool(Self.eraser); return true
         default: break
         }
+        if let key = Self.turnKey(keyCode) {
+            // ← → 는 늘, ↑ ↓ · PageUp PageDown 은 위가 묶인 쪽(주간 · 홈)에서만 넘긴다
+            guard let dir = DesktopTurnInput.turn(key, kind: kind) else { return false }
+            flip(dir)
+            return true
+        }
         let digits: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6]
-        switch e.keyCode {
-        case 123: flip(.backward)
-        case 124: flip(.forward)
+        switch keyCode {
         case 17: goToday()
         case 13: switchKind(.weekly)
         case 2: switchKind(.daily)
@@ -436,39 +472,45 @@ public final class AppState: ObservableObject {
         return true
     }
 
-    /// 트랙패드 두 손가락 가로 스와이프로 종이를 잡고 넘긴다
+    /// 넘기는 키의 물리 키 코드 (← → ↑ ↓ · PageUp PageDown)
+    public static func turnKey(_ keyCode: UInt16) -> DesktopTurnInput.Key? {
+        switch keyCode {
+        case 123: return .left
+        case 124: return .right
+        case 126: return .up
+        case 125: return .down
+        case 116: return .pageUp
+        case 121: return .pageDown
+        default: return nil
+        }
+    }
+
+    /// 트랙패드 두 손가락 쓸기로 종이를 잡고 넘긴다 (가로는 늘, 세로는 주간 · 홈 — DesktopTurnInput)
     /// 처리했으면 true (이벤트를 먹는다)
     private func handleScroll(_ e: NSEvent) -> Bool {
-        guard !morphing, e.window?.isKind(of: NSPanel.self) != true else { return false }
-        if !e.momentumPhase.isEmpty { return swipeActive }
-        var dx = e.scrollingDeltaX
-        if !e.isDirectionInvertedFromDevice { dx = -dx }
-
-        if e.phase.isEmpty {
-            // 일반 마우스 휠의 가로 스크롤: 한 장씩
-            if abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY), abs(dx) > 2 { flip(dx < 0 ? .forward : .backward) }
-            return false
-        }
+        guard !morphing, DesktopTurnInput.plannerTakesScroll(window: inputWindow(e.window)) else { return false }
+        // 손가락 방향으로 (자연스러운 스크롤이면 그대로, 아니면 뒤집는다)
+        var dx = e.scrollingDeltaX, dy = e.scrollingDeltaY
+        if !e.isDirectionInvertedFromDevice { dx = -dx; dy = -dy }
+        let phase: DesktopSwipeTracker.Phase
         switch e.phase {
-        case .began:
-            swipeActive = false
-        case .changed:
-            if !swipeActive {
-                guard abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) * 1.2, abs(dx) > 0.5 else { return false }
-                swipeActive = true
-                curl.swipe(.began, deltaX: dx)
-            } else {
-                curl.swipe(.changed, deltaX: dx)
-            }
-        case .ended:
-            if swipeActive { curl.swipe(.ended, deltaX: 0) }
-            swipeActive = false
-        case .cancelled:
-            if swipeActive { curl.swipe(.cancelled, deltaX: 0) }
-            swipeActive = false
-        default: break
+        case []: phase = .none
+        case .mayBegin: phase = .mayBegin
+        case .began: phase = .began
+        case .changed, .stationary: phase = .changed
+        case .ended: phase = .ended
+        case .cancelled: phase = .cancelled
+        default: phase = .changed
         }
-        return swipeActive
+        let (action, eat) = swipe.handle(phase: phase, momentum: !e.momentumPhase.isEmpty,
+                                         momentumEnded: e.momentumPhase.contains(.ended) || e.momentumPhase.contains(.cancelled),
+                                         dx: dx, dy: dy, kind: kind)
+        switch action {
+        case .flip(let dir)?: flip(dir)
+        case .swipe(let p, let d)?: curl.swipe(p, deltaX: d)
+        case nil: break
+        }
+        return eat
     }
     #endif
 }

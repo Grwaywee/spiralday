@@ -71,7 +71,7 @@ enum SyncQA {
                 default: sync.qaPresent(status: SyncViewStatus(state: .removed, lastSyncAt: ms - 86_400_000), inGroup: true, flow: nil)
                 }
                 let pen = store.categories.first?.id ?? 0
-                if let img = PaletteTest.scene(edge: .right, kind: .daily, open: true, tool: pen, store: store) {
+                if let (img, _) = PaletteTest.scene(edge: .right, kind: .daily, open: true, tool: pen, store: store) {
                     Snapshotter.write(img, dir.appendingPathComponent("palette-\(name).png"))
                     count += 1
                 } else {

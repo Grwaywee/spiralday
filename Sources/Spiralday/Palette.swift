@@ -116,6 +116,14 @@ enum PaletteMetrics {
     }
 }
 
+/// 세로 팔레트가 화면보다 길 때 줄이는 곳 (그 안에서 스크롤)
+enum PaletteLimit: Equatable {
+    /// 형광펜 목록만 이 높이로
+    case pens(CGFloat)
+    /// 팔레트 전체(그림자 여유 빼고)를 이 높이로 — 형광펜 목록을 두 줄로 줄여도 모자란 아주 짧은 화면
+    case column(CGFloat)
+}
+
 // MARK: - 자리 계산 (화면 좌표, 아래가 0)
 
 @MainActor
@@ -246,6 +254,9 @@ final class PaletteModel: ObservableObject {
     @Published private(set) var peeking = false
     /// 실제로 붙은 쪽 (화면에 자리가 없으면 고른 쪽의 반대). 팔레트 창이 정한다.
     @Published var side: PaletteEdge
+    /// 세로 팔레트가 화면보다 길 때 줄일 곳 (형광펜 목록 → 그래도 길면 팔레트 전체를 그 높이 안에서 스크롤 — 지우개 · 글씨 · 밥 ·
+    /// 설정이 화면 밖으로 밀려 누를 수 없게 되지 않게). 자리가 넉넉하면 nil. 팔레트 창이 정한다 (PaletteController.fit)
+    @Published var limit: PaletteLimit?
 
     var isOpen: Bool { pinned || peeking }
 
@@ -402,6 +413,8 @@ final class PaletteController {
     /// 펼친 팔레트 패널 크기 (그림자 여유 포함). 방향 · 내용이 바뀌면 다시 잰다.
     private var fullSize: CGSize = .zero
     private var measuredVertical: Bool?
+    /// 잴 때 본 화면의 높이 한도 (창이 다른 화면으로 가면 다시 잰다)
+    private var measuredLimit: CGFloat?
     /// 펼친 팔레트의 자리 (접혀 있어도 계산해 둔다)
     private var fullFrame: NSRect = .zero
     /// 패널이 손잡이 크기로 줄어 있는지 (접힌 채로 가만히 있을 때)
@@ -465,8 +478,9 @@ final class PaletteController {
     }
 
     /// 펼친 팔레트의 크기를 잰다 (그림자 여유 포함, 짝수로 올려 손잡이가 반 점 어긋나지 않게)
-    static func measure(_ side: PaletteEdge, store: PlannerStore, state: AppState, snapshot: Bool = false) -> CGSize {
-        let v = NSHostingView(rootView: PaletteBody(side: side)
+    static func measure(_ side: PaletteEdge, store: PlannerStore, state: AppState, snapshot: Bool = false,
+                        limit: PaletteLimit? = nil) -> CGSize {
+        let v = NSHostingView(rootView: PaletteBody(side: side, limit: limit)
             .environment(\.isSnapshot, snapshot)
             .environmentObject(store)
             .environmentObject(state))
@@ -475,15 +489,42 @@ final class PaletteController {
         return CGSize(width: even(s.width + 2 * PaletteMetrics.margin), height: even(s.height + 2 * PaletteMetrics.margin))
     }
 
+    /// 형광펜 목록을 줄여도 이만큼은 보인다 (두 줄 남짓). 이보다 줄여야 하면 팔레트 전체를 스크롤한다
+    static let minPenViewport: CGFloat = 92
+
+    /// 화면에 맞춘 펼친 팔레트: 세로 팔레트가 maxLength(화면의 보이는 높이 − 위아래 틈)보다 길면 형광펜 목록만 줄여
+    /// 그 안에서 스크롤하게 하고, 그래도 길면 팔레트 전체를 그 높이 안에서 스크롤한다 — 세로 팔레트를 작은 화면에 두면
+    /// 아래 도구(지우개 · 글씨 · 밥 · 설정)가 화면 밖으로 밀려 누를 수 없었다 (2026-10-05 PalettePlacementTests 가 찾음:
+    /// 기본 형광펜 7개 = 866pt, 형광펜 12개 = 1086pt — 13" MacBook Air 의 보이는 높이 ≈ 800pt)
+    static func fit(_ side: PaletteEdge, store: PlannerStore, state: AppState, maxLength: CGFloat?,
+                    snapshot: Bool = false) -> (size: CGSize, limit: PaletteLimit?) {
+        let natural = measure(side, store: store, state: state, snapshot: snapshot)
+        guard side.isVertical, let maxLength, natural.height > maxLength else { return (natural, nil) }
+        // 목록을 0 으로 줄인 크기와의 차이 = 목록의 원래 높이
+        let bare = measure(side, store: store, state: state, snapshot: snapshot, limit: .pens(0))
+        let pens = natural.height - bare.height
+        let viewport = (pens - (natural.height - maxLength)).rounded(.down)
+        if viewport >= minPenViewport {
+            let limit = PaletteLimit.pens(viewport)
+            return (measure(side, store: store, state: state, snapshot: snapshot, limit: limit), limit)
+        }
+        // 짝수로 내려 (measure 가 짝수로 올리므로) 패널이 maxLength 를 넘지 않게
+        let limit = PaletteLimit.column(max(minPenViewport, ((maxLength - 2 * PaletteMetrics.margin) / 2).rounded(.down) * 2))
+        return (measure(side, store: store, state: state, snapshot: snapshot, limit: limit), limit)
+    }
+
+    /// 이 화면에서 세로 팔레트가 쓸 수 있는 높이 (PalettePlacement.place 가 위아래로 8 씩 띄운다)
+    static func maxLength(in vis: NSRect) -> CGFloat { vis.height - 16 }
+
     /// 본 창 옆 제자리로. 창 크기를 바꾸는 도중이면 본 창 컨트롤러가 다음 차례로 미뤄서 부른다.
     func reposition() {
         guard let parent else { return }
         let edge = model.edge
-        if measuredVertical != edge.isVertical || fullSize == .zero {
-            fullSize = Self.measure(edge, store: store, state: state)
-            measuredVertical = edge.isVertical
-        }
         let vis = (parent.screen ?? NSScreen.main)?.visibleFrame ?? parent.frame
+        let limit = Self.maxLength(in: vis)
+        if measuredVertical != edge.isVertical || fullSize == .zero || measuredLimit != limit {
+            applyFit(edge, limit: limit)
+        }
         // 쪽 전환(morph) 도중에는 붙은 쪽을 그대로 둔다: state.kind 는 이미 새 쪽이라 스프링 여유가 먼저 커져서,
         // 창이 아직 움직이는 몇 프레임 동안 잠깐 모자라 반대쪽으로 튀었다 돌아오지 않게 (끝나면 다시 맞춘다)
         let locked = state.morphing && panel.parent != nil && (panel.side == edge || panel.side == edge.opposite)
@@ -504,11 +545,19 @@ final class PaletteController {
 
     private func remeasure() {
         guard panel.parent != nil else { return }
-        let s = Self.measure(model.edge, store: store, state: state)
-        guard s != fullSize else { return }
-        fullSize = s
-        measuredVertical = model.edge.isVertical
+        let old = (fullSize, model.limit)
+        applyFit(model.edge, limit: measuredLimit)
+        guard old.0 != fullSize || old.1 != model.limit else { return }
         reposition()
+    }
+
+    /// 펼친 팔레트를 재고 (화면이 짧으면 형광펜 목록을 줄여) 크기 · 목록 높이를 정한다
+    private func applyFit(_ edge: PaletteEdge, limit: CGFloat?) {
+        let (size, fitted) = Self.fit(edge, store: store, state: state, maxLength: limit)
+        fullSize = size
+        measuredVertical = edge.isVertical
+        measuredLimit = limit
+        if model.limit != fitted { model.limit = fitted }
     }
 
     /// 설정에서 자리를 바꿨을 때: 팔레트가 살짝 사라졌다가, (본 창이 자리를 만든 뒤) 새 자리에 나타난다
@@ -519,8 +568,8 @@ final class PaletteController {
         fade(to: 0, animated: animate) { [weak self] in
             guard let self, gen == self.edgeGeneration else { return }
             let edge = self.model.edge
-            self.fullSize = Self.measure(edge, store: self.store, state: self.state)
-            self.measuredVertical = edge.isVertical
+            let vis = (self.parent?.screen ?? NSScreen.main)?.visibleFrame
+            self.applyFit(edge, limit: vis.map(Self.maxLength(in:)))
             makeRoom(self.fullSize) { [weak self] in
                 guard let self, gen == self.edgeGeneration else { return }
                 self.reposition()
@@ -627,7 +676,7 @@ struct PaletteView: View {
         let radius = open ? PaletteMetrics.radius : PaletteMetrics.handleThickness / 2
         ZStack(alignment: side.dock) {
             if open {
-                PaletteBody(side: side, model: model)
+                PaletteBody(side: side, model: model, limit: model.limit)
                     .fixedSize()
                     .transition(motion ? .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.07)),
                                                      removal: .opacity.animation(.easeIn(duration: 0.09)))
@@ -656,6 +705,8 @@ struct PaletteView: View {
 struct PaletteBody: View {
     let side: PaletteEdge
     var model: PaletteModel? = nil
+    /// 세로 팔레트가 화면보다 길 때 줄일 곳 (그 안에서 스크롤). nil 이면 다 펼친다
+    var limit: PaletteLimit? = nil
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @State private var editing: Int? = nil
@@ -672,6 +723,7 @@ struct PaletteBody: View {
     // MARK: 옆 (세로)
 
     private var column: some View {
+        columnScroll {
         VStack(spacing: 12) {
             BookMenu(compact: false)
                 .tourTarget(.book)
@@ -696,10 +748,8 @@ struct PaletteBody: View {
 
             VStack(spacing: 6) {
                 // 둘러보기가 가리킬 수 있게 펜 묶음을 한 덩어리로 (같은 간격이라 모양은 그대로)
-                VStack(spacing: 6) {
-                    ForEach(store.categories) { c in pen(c) }
-                }
-                .tourTarget(.pens)
+                columnPens
+                    .tourTarget(.pens)
                 eraser
                 HStack(spacing: 4) {
                     textChip(compact: false)
@@ -712,10 +762,50 @@ struct PaletteBody: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 12)
+        }
         .frame(width: PaletteMetrics.thickness)
         // 접기: 바깥쪽 위 모서리
         .overlay(alignment: side == .left ? .topLeading : .topTrailing) {
             if model != nil { CollapseButton(side: side) { model?.collapse() }.padding(3) }
+        }
+    }
+
+    /// 세로 팔레트의 형광펜 목록. 화면이 짧으면 (limit .pens) 그 높이 안에서 스크롤한다
+    @ViewBuilder
+    private var columnPens: some View {
+        let pens = VStack(spacing: 6) {
+            ForEach(store.categories) { c in pen(c) }
+        }
+        if case .pens(let h)? = limit {
+            // 스크롤 칸은 팔레트 폭 그대로 (고른 펜이 종이 쪽으로 나온 모양 · 빛이 잘리지 않게), 안쪽은 예전 자리 그대로
+            let inner = PaletteMetrics.thickness - 16
+            ScrollView(.vertical) {
+                pens
+                    .frame(width: inner)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+            }
+            // 스크롤 막대는 그리지 않는다 (마우스를 쓰는 Mac 의 막대가 폭을 먹어 펜이 한쪽으로 밀린다). 줄이 중간에서 잘려 보여
+            // 더 있다는 것이 드러나고, 트랙패드 · 휠로 굴린다
+            .scrollIndicators(.never)
+            .frame(width: PaletteMetrics.thickness, height: h)
+            .padding(.horizontal, -8)
+        } else {
+            pens
+        }
+    }
+
+    /// 아주 짧은 화면 (limit .column): 팔레트 전체를 그 높이 안에서 스크롤한다
+    @ViewBuilder
+    private func columnScroll<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        if case .column(let h)? = limit {
+            ScrollView(.vertical) {
+                content().frame(width: PaletteMetrics.thickness)
+            }
+            .scrollIndicators(.never)
+            .frame(width: PaletteMetrics.thickness, height: h)
+        } else {
+            content()
         }
     }
 
@@ -1027,26 +1117,21 @@ private struct ToolBadge: View {
 }
 
 /// 지금 펼친 플래너(책). 눌러서 다른 권으로 바꾸거나 관리 화면을 연다.
-private struct BookMenu: View {
+struct BookMenu: View {
     let compact: Bool
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
-    @Environment(\.isSnapshot) private var isSnapshot
 
     var body: some View {
         let book = store.activeBook
-        Group {
-            // 점검용 그림(ImageRenderer)은 메뉴 단추를 그리지 못해 모양만 그린다
-            if isSnapshot {
-                label(book)
-            } else {
-                // macOS 의 Menu 단추는 label 의 그림(표지 색 · 책등)을 지우고 글자만 그린다 —
-                // 그래서 책 모양은 보통 단추로 그리고, 누르면 같은 메뉴를 그 자리에 띄운다
-                Button { showMenu(book) } label: { label(book) }
-                    .buttonStyle(.plain)
-            }
-        }
-        .help(book.map { "\($0.name) · \($0.periodText)" } ?? "플래너를 만들어 주세요")
+        // macOS 의 Menu 단추는 label 의 그림(표지 색 · 책등)을 지우고 글자만 그린다 —
+        // 그래서 책 모양은 보통 단추로 그리고, 누르면 같은 메뉴를 그 자리에 띄운다.
+        // 점검용 그림(--palette-test · PaletteGoldenTests)도 따로 그리지 않고 이 단추를 그대로 그린다 —
+        // 다시 Menu 로 바꾸면 그 그림에서 책 모양이 사라져 시험이 잡는다 (사장님 피드백 E)
+        Button { showMenu(book) } label: { label(book) }
+            .buttonStyle(.plain)
+            .help(book.map { "\($0.name) · \($0.periodText)" } ?? "플래너를 만들어 주세요")
+            .accessibilityIdentifier("palette.bookMenu")
     }
 
     /// 플래너 목록 (지금 펼친 권에 ✓) · 플래너 관리… — 마우스 자리에 띄운다
@@ -1504,45 +1589,71 @@ private struct PalettePositionCard: View {
 ///   picker.png                      설정 → 팔레트의 자리 고르기
 @MainActor
 enum PaletteTest {
+    /// 한 장: 이름 · 그림 · 그림 안의 팔레트 자리 (화소, 위에서부터 — PaletteGoldenTests 가 이 자리만 견준다)
+    struct Shot {
+        let name: String
+        let image: CGImage
+        let palette: CGRect
+    }
+
     static func run(to dir: URL, store: PlannerStore) -> Int32 {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let pen = store.categories.first?.id ?? 0
         var count = 0
-        func save(_ img: CGImage?, _ name: String) {
-            guard let img else { print("✗ \(name) 을 그리지 못했어요"); return }
-            Snapshotter.write(img, dir.appendingPathComponent(name))
-            print("  \(name)  \(img.width / 2) × \(img.height / 2)")
+        for (name, make) in cases(store: store) {
+            guard let shot = make() else { print("✗ \(name) 을 그리지 못했어요"); continue }
+            Snapshotter.write(shot.image, dir.appendingPathComponent(name))
+            print("  \(name)  \(shot.image.width / 2) × \(shot.image.height / 2)")
             count += 1
-        }
-        for edge in PaletteEdge.allCases {
-            // 스프링 쪽과 겹치는 조합을 기본으로 (왼쪽 · 일간, 위 · 주간)
-            let main: PageKind = edge.isVertical ? .daily : .weekly
-            let other: PageKind = main == .daily ? .weekly : .daily
-            for kind in [main, other] {
-                save(scene(edge: edge, kind: kind, open: true, tool: pen, store: store), "\(edge.rawValue)_\(kind.rawValue)_open.png")
-            }
-            for (name, tool) in [("pen", pen), ("eraser", AppState.eraser), ("text", AppState.textTool), ("meal", AppState.mealTool)] {
-                save(scene(edge: edge, kind: main, open: false, tool: tool, store: store),
-                     "\(edge.rawValue)_\(main.rawValue)_closed-\(name).png")
-            }
-        }
-        for sel in [PaletteEdge.right, .top] {
-            let picker = PalettePositionPicker(edge: .constant(sel))
-                .frame(width: 540)
-                .padding(20)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .environment(\.colorScheme, .light)
-            let r = ImageRenderer(content: picker)
-            r.scale = 2
-            save(r.cgImage, "picker_\(sel.rawValue).png")
         }
         print("✓ \(count)장 → \(dir.path)")
         return 0
     }
 
+    /// --palette-test 의 26장 (이름 → 그리기). today: 오늘 (시험은 날을 정해 둔다 — 오늘의 컬러 · 표지가 날에 따라 바뀌지 않게)
+    static func cases(store: PlannerStore, today: Date = Date()) -> [(name: String, make: () -> Shot?)] {
+        let pen = store.categories.first?.id ?? 0
+        var out: [(name: String, make: () -> Shot?)] = []
+        for edge in PaletteEdge.allCases {
+            // 스프링 쪽과 겹치는 조합을 기본으로 (왼쪽 · 일간, 위 · 주간)
+            let main: PageKind = edge.isVertical ? .daily : .weekly
+            let other: PageKind = main == .daily ? .weekly : .daily
+            for kind in [main, other] {
+                let name = "\(edge.rawValue)_\(kind.rawValue)_open.png"
+                out.append((name, { shot(name, edge: edge, kind: kind, open: true, tool: pen, store: store, today: today) }))
+            }
+            for (tname, tool) in [("pen", pen), ("eraser", AppState.eraser), ("text", AppState.textTool), ("meal", AppState.mealTool)] {
+                let name = "\(edge.rawValue)_\(main.rawValue)_closed-\(tname).png"
+                out.append((name, { shot(name, edge: edge, kind: main, open: false, tool: tool, store: store, today: today) }))
+            }
+        }
+        for sel in [PaletteEdge.right, .top] {
+            let name = "picker_\(sel.rawValue).png"
+            out.append((name, {
+                let picker = PalettePositionPicker(edge: .constant(sel))
+                    .frame(width: 540)
+                    .padding(20)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .environment(\.colorScheme, .light)
+                let r = ImageRenderer(content: picker)
+                r.scale = 2
+                guard let img = r.cgImage else { return nil }
+                return Shot(name: name, image: img, palette: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+            }))
+        }
+        return out
+    }
+
+    private static func shot(_ name: String, edge: PaletteEdge, kind: PageKind, open: Bool, tool: Int, store: PlannerStore,
+                             today: Date) -> Shot? {
+        guard let (img, pal) = scene(edge: edge, kind: kind, open: open, tool: tool, store: store, today: today) else { return nil }
+        return Shot(name: name, image: img, palette: pal)
+    }
+
     /// 종이(보통 크기) + 스프링 + 팔레트 패널을 실제 창과 같은 자리 계산으로 한 장에
-    static func scene(edge: PaletteEdge, kind: PageKind, open: Bool, tool: Int, store: PlannerStore) -> CGImage? {
-        let state = AppState(kind: kind)
+    /// 돌려주는 것: 그림과 그 안의 팔레트 패널 자리 (화소, 위에서부터)
+    static func scene(edge: PaletteEdge, kind: PageKind, open: Bool, tool: Int, store: PlannerStore,
+                      today: Date = Date()) -> (CGImage, CGRect)? {
+        let state = AppState(kind: kind, today: today)
         state.store = store
         state.tool = tool
         let pageSize = kind == .daily ? CGSize(width: 560, height: 877) : CGSize(width: 1270, height: 811)
@@ -1589,6 +1700,8 @@ enum PaletteTest {
         .environmentObject(state)
         let r = ImageRenderer(content: content)
         r.scale = 2
-        return r.cgImage
+        guard let img = r.cgImage else { return nil }
+        let o = origin(pal)
+        return (img, CGRect(x: o.width * 2, y: o.height * 2, width: pal.width * 2, height: pal.height * 2).integral)
     }
 }
