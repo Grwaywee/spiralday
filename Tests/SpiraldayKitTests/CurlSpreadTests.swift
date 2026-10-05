@@ -10,10 +10,15 @@ import simd
 /// 한 장 경로(맥)가 그대로인지는 SpiraldayKitTests 의 기존 시험과 Mac 앞뒤 스냅샷 비교가 본다.
 @MainActor
 final class CurlSpreadTests: XCTestCase {
-    // MARK: 물리
+    // MARK: 물리 — 코일을 도는 잎 (CurlHingeLeaf)
 
     private func frame(stiffness: Double = 1) -> CurlFrame {
-        CurlFrame.spread(W: 5 + 478, H: 749, halfGutter: 5, stiffness: stiffness)
+        // 11" 가로 일간: 틈 반 5 · 구멍 = 틈 반 + 15u(5.6) · 쪽 478 × 749
+        CurlFrame.spread(W: 5 + 478, H: 749, halfGutter: 5, stiffness: stiffness, coil: 5 + 5.6)
+    }
+
+    private func leaf(_ f: CurlFrame, progress p: Double) -> CurlHingeLeaf {
+        CurlHingeLeaf(frame: f, finger: p >= 1 ? f.E : p <= 0 ? f.K : CurlVec(f.fingerX(progress: p, forward: true), f.H))
     }
 
     func testSinglePageFrameKeepsItsNumbers() {
@@ -37,49 +42,91 @@ final class CurlSpreadTests: XCTestCase {
         XCTAssertEqual(fold.axisPoint.x, (f.K - N * ((dist + .pi * r) / 2)).x, accuracy: 1e-12)
         let g = CurlGlide.make(in: f, from: f.K, velocity: .zero, toTurned: true)!
         XCTAssertEqual(g.duration, CurlGlide.fullDuration * (0.34 + 0.66 * min(simd_length(f.E - f.K) / f.span, 1.15)), accuracy: 1e-12)
+        XCTAssertEqual(g.timing.slope(1), CurlTiming.exitSlope, accuracy: 1e-9, "한 장은 고리 뒤로 미끄러져 나간다 (그대로)")
+        let back = CurlGlide.make(in: f, from: CurlVec(100, 600), velocity: .zero, toTurned: false)!
+        XCTAssertEqual(back.timing.slope(1), CurlTiming.landingSlope, accuracy: 1e-9)
     }
 
-    func testSpreadLandsMirroredOnTheHinge() {
+    func testLeafRestsAndLandsExactlyFlat() {
         let f = frame()
         XCTAssertEqual(f.landing, .mirrored)
         XCTAssertEqual(f.E, CurlVec(-f.W, f.H), "착지 = 반대쪽에 거울로 (−W′, H)")
-        let landed = f.fold(f.E)
-        XCTAssertEqual(landed.radius, 0, "다 넘어가면 반지름 0 (납작하게 눕는다)")
+        let rest = leaf(f, progress: 0), landed = leaf(f, progress: 1)
+        XCTAssertEqual(rest.theta, 0)
+        XCTAssertEqual(rest.bow, 0)
+        XCTAssertEqual(rest.effect, 0, "쉬는 잎은 그림자 · 빛 없이 쪽 그대로")
+        XCTAssertEqual(landed.theta, .pi)
         XCTAssertEqual(landed.effect, 0)
-        XCTAssertEqual(landed.axisPoint.x, 0, accuracy: 1e-9, "축 = 경첩")
-        XCTAssertEqual(landed.normal.x, 1, accuracy: 1e-12)
-        // 뒷면 점: sB = q + N(r(π − a) + max(−d, 0) − d) → r = 0, d = q.x < 0 → sB.x = −q.x (정확한 거울)
-        for qx in [-480.0, -250, -6] {
-            let d = qx - landed.axisPoint.x
-            let sB = CurlVec(qx, 300) + landed.normal * (max(-d, 0) - d)
-            XCTAssertEqual(sB.x, -qx, accuracy: 1e-9)
+        for p in rest.profile {
+            XCTAssertEqual(p.x, p.z, "쉬는 잎: 제자리에 평평 (X = s)")
+            XCTAssertEqual(p.y, 0)
         }
-        let rest = f.fold(f.K)
-        XCTAssertEqual(rest.radius, 0, "쉬는 장은 평평")
+        for p in landed.profile {
+            XCTAssertEqual(p.x, -p.z, "내려앉은 잎: 반대쪽에 정확한 거울 (X = −s)")
+            XCTAssertEqual(p.y, 0)
+        }
+        XCTAssertEqual(rest.profile.first?.z, 5, "종이는 틈 가장자리부터")
+        XCTAssertEqual(rest.profile.last?.z, f.W, "자유 끝까지")
     }
 
-    func testSpreadRadiusIsRoundestMidTurnAndBoardsStayStiff() {
+    func testLeafTurnsAboutTheCoilWithoutSliding() {
         let f = frame()
-        let mid = f.fold(CurlVec(0, 0.8 * f.H))
-        let early = f.fold(CurlVec(0.8 * f.W, 0.97 * f.H))
-        XCTAssertGreaterThan(mid.radius, early.radius)
-        XCTAssertLessThanOrEqual(mid.radius, 0.14 * f.W + 1e-9)
-        let board = frame(stiffness: 2.4)
-        let b = board.fold(CurlVec(0, 0.8 * board.H))
-        XCTAssertGreaterThan(b.radius, mid.radius, "판은 덜 휜다 (반지름이 크다)")
-        XCTAssertLessThanOrEqual(2 * b.radius, 0.5 * board.W + 1e-9, "판도 2r ≤ 0.5W′")
-        // 판은 축이 덜 기운다
-        let steep = board.fold(CurlVec(0.2 * board.W, 0.1 * board.H))
-        XCTAssertLessThanOrEqual(abs(atan2(steep.normal.y, steep.normal.x)), CurlFrame.boardTilt + 1e-9)
+        for p in stride(from: 0.05, through: 0.95, by: 0.05) {
+            let l = leaf(f, progress: p)
+            // 제본 가장자리 · 구멍은 늘 코일 축에서 같은 거리 (경첩이 미끄러지거나 골로 접히지 않는다)
+            let edge = l.profile[0], hole = l.profile[1]
+            XCTAssertEqual((edge.x * edge.x + edge.y * edge.y).squareRoot(), 5, accuracy: 1e-9, "\(p)")
+            XCTAssertEqual((hole.x * hole.x + hole.y * hole.y).squareRoot(), 10.6, accuracy: 1e-9, "\(p)")
+            XCTAssertEqual(hole.w, l.theta, accuracy: 1e-12, "구멍까지는 뻣뻣하게")
+            // 자유 끝은 손가락 아래 (F.x)
+            XCTAssertEqual(l.profile.last!.x, f.fingerX(progress: p, forward: true), accuracy: 1e-5 * f.W, "\(p)")
+            XCTAssertGreaterThan(l.profile.last!.y, 0, "넘기는 동안 잎은 공중에")
+            XCTAssertGreaterThan(l.effect, 0)
+        }
     }
 
-    func testSpreadGlideLandsSoftly() throws {
+    func testBowLeadsWhileRisingAndTrailsWhileFalling() {
+        let f = frame()
+        let rising = leaf(f, progress: 0.25), falling = leaf(f, progress: 0.75), up = leaf(f, progress: 0.5)
+        XCTAssertGreaterThan(rising.bow, 0.1, "제 쪽에서 들릴 때는 자유 끝이 앞선다")
+        XCTAssertGreaterThan(rising.profile.last!.w, rising.theta)
+        XCTAssertLessThan(falling.bow, -0.1, "반대쪽으로 떨어질 때는 자유 끝이 뒤따른다")
+        XCTAssertLessThan(falling.profile.last!.w, falling.theta)
+        XCTAssertLessThan(up.bow, 0, "서 있을 때는 자유 끝이 조금 뒤따른다 (옆에서 보아도 선이 아니라 종이)")
+        XCTAssertGreaterThan(up.bow, -0.2)
+        XCTAssertLessThanOrEqual(abs(rising.bow), CurlHingeLeaf.paperBow + 1e-9, "살짝 휠 뿐")
+        let board = leaf(frame(stiffness: 2.4), progress: 0.25)
+        XCTAssertLessThan(abs(board.bow), abs(rising.bow) / 4, "판(표지)은 거의 휘지 않는다")
+    }
+
+    func testSpreadGlideLandsWithoutAPop() throws {
         let f = frame()
         let g = try XCTUnwrap(CurlGlide.make(in: f, from: f.K, velocity: .zero, toTurned: true, full: CurlGlide.spreadDuration))
         XCTAssertEqual(g.point(1), f.E)
-        XCTAssertEqual(g.timing.slope(1), CurlTiming.landingSlope, accuracy: 1e-9, "반대쪽에 사뿐히 눕는다")
-        // 궤적의 x 는 경첩을 넘어간다
-        XCTAssertLessThan(g.point(0.7).x, 0)
+        XCTAssertEqual(g.timing.slope(1), 0, accuracy: 1e-9, "잎은 멈추듯 내려앉는다")
+        // 잎의 각속도가 처음 · 끝에서 0 으로 (툭 들리거나 탁 떨어지지 않는다)
+        func angle(_ tau: Double) -> Double { CurlHingeLeaf(frame: f, finger: g.point(tau)).theta }
+        let dt = 0.002
+        let start = (angle(dt) - angle(0)) / dt, end = (angle(1) - angle(1 - dt)) / dt
+        var peak = 0.0
+        for i in 1..<100 { let t = Double(i) / 100; peak = max(peak, (angle(t + dt) - angle(t)) / dt) }
+        XCTAssertLessThan(start, peak * 0.25, "들리기 시작할 때 천천히")
+        XCTAssertLessThan(end, peak * 0.35, "내려앉을 때 천천히")
+        XCTAssertLessThan(g.point(0.7).x, 0, "궤적은 경첩을 넘어간다")
+    }
+
+    func testOutlineSeesTheLeafThroughThePerspective() {
+        let f = frame()
+        let flat = leaf(f, progress: 0).outline(from: 5)
+        XCTAssertEqual(flat.map(\.x).min()!, 5, accuracy: 1e-9)
+        XCTAssertEqual(flat.map(\.x).max()!, f.W, accuracy: 1e-9)
+        XCTAssertEqual(flat.map(\.y).min()!, 0, accuracy: 1e-9)
+        XCTAssertEqual(flat.map(\.y).max()!, f.H, accuracy: 1e-9)
+        // 서 있는 잎은 카메라에 가까워 제본을 따라 조금 더 길어 보인다
+        let up = leaf(f, progress: 0.45).outline(from: 5)
+        XCTAssertLessThan(up.map(\.y).min()!, -1)
+        XCTAssertGreaterThan(up.map(\.y).max()!, f.H + 1)
+        XCTAssertGreaterThan(up.map(\.y).min()!, -0.12 * f.H, "넘침은 오버레이 bleed 안")
     }
 
     // MARK: 셰이더 — 첫 프레임 · 마지막 프레임이 살아 있는 쪽과 같은지

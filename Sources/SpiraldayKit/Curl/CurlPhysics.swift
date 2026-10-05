@@ -48,13 +48,15 @@ struct CurlFrame {
     private(set) var spread: Spread?
 
     struct Spread {
-        /// W′ = half gutter + page length away from the binding; H = page length along the binding.
+        /// W′ = half gap + page length away from the binding; H = page length along the binding.
         var W: Double
         var H: Double
-        /// g/2: the strip [0, g/2) from the hinge is the virtual band that wraps the rings (never drawn).
+        /// g/2: the open gap [0, g/2) from the hinge (the coil's axis) holds no paper — the leaf's paper starts there.
         var halfGutter: Double
-        /// 1 = paper, 2.4 = board (cover / inside back): rounder, less tilt.
+        /// 1 = paper, 2.4 = board (cover / inside back): barely bows.
         var stiffness: Double
+        /// Radius of the coil = distance of the holes from the hinge (≥ g/2): the leaf is rigid up to its holes.
+        var coil: Double
     }
 
     init(edge: BindingEdge, view: CGSize) {
@@ -63,10 +65,12 @@ struct CurlFrame {
         self.spread = nil
     }
 
-    /// An open-book frame: x = distance from the hinge (gutter centre) across the binding, y = along it.
-    static func spread(W: Double, H: Double, halfGutter: Double, stiffness: Double) -> CurlFrame {
+    /// An open-book frame: x = distance from the hinge (the coil's axis, middle of the gap) across the binding,
+    /// y = along it. `coil` = the holes' distance from the hinge (nil: at the paper's edge).
+    static func spread(W: Double, H: Double, halfGutter: Double, stiffness: Double, coil: Double? = nil) -> CurlFrame {
         var f = CurlFrame(edge: .leading, view: CGSize(width: W, height: H))
-        f.spread = Spread(W: W, H: H, halfGutter: halfGutter, stiffness: max(1, stiffness))
+        let c = min(max(coil ?? halfGutter, halfGutter), max(halfGutter, W - 1))
+        f.spread = Spread(W: W, H: H, halfGutter: halfGutter, stiffness: max(1, stiffness), coil: c)
         return f
     }
 
@@ -98,14 +102,13 @@ struct CurlFrame {
     // MARK: fold
 
     static let maxTilt = 35.0 * .pi / 180
-    /// A board (cover) barely twists.
-    static let boardTilt = 12.0 * .pi / 180
-    var rMax: Double { spread == nil ? 0.10 * W : 0.14 * W }
+    var rMax: Double { 0.10 * W }
     var rMin: Double { 0.012 * W }
 
-    /// Cylinder fold for a finger position.
+    /// Cylinder fold for a finger position (single page). An open book does not roll: its leaf turns about the
+    /// coil (CurlHingeLeaf) — a spread frame answers a flat fold here.
     func fold(_ F: CurlVec) -> CurlFold {
-        if let sp = spread { return spreadFold(F, sp) }
+        if spread != nil { return .flat(at: K) }
         let D = K - F
         guard simd_length(D) > 1e-6 else { return .flat(at: K) }
         // 스프링에서 찢어지지 않게 축 기울기를 제한한다
@@ -118,26 +121,6 @@ struct CurlFrame {
         let r0 = rMin + (rMax - rMin) * sin(.pi * t)
         // 거의 평평할 때는 반지름도 0 으로 (dist/π 로 부드럽게 수렴)
         let r = r0 * (1 - exp(-dist / (.pi * r0)))
-        let d0 = (dist + .pi * r) / 2
-        return CurlFold(axisPoint: K - N * d0, normal: N, radius: r,
-                        effect: CurlMath.smooth(0, 0.05 * W, r))
-    }
-
-    /// Spread fold: the same cylinder, but the radius goes to 0 as the sheet lands (t → 1), so the axis
-    /// reaches the hinge and the back of the sheet is an exact mirror of its page space (sB.x = −q.x) —
-    /// the last frame is pixel-identical to the new live pages.
-    private func spreadFold(_ F: CurlVec, _ sp: Spread) -> CurlFold {
-        let D = K - F
-        guard simd_length(D) > 1e-6 else { return .flat(at: K) }
-        let tilt = sp.stiffness > 1.01 ? Self.boardTilt : Self.maxTilt
-        let angle = min(max(atan2(D.y, D.x), -tilt), tilt)
-        let N = CurlVec(cos(angle), sin(angle))
-        let dist = simd_dot(D, N)
-        guard dist > 1e-6 else { return .flat(at: K) }
-        let t = CurlMath.clamp01((K.x - F.x) / (2 * W))
-        var r0 = sp.stiffness * (rMin + (rMax - rMin) * sin(.pi * t)) * (1 - CurlMath.smooth(0.92, 1, t))
-        r0 = min(r0, 0.25 * W)
-        let r = r0 > 1e-9 ? r0 * (1 - exp(-dist / (.pi * r0))) : 0
         let d0 = (dist + .pi * r) / 2
         return CurlFold(axisPoint: K - N * d0, normal: N, radius: r,
                         effect: CurlMath.smooth(0, 0.05 * W, r))
@@ -299,8 +282,9 @@ struct CurlGlide {
         }
         let slope = along * duration / (3 * lead) + entrySlope
         let path = CurlPath(F0, F0 + dir * lead, goal - arrive * (0.356 * dist), goal)
-        // 펼친 책은 양쪽 모두 반대쪽에 사뿐히 눕는다 (한 장은 넘긴 장이 고리 뒤로 미끄러져 나간다)
-        let final = toTurned && f.landing == .behindBinding ? CurlTiming.exitSlope : CurlTiming.landingSlope
+        // 한 장은 넘긴 장이 고리 뒤로 미끄러져 나간다 (exitSlope). 펼친 책의 잎은 코일을 돌아 어느 쪽에든
+        // 멈추듯 내려앉는다 (끝 기울기 0 — 잎의 각은 acos 로 따라가므로 마지막 순간 각속도도 0, 툭 튀지 않는다)
+        let final = f.landing == .mirrored ? 0 : toTurned ? CurlTiming.exitSlope : CurlTiming.landingSlope
         return CurlGlide(path: path, duration: duration, timing: CurlTiming(initialSlope: slope, finalSlope: final))
     }
 

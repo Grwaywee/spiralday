@@ -2,34 +2,42 @@ import XCTest
 import CoreGraphics
 @testable import SpiraldayKit
 
-/// 펼친 책(iPad)에서 넘어가는 잎의 들린 부분(CurlSpreadLeaf) — 골 위에 그리는 철사 고리를 그 아래로 가릴 자리.
-/// 셰이더가 실제로 그린 그림과 화소로 견준다 (뒷면이 보이는 곳은 모두 안, 드러난 쪽 · 빈 곳은 모두 밖),
-/// 잎의 제본 여백(철사가 꿰인 곳)은 빼고, 넘김 앞 · 착지한 마지막 프레임에는 철사를 하나도 가리지 않는다.
+/// 펼친 스프링 책(iPad)에서 넘어가는 잎이 덮는 자리(CurlSpreadLeaf) — 틈 위에 그리는 코일 고리를 잎과 앞뒤로 가린다.
+/// 잎은 코일 축을 돈다: 위 고리는 잎의 구멍 안쪽(제본 여백) 위로 지나고 구멍 바깥 잎 밑으로 들어간다, 아래 고리는 잎 전체 밑.
+/// 셰이더가 실제로 그린 그림과 화소로 견준다 (잎이 보이는 곳은 모두 안, 드러난 쪽 · 빈 곳은 모두 밖).
 @MainActor
 final class CurlSpreadLeafTests: XCTestCase {
-    /// 반 크기 책 (CurlSpreadTests 와 같은 놓기): 쪽 153×240 · 골 6 · bleed 20
+    /// 반 크기 책 (CurlSpreadTests 와 같은 놓기): 쪽 153×240 · 틈 6 · 구멍 = 틈 반 + 5 · bleed 24
     private func spread(horizontal: Bool) -> CurlSpread {
         let p = horizontal ? CGSize(width: 240, height: 153) : CGSize(width: 153, height: 240)
-        let gutter: CGFloat = 6, bleed: CGFloat = 20
+        let gutter: CGFloat = 6, bleed: CGFloat = 24
         if horizontal {
-            return CurlSpread(axis: .horizontal, overlaySize: CGSize(width: p.width + 2 * bleed, height: 2 * p.height + gutter + 2 * bleed),
-                              hinge: bleed + p.height + gutter / 2, halfGutter: gutter / 2,
-                              versoRect: CGRect(x: bleed, y: bleed, width: p.width, height: p.height),
-                              rectoRect: CGRect(x: bleed, y: bleed + p.height + gutter, width: p.width, height: p.height))
+            return CurlSpread(axis: .horizontal, overlaySize: CGSize(width: p.width + 2 * bleed, height: 2 * p.height + gutter),
+                              hinge: p.height + gutter / 2, halfGutter: gutter / 2,
+                              versoRect: CGRect(x: bleed, y: 0, width: p.width, height: p.height),
+                              rectoRect: CGRect(x: bleed, y: p.height + gutter, width: p.width, height: p.height),
+                              coil: gutter / 2 + 5)
         }
         return CurlSpread(axis: .vertical, overlaySize: CGSize(width: 2 * p.width + gutter, height: p.height + 2 * bleed),
                           hinge: p.width + gutter / 2, halfGutter: gutter / 2,
                           versoRect: CGRect(x: 0, y: bleed, width: p.width, height: p.height),
-                          rectoRect: CGRect(x: p.width + gutter, y: bleed, width: p.width, height: p.height))
+                          rectoRect: CGRect(x: p.width + gutter, y: bleed, width: p.width, height: p.height),
+                          coil: gutter / 2 + 5)
     }
 
-    /// 철사가 지나는 띠: 골을 건너 양쪽 구멍(제본 가장자리에서 hole 만큼)까지, 쪽 길이 전체
-    private func wire(_ g: CurlSpread, hole: CGFloat) -> [CGPoint] {
-        let reach = g.halfGutter + hole
+    /// 위 고리를 가리는 모양: 구멍(코일 반지름) + 철사 끝 2pt 부터
+    private func upperMask(_ l: CurlSpreadLeaf, _ g: CurlSpread) -> CurlSheetShape {
+        l.lifted(bindingMargin: g.coil - g.halfGutter + 2)
+    }
+
+    /// 위에서 본 위 고리 한 가닥의 점들 (각 t: 0 = 드는 쪽 구멍, π = 반대쪽 구멍), 제본을 따라 여러 자리
+    private func arc(_ g: CurlSpread, sigma: CGFloat, from t0: Double, to t1: Double) -> [CGPoint] {
         var pts: [CGPoint] = []
-        let lift = g.rectoRect
-        for along in stride(from: 4.0, through: Double(g.axis == .vertical ? lift.height : lift.width) - 4, by: 6) {
-            for across in stride(from: -reach, through: reach, by: 1) {
+        let lift = sigma > 0 ? g.rectoRect : g.versoRect
+        let length = g.axis == .vertical ? lift.height : lift.width
+        for along in stride(from: 6.0, through: Double(length) - 6, by: 9) {
+            for t in stride(from: t0, through: t1, by: 0.02) {
+                let across = sigma * g.coil * CGFloat(cos(t))
                 pts.append(g.axis == .vertical ? CGPoint(x: g.hinge + across, y: lift.minY + CGFloat(along))
                                                : CGPoint(x: lift.minX + CGFloat(along), y: g.hinge + across))
             }
@@ -37,100 +45,97 @@ final class CurlSpreadLeafTests: XCTestCase {
         return pts
     }
 
-    func testNothingIsHiddenAtRestAndOnceLanded() {
+    func testTheCoilIsNeverHiddenAtRestOrOnceLanded() {
         for horizontal in [false, true] {
             let g = spread(horizontal: horizontal)
             for dir in [FlipDirection.forward, .backward] {
-                for hold in [false, true] {
-                    XCTAssertTrue(CurlSpreadLeaf.turn(spread: g, direction: dir, holdTop: hold, progress: 0)
-                        .lifted(bindingMargin: 12).isEmpty, "\(horizontal) \(dir): 넘김 앞에는 아무것도 들리지 않았다")
-                    // 착지: 잎이 반대쪽에 거울로 누웠다 — 제본 여백 밖만 남아 철사(구멍 9 까지)와 겹치지 않는다
-                    let landed = CurlSpreadLeaf.turn(spread: g, direction: dir, holdTop: hold, progress: 1).lifted(bindingMargin: 12)
-                    let hit = wire(g, hole: 9).filter { landed.contains($0) }
-                    XCTAssertTrue(hit.isEmpty, "\(horizontal) \(dir) hold \(hold): 착지한 마지막 프레임에 철사를 가리지 않는다 (\(hit.prefix(3)))")
+                let sigma: CGFloat = dir == .forward ? 1 : -1
+                for p in [0.0, 1.0] {
+                    let l = CurlSpreadLeaf.turn(spread: g, direction: dir, progress: p)
+                    XCTAssertTrue(l.isFlat)
+                    let hit = arc(g, sigma: sigma, from: 0, to: .pi).filter { upperMask(l, g).contains($0) }
+                    XCTAssertTrue(hit.isEmpty, "\(horizontal) \(dir) \(p): 평평한 잎은 위 고리를 가리지 않는다 (\(hit.prefix(3)))")
+                    // 아래 고리(틈 안)도 — 잎 전체가 틈 밖
+                    let gap = arc(g, sigma: sigma, from: 0, to: .pi).filter { pt in
+                        abs((g.axis == .vertical ? pt.x : pt.y) - g.hinge) < g.halfGutter - 0.5
+                    }
+                    XCTAssertTrue(gap.filter { l.lifted(bindingMargin: 0).contains($0) }.isEmpty, "\(horizontal) \(dir) \(p): 틈은 비어 있다")
                 }
+                // 내려앉은 잎은 반대쪽에 누운 자리 전체를 계속 덮는다 (새 펼침이 그려질 때까지 그 밑의 고리를 감춘다)
+                let landed = CurlSpreadLeaf.turn(spread: g, direction: dir, progress: 1).lifted(bindingMargin: 0)
+                let opp = sigma > 0 ? g.versoRect : g.rectoRect
+                XCTAssertTrue(landed.contains(CGPoint(x: opp.midX, y: opp.midY)))
             }
         }
     }
 
-    /// 넘김 가운데 · 후반에는 들린 잎이 골의 철사를 덮는다 (고치기 전에는 철사가 잎 위로 비쳤다)
-    func testTheLiftedLeafCoversTheWireMidTurn() {
+    /// 넘기는 동안 잎은 코일에 꿰여 있다: 잎의 구멍에서 잎이 기운 쪽(서기 전에는 드는 쪽, 선 뒤에는 반대쪽) 구멍까지의 고리는
+    /// 구멍 바깥 잎 밑으로 (가린다), 다른 쪽 고리는 잎의 제본 여백 위로 지나 보인다
+    func testTheLeafPassesUnderAndOverTheCoilLikePaper() {
         for horizontal in [false, true] {
             let g = spread(horizontal: horizontal)
             for dir in [FlipDirection.forward, .backward] {
-                var covered = 0
-                for p in [0.45, 0.6, 0.75, 0.85] {
-                    let s = CurlSpreadLeaf.turn(spread: g, direction: dir, progress: p).lifted(bindingMargin: 12)
-                    covered += wire(g, hole: 9).filter { s.contains($0) }.count
-                }
-                XCTAssertGreaterThan(covered, 200, "\(horizontal) \(dir)")
-            }
-        }
-    }
-
-    /// 잎의 제본 여백(철사가 꿰인 띠)은 넘김 끝 무렵에야 들린다 — 여백을 빼면 그때 그만큼 작아지고, 다른 데는 같다
-    func testTheBindingMarginIsLeftOut() {
-        let g = spread(horizontal: false)
-        var onlyAll = 0
-        for p in [0.5, 0.7, 0.9, 0.97, 0.985, 0.995] {
-            let all = CurlSpreadLeaf.turn(spread: g, direction: .forward, progress: p).lifted(bindingMargin: 0)
-            let some = CurlSpreadLeaf.turn(spread: g, direction: .forward, progress: p).lifted(bindingMargin: 12)
-            for y in stride(from: 25.0, to: 255, by: 5) {
-                for x in stride(from: 0.0, to: Double(g.overlaySize.width), by: 1) {
-                    let q = CGPoint(x: x, y: y)
-                    let a = all.contains(q), s = some.contains(q)
-                    if s && !a && distance(q, all.outline) > 1 { XCTFail("\(p): 여백을 뺀 모양이 더 크다 \(q)") }
-                    if a && !s { onlyAll += 1 }
+                let sigma: CGFloat = dir == .forward ? 1 : -1
+                for p in [0.2, 0.35, 0.65, 0.8] {
+                    let l = CurlSpreadLeaf.turn(spread: g, direction: dir, progress: p)
+                    let mask = upperMask(l, g)
+                    let theta = l.angle
+                    let leansOwn = theta < .pi / 2
+                    let under = leansOwn ? arc(g, sigma: sigma, from: 0.05, to: theta - 0.45)
+                                         : arc(g, sigma: sigma, from: theta + 0.45, to: .pi - 0.05)
+                    let over = leansOwn ? arc(g, sigma: sigma, from: theta + 0.25, to: .pi)
+                                        : arc(g, sigma: sigma, from: 0, to: theta - 0.25)
+                    let name = "\(horizontal ? "weekly" : "daily") \(dir) \(p) θ \(theta)"
+                    XCTAssertFalse(under.isEmpty)
+                    XCTAssertGreaterThan(Double(under.filter { mask.contains($0) }.count) / Double(max(under.count, 1)), 0.9,
+                                         "\(name): 잎이 기운 쪽 고리는 잎 밑")
+                    XCTAssertEqual(over.filter { mask.contains($0) }.count, 0, "\(name): 다른 쪽 고리는 잎 위")
                 }
             }
         }
-        XCTAssertGreaterThan(onlyAll, 0, "넘김 끝 무렵에는 여백만큼 빠진다")
     }
 
     // MARK: 셰이더와 견주기
 
-    /// 드는 면 = 빨강, 뒷면 = 초록, 드러나는 쪽 = 파랑: 초록이 보이는 화소는 모두 모양 안,
+    /// 드는 면 = 빨강, 뒷면 = 초록, 드러나는 쪽 = 파랑: 빨강 · 초록이 보이는 화소는 모두 모양 안,
     /// 파랑 · 빈 곳(투명)은 모두 모양 밖 (윤곽 근처 1.5pt 는 뺀다).
     func testShapeMatchesTheRenderedLeaf() throws {
         try XCTSkipIf(CurlGPU.shared?.spreadPipeline == nil, "Metal 없음")
-        var backSeen = 0
+        var leafSeen = 0
         for horizontal in [false, true] {
             let g = spread(horizontal: horizontal)
             let page = horizontal ? CGSize(width: 240, height: 153) : CGSize(width: 153, height: 240)
             let scale: CGFloat = 2
             let red = try solid(page, scale, 255, 0, 0), green = try solid(page, scale, 0, 255, 0), blue = try solid(page, scale, 0, 0, 255)
             for dir in [FlipDirection.forward, .backward] {
-                for hold in [false, true] {
-                    let progress = [0.2, 0.4, 0.55, 0.7, 0.85, 0.95]
-                    let frames = CurlController.renderSpreadStills(SpreadBitmaps(front: red, back: green, revealed: blue),
-                                                                   spread: g, direction: dir, holdTop: hold, scale: scale,
-                                                                   progress: progress)
-                    XCTAssertEqual(frames.count, progress.count)
-                    for (img, p) in zip(frames, progress) {
-                        let name = "\(horizontal ? "weekly" : "daily") \(dir) hold \(hold) \(p)"
-                        let shape = CurlSpreadLeaf.turn(spread: g, direction: dir, holdTop: hold, progress: p).lifted(bindingMargin: 0)
-                        let px = try pixels(img)
-                        var wrongBack = 0, wrongUnder = 0
-                        for y in stride(from: 1, to: px.height, by: 4) {
-                            for x in stride(from: 1, to: px.width, by: 4) {
-                                let q = CGPoint(x: (CGFloat(x) + 0.5) / scale, y: (CGFloat(y) + 0.5) / scale)
-                                let (r, gg, b, a) = px[x, y]
-                                let isBack = a > 250 && gg > 120 && r < 90 && b < 90
-                                let isUnder = (a > 250 && b > 120 && r < 90 && gg < 90) || a < 6
-                                guard isBack || isUnder else { continue }
-                                let inside = shape.contains(q)
-                                if isBack { backSeen += 1 }
-                                if isBack, !inside, distance(q, shape.outline) > 1.5 { wrongBack += 1 }
-                                if isUnder, inside, distance(q, shape.outline) > 1.5 { wrongUnder += 1 }
-                            }
+                let progress = [0.2, 0.4, 0.55, 0.7, 0.85, 0.95]
+                let frames = CurlController.renderSpreadStills(SpreadBitmaps(front: red, back: green, revealed: blue),
+                                                               spread: g, direction: dir, scale: scale, progress: progress)
+                XCTAssertEqual(frames.count, progress.count)
+                for (img, p) in zip(frames, progress) {
+                    let name = "\(horizontal ? "weekly" : "daily") \(dir) \(p)"
+                    let shape = CurlSpreadLeaf.turn(spread: g, direction: dir, progress: p).lifted(bindingMargin: 0)
+                    let px = try pixels(img)
+                    var wrongLeaf = 0, wrongUnder = 0
+                    for y in stride(from: 1, to: px.height, by: 3) {
+                        for x in stride(from: 1, to: px.width, by: 3) {
+                            let q = CGPoint(x: (CGFloat(x) + 0.5) / scale, y: (CGFloat(y) + 0.5) / scale)
+                            let (r, gg, b, a) = px[x, y]
+                            let isLeaf = a > 250 && ((r > 120 && gg < 90 && b < 90) || (gg > 120 && r < 90 && b < 90))
+                            let isUnder = (a > 250 && b > 120 && r < 90 && gg < 90) || a < 6
+                            guard isLeaf || isUnder else { continue }
+                            let inside = shape.contains(q)
+                            if isLeaf { leafSeen += 1 }
+                            if isLeaf, !inside, distance(q, shape.outline) > 1.5 { wrongLeaf += 1 }
+                            if isUnder, inside, distance(q, shape.outline) > 1.5 { wrongUnder += 1 }
                         }
-                        XCTAssertEqual(wrongBack, 0, "\(name): 뒷면이 보이는데 모양 밖 — 철사가 잎 위로 비친다")
-                        XCTAssertEqual(wrongUnder, 0, "\(name): 드러난 쪽 · 빈 곳인데 모양 안 — 철사를 괜히 감춘다")
                     }
+                    XCTAssertEqual(wrongLeaf, 0, "\(name): 잎이 보이는데 모양 밖 — 고리가 잎 위로 비친다")
+                    XCTAssertEqual(wrongUnder, 0, "\(name): 드러난 쪽 · 빈 곳인데 모양 안 — 고리를 괜히 감춘다")
                 }
             }
         }
-        XCTAssertGreaterThan(backSeen, 2000, "뒷면이 실제로 보이는 장면을 견주었다")
+        XCTAssertGreaterThan(leafSeen, 4000, "잎이 실제로 보이는 장면을 견주었다")
     }
 
     // MARK: 도우미

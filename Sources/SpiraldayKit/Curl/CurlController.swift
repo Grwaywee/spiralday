@@ -71,25 +71,30 @@ public enum SpreadAxis: Sendable, Equatable {
     case horizontal
 }
 
-/// Geometry of an open book in the overlay's coordinate space (points).
+/// Geometry of an open (spiral-bound) book in the overlay's coordinate space (points).
 public struct CurlSpread: Equatable, Sendable {
     public var axis: SpreadAxis
     /// Overlay view size (book + bleed).
     public var overlaySize: CGSize
-    /// The hinge line (centre of the gutter): x for a vertical binding, y for a horizontal one.
+    /// The hinge line = the coil's axis, in the middle of the open gap: x for a vertical binding, y for a horizontal one.
     public var hinge: CGFloat
-    /// Half the gutter width (the rings live there).
+    /// Half the open gap between the two pages (the coil lives there; no paper).
     public var halfGutter: CGFloat
     public var versoRect: CGRect
     public var rectoRect: CGRect
+    /// The coil's radius = the holes' distance from the hinge (≥ halfGutter): a leaf is rigid up to its holes and
+    /// bows only beyond them.
+    public var coil: CGFloat
 
-    public init(axis: SpreadAxis, overlaySize: CGSize, hinge: CGFloat, halfGutter: CGFloat, versoRect: CGRect, rectoRect: CGRect) {
+    public init(axis: SpreadAxis, overlaySize: CGSize, hinge: CGFloat, halfGutter: CGFloat, versoRect: CGRect, rectoRect: CGRect,
+                coil: CGFloat? = nil) {
         self.axis = axis
         self.overlaySize = overlaySize
         self.hinge = hinge
         self.halfGutter = halfGutter
         self.versoRect = versoRect
         self.rectoRect = rectoRect
+        self.coil = max(coil ?? halfGutter, halfGutter)
     }
 }
 
@@ -177,7 +182,8 @@ public final class CurlController: ObservableObject {
     /// (CurlSpreadLeaf.swift). `watchLiftedSheet` calls its handler on every frame in spread mode too.
     public var spreadLeaf: CurlSpreadLeaf? {
         guard let turn, let sp = turn.spread else { return nil }
-        return CurlSpreadLeaf(geometry: sp.geometry, sigma: sp.sigma, holdTop: sp.holdTop, frame: turn.frame, fold: turn.frame.fold(F))
+        return CurlSpreadLeaf(geometry: sp.geometry, sigma: sp.sigma, holdTop: sp.holdTop,
+                              leaf: CurlHingeLeaf(frame: turn.frame, finger: F))
     }
 
     private var isSpread: Bool { if case .spread = layout { return true } else { return false } }
@@ -630,7 +636,7 @@ public final class CurlController: ObservableObject {
         guard metalView != nil, let gpu = CurlGPU.shared, gpu.spreadPipeline != nil,
               let bitmaps = spreadSnapshot?(direction, abs(delta)) else { return false }
         let frame = CurlFrame.spread(W: Double(g.halfGutter) + across, H: along, halfGutter: Double(g.halfGutter),
-                                     stiffness: bitmaps.stiffness)
+                                     stiffness: bitmaps.stiffness, coil: Double(g.coil))
         guard frame.isValid,
               let front = textures.texture(for: bitmaps.front, gpu: gpu),
               let back = textures.texture(for: bitmaps.back, gpu: gpu) else { return false }
@@ -673,19 +679,10 @@ public final class CurlController: ObservableObject {
         return CurlVec(sp.sigma * across, sp.holdTop ? turn.frame.H - along : along)
     }
 
-    /// Whether the moving sheet (front or back) covers this page-space point (the shader's coverage, no AA).
+    /// Whether the moving leaf covers this page-space point on screen (its projected outline).
     private func sheetCovers(_ q: CurlVec, _ turn: Turn) -> Bool {
-        guard let sp = turn.spread else { return false }
-        let fold = turn.frame.fold(F)
-        let N = fold.normal, r = fold.radius
-        let d = simd_dot(q - fold.axisPoint, N)
-        guard d <= r else { return false }
-        let a = r > 1e-9 ? asin(min(max(min(max(d, 0), r) / r, 0), 1)) : 0
-        let sF = q + N * (min(d, 0) + r * a - d)
-        let sB = q + N * (r * (.pi - a) + max(-d, 0) - d)
-        let lo = Double(sp.geometry.halfGutter), hi = turn.frame.W, H = turn.frame.H
-        func inside(_ s: CurlVec) -> Bool { s.x >= lo && s.x <= hi && s.y >= 0 && s.y <= H }
-        return inside(sF) || (simd_length(F - turn.frame.K) > 1e-3 && inside(sB))
+        guard turn.spread != nil else { return false }
+        return CurlHingeLeaf(frame: turn.frame, finger: F).covers(q)
     }
 
     private func configureOverlay() {
@@ -698,8 +695,8 @@ public final class CurlController: ObservableObject {
 
     private func peekPoint(_ t: Turn) -> CurlVec {
         let f = t.frame
-        // 펼친 책: 바깥 모서리가 살짝 들린다 (앞 · 뒤 모두 같은 모양 — 거울 공간)
-        if t.spread != nil { return f.K + CurlVec(-0.06 * f.W, -0.03 * f.H) }
+        // 펼친 책: 잎이 코일을 돌아 살짝 들린다 (앞 · 뒤 모두 같은 모양 — 거울 공간, 약 9°)
+        if t.spread != nil { return f.K + CurlVec(-0.012 * f.W, 0) }
         if t.forward { return f.K + CurlVec(-0.085 * f.W, -0.036 * f.H) }
         // 이전 장은 스프링 쪽에서 살짝 비친다 (포인터가 있는 모서리 쪽이 조금 더 넓게)
         let toward = edge == .top ? -1.0 : 1.0
@@ -947,15 +944,18 @@ public final class CurlController: ObservableObject {
     // MARK: spread rendering
 
     private func renderSpreadFrame(_ view: CurlMetalView, _ turn: Turn, _ sp: SpreadTurn) {
-        guard let gpu = CurlGPU.shared, let pipeline = gpu.spreadPipeline,
+        guard let gpu = CurlGPU.shared, let pipelines = gpu.spreadPipeline,
               let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let cb = gpu.queue.makeCommandBuffer() else { return }
         pass.colorAttachments[0].loadAction = .dontCare
-        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].storeAction = view.sampleCount > 1 ? .multisampleResolve : .store
+        pass.depthAttachment.loadAction = .clear
+        pass.depthAttachment.clearDepth = 1
+        pass.depthAttachment.storeAction = .dontCare
         guard let enc = cb.makeRenderCommandEncoder(descriptor: pass) else { return }
-        var u = Self.spreadUniforms(frame: turn.frame, fold: turn.frame.fold(F), spread: sp,
-                                    lifted: simd_length(F - turn.frame.K) > 1e-3, pixelSize: view.drawableSize)
-        gpu.encodeSpread(enc, pipeline: pipeline, uniforms: &u, front: turn.top, back: sp.back, revealed: sp.revealed)
+        var f = Self.spreadFrame(turn.frame, finger: F, geometry: sp.geometry, sigma: sp.sigma, rim: sp.rim,
+                                 stiffness: sp.stiffness, hasRevealed: sp.revealed != nil)
+        gpu.encodeSpread(enc, pipelines: pipelines, frame: &f, front: turn.top, back: sp.back, revealed: sp.revealed)
         enc.endEncoding()
         if view.presentsWithTransaction {
             cb.commit()
@@ -968,24 +968,41 @@ public final class CurlController: ObservableObject {
         needsDraw = false
     }
 
-    private static func spreadUniforms(frame: CurlFrame, fold: CurlFold, spread sp: SpreadTurn, lifted: Bool,
-                                       pixelSize: CGSize) -> CurlSpreadUniforms {
-        let g = sp.geometry
+    /// The light of the desk, toward its source (screen x right, y down, z up): from above, a little from the top-left.
+    private static let light = simd_normalize(SIMD3<Double>(-0.28, -0.32, 1))
+
+    /// Everything one spread frame draws with: the leaf turning about the coil for the finger F.
+    static func spreadFrame(_ frame: CurlFrame, finger F: CurlVec, geometry g: CurlSpread, sigma: Double, rim: SIMD3<Float>?,
+                            stiffness: Double, hasRevealed: Bool) -> CurlSpreadFrame {
+        let leaf = CurlHingeLeaf(frame: frame, finger: F)
         let ov = g.overlaySize
+        let horizontal = g.axis == .horizontal
+        let lift = sigma > 0 ? g.rectoRect : g.versoRect
+        let opp = sigma > 0 ? g.versoRect : g.rectoRect
         func rect(_ r: CGRect) -> SIMD4<Float> { SIMD4(Float(r.minX), Float(r.minY), Float(r.width), Float(r.height)) }
-        let rim = sp.rim.map { SIMD4($0.x, $0.y, $0.z, 1) } ?? .zero
-        return CurlSpreadUniforms(
-            liftRect: rect(sp.liftRect), oppRect: rect(sp.oppRect), rim: sp.stiffness > 1.01 ? rim : .zero,
+        let rimColor = stiffness > 1.01 ? (rim.map { SIMD4($0.x, $0.y, $0.z, 1) } ?? .zero) : .zero
+        let lx = horizontal ? light.y : light.x
+        let u = CurlSpreadUniforms(
+            liftRect: rect(lift), oppRect: rect(opp), rim: rimColor,
             viewSize: SIMD2(Float(ov.width), Float(ov.height)),
-            pixelScale: SIMD2(Float(Double(pixelSize.width) / max(Double(ov.width), 1)),
-                              Float(Double(pixelSize.height) / max(Double(ov.height), 1))),
-            pageSize: SIMD2(Float(frame.W), Float(frame.H)),
-            axisPoint: SIMD2(Float(fold.axisPoint.x), Float(fold.axisPoint.y)),
-            normal: SIMD2(Float(fold.normal.x), Float(fold.normal.y)),
-            radius: Float(fold.radius), effect: Float(fold.effect),
-            hinge: Float(g.hinge), sigma: Float(sp.sigma), halfGutter: Float(g.halfGutter),
-            holdTop: sp.holdTop ? 1 : 0, horizontal: g.axis == .horizontal ? 1 : 0,
-            hasRevealed: sp.revealed != nil ? 1 : 0, lifted: lifted ? 1 : 0)
+            pageSize: SIMD2(Float(leaf.W), Float(leaf.H)),
+            hinge: Float(g.hinge), sigma: Float(sigma), halfGutter: Float(g.halfGutter),
+            horizontal: horizontal ? 1 : 0, hasRevealed: hasRevealed ? 1 : 0,
+            effect: Float(leaf.effect), camera: Float(leaf.camera),
+            lightAcross: Float(sigma * lx), lightZ: Float(light.z),
+            shadowReach: Float(CurlHingeLeaf.shadowReach), shadowBins: Float(CurlHingeLeaf.shadowBins))
+        // the shadow moves away from the light with height (σ-space): 0.8 × the light's slope
+        let slope = -sigma * lx / light.z * 0.8
+        let profile = leaf.profile.map { SIMD4(Float($0.x), Float($0.y), Float($0.z), Float($0.w)) }
+        // which winding is the leaf's front: the flat leaf on its own side, as the vertex shader places it
+        func ndc(_ s: Double, _ y: Double) -> SIMD2<Double> {
+            let a = Double(g.hinge) + sigma * s
+            let p = horizontal ? SIMD2(Double(lift.minX) + y, a) : SIMD2(a, Double(lift.minY) + y)
+            return SIMD2(p.x / Double(ov.width) * 2 - 1, 1 - p.y / Double(ov.height) * 2)
+        }
+        let v0 = ndc(leaf.halfGutter, 0), v1 = ndc(leaf.halfGutter, leaf.H), v2 = ndc(leaf.W, 0)
+        let cross = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x)
+        return CurlSpreadFrame(uniforms: u, profile: profile, shadow: leaf.shadow(lightSlope: slope), counterClockwise: cross > 0)
     }
 
     // MARK: spread offscreen (tests · frame captures)
@@ -997,7 +1014,7 @@ public final class CurlController: ObservableObject {
                                               spreads: Int = 1, holdTop: Bool = false, scale: CGFloat,
                                               frameCount: Int) -> [CGImage] {
         guard frameCount > 0, let gpu = CurlGPU.shared else { return [] }
-        let (frame, sp) = offscreenTurn(bitmaps, g, direction, holdTop)
+        let (frame, sigma) = offscreenTurn(bitmaps, g, direction)
         guard frame.isValid else { return [] }
         let full = spreads > 1 ? CurlGlide.jumpDuration : bitmaps.stiffness > 1.01 ? CurlGlide.boardDuration : CurlGlide.spreadDuration
         guard let glide = CurlGlide.make(in: frame, from: frame.K, velocity: .zero, toTurned: true, full: full) else { return [] }
@@ -1005,56 +1022,38 @@ public final class CurlController: ObservableObject {
             let tau = frameCount == 1 ? 1 : Double(i) / Double(frameCount - 1)
             return glide.point(tau)
         }
-        return renderSpread(gpu, bitmaps, g, frame, sp, fingers, scale)
+        return renderSpread(gpu, bitmaps, g, frame, sigma, fingers, scale)
     }
 
-    /// Spread stills with the finger at given progress values on the canonical arc (0 = flat, 1 = landed).
+    /// Spread stills at given progress values (0 = flat, 1 = landed): the free edge at that fraction of its way
+    /// across (F.x = W′ − 2W′·p).
     public static func renderSpreadStills(_ bitmaps: SpreadBitmaps, spread g: CurlSpread, direction: FlipDirection,
                                           holdTop: Bool = false, scale: CGFloat, progress: [Double]) -> [CGImage] {
         guard let gpu = CurlGPU.shared else { return [] }
-        let (frame, sp) = offscreenTurn(bitmaps, g, direction, holdTop)
+        let (frame, sigma) = offscreenTurn(bitmaps, g, direction)
         guard frame.isValid else { return [] }
-        let arc = CurlArc(frame)
         let fingers = progress.map { p -> CurlVec in
-            let x = frame.fingerX(progress: p, forward: true)
-            return p >= 1 ? frame.E : p <= 0 ? frame.K : CurlVec(x, arc.y(atX: x))
+            p >= 1 ? frame.E : p <= 0 ? frame.K : CurlVec(frame.fingerX(progress: p, forward: true), frame.H)
         }
-        return renderSpread(gpu, bitmaps, g, frame, sp, fingers, scale)
+        return renderSpread(gpu, bitmaps, g, frame, sigma, fingers, scale)
     }
 
-    private static func offscreenTurn(_ b: SpreadBitmaps, _ g: CurlSpread, _ direction: FlipDirection,
-                                      _ holdTop: Bool) -> (CurlFrame, (sigma: Double, holdTop: Bool)) {
+    private static func offscreenTurn(_ b: SpreadBitmaps, _ g: CurlSpread, _ direction: FlipDirection) -> (CurlFrame, Double) {
         let sigma = direction == .forward ? 1.0 : -1.0
         let lift = sigma > 0 ? g.rectoRect : g.versoRect
         let across = Double(g.axis == .vertical ? lift.width : lift.height)
         let along = Double(g.axis == .vertical ? lift.height : lift.width)
         let frame = CurlFrame.spread(W: Double(g.halfGutter) + across, H: along, halfGutter: Double(g.halfGutter),
-                                     stiffness: b.stiffness)
-        return (frame, (sigma, holdTop))
+                                     stiffness: b.stiffness, coil: Double(g.coil))
+        return (frame, sigma)
     }
 
     private static func renderSpread(_ gpu: CurlGPU, _ b: SpreadBitmaps, _ g: CurlSpread, _ frame: CurlFrame,
-                                     _ m: (sigma: Double, holdTop: Bool), _ fingers: [CurlVec], _ scale: CGFloat) -> [CGImage] {
-        // 텍스처 대신 크기만 쓰는 자리: 셰이더 값만 만든다 (텍스처는 renderSpreadOffscreen 이 올린다)
-        let lift = m.sigma > 0 ? g.rectoRect : g.versoRect
-        let opp = m.sigma > 0 ? g.versoRect : g.rectoRect
-        func rect(_ r: CGRect) -> SIMD4<Float> { SIMD4(Float(r.minX), Float(r.minY), Float(r.width), Float(r.height)) }
-        let rim = b.stiffness > 1.01 ? (b.rim.map { SIMD4($0.x, $0.y, $0.z, 1) } ?? .zero) : .zero
-        let uniforms = fingers.map { F -> CurlSpreadUniforms in
-            let fold = frame.fold(F)
-            return CurlSpreadUniforms(
-                liftRect: rect(lift), oppRect: rect(opp), rim: rim,
-                viewSize: SIMD2(Float(g.overlaySize.width), Float(g.overlaySize.height)),
-                pixelScale: SIMD2(Float(scale), Float(scale)),
-                pageSize: SIMD2(Float(frame.W), Float(frame.H)),
-                axisPoint: SIMD2(Float(fold.axisPoint.x), Float(fold.axisPoint.y)),
-                normal: SIMD2(Float(fold.normal.x), Float(fold.normal.y)),
-                radius: Float(fold.radius), effect: Float(fold.effect),
-                hinge: Float(g.hinge), sigma: Float(m.sigma), halfGutter: Float(g.halfGutter),
-                holdTop: m.holdTop ? 1 : 0, horizontal: g.axis == .horizontal ? 1 : 0,
-                hasRevealed: b.revealed != nil ? 1 : 0, lifted: simd_length(F - frame.K) > 1e-3 ? 1 : 0)
+                                     _ sigma: Double, _ fingers: [CurlVec], _ scale: CGFloat) -> [CGImage] {
+        let frames = fingers.map {
+            spreadFrame(frame, finger: $0, geometry: g, sigma: sigma, rim: b.rim, stiffness: b.stiffness, hasRevealed: b.revealed != nil)
         }
-        return gpu.renderSpreadOffscreen(overlay: g.overlaySize, uniforms: uniforms, front: b.front, back: b.back,
+        return gpu.renderSpreadOffscreen(overlay: g.overlaySize, frames: frames, front: b.front, back: b.back,
                                          revealed: b.revealed, scale: scale)
     }
 
