@@ -55,6 +55,9 @@ public final class PageSnapshotter {
     private var order: [String] = []
     private var prewarmWork: DispatchWorkItem?
     private let capacity = 10
+    /// 그린 쪽 그림을 캐시에 넣기 전에 한 번 손본다 (kind · size · scale 은 그 그림의 값). Mac 은 종이 위 고리 앞 가닥을 굽는다 —
+    /// 그러면 미리 그리기(schedulePrewarm) 때 함께 굽고, 넘김을 시작하는 순간에는 굽지 않으며, 캐시는 구운 그림만 든다
+    public var decorate: (@MainActor (CGImage, PageKind, CGSize, CGFloat) -> CGImage)?
 
     public init(store: PlannerStore, state: AppState) {
         self.store = store
@@ -85,7 +88,8 @@ public final class PageSnapshotter {
         let r = ImageRenderer(content: content)
         r.scale = scale
         r.isOpaque = true
-        guard let img = r.cgImage else { return nil }
+        guard var img = r.cgImage else { return nil }
+        if let decorate { img = decorate(img, kind, size, scale) }
         cache[k] = img
         order.append(k)
         while order.count > capacity { cache.removeValue(forKey: order.removeFirst()) }

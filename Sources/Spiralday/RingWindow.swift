@@ -131,31 +131,51 @@ struct RingStrandsOverPaper: View {
 
 /// 넘김 스냅숏(지금 장 · 다음 장)에 종이 위 앞 가닥을 굽는다. 넘김 오버레이는 불투명하게 종이를 덮으므로,
 /// 고리가 넘김 중에도 보이려면 스냅숏 안에 있어야 한다 — 그러면 들린 종이(뒷면)는 고리 위에 그려진다.
-/// 같은 원본 그림에는 같은 결과 그림을 돌려준다 (말림 텍스처 캐시가 그림의 정체로 찾는다).
+/// 쪽 그림을 그릴 때 PageSnapshotter.decorate 로 굽는다 (미리 그리기 때 — 넘김 첫 프레임에서 굽지 않게). 구운 그림은 스냅숏 캐시가
+/// 들고 (같은 장은 같은 그림 — 말림 텍스처 캐시가 그림의 정체로 찾는다), 여기는 가닥 그림 하나만 든다: 가닥이 있는 띠만 잘라서
+/// (주간 1760 × 1124pt 2배에서 쪽 전체 31.6MB 대신 띠 몇 MB, 2026-10-05 검토)
 @MainActor
 final class RingSnapshotBaker {
-    private var strands: (kind: PageKind, size: CGSize, scale: CGFloat, image: CGImage)?
-    private var baked: [(source: CGImage, image: CGImage)] = []
-    private let capacity = 6
+    private var strands: (kind: PageKind, size: CGSize, scale: CGFloat, image: CGImage, rect: CGRect)?
 
     func bake(_ page: CGImage, kind: PageKind, size: CGSize, scale: CGFloat) -> CGImage {
-        if let i = baked.firstIndex(where: { $0.source === page }) {
-            let e = baked.remove(at: i)
-            baked.append(e)
-            return e.image
-        }
-        guard let overlay = strandsImage(kind: kind, size: size, scale: scale),
-              let out = Self.compose(page, overlay) else { return page }
-        baked.append((page, out))
-        while baked.count > capacity { baked.removeFirst() }
+        guard let s = strandsStrip(kind: kind, size: size, scale: scale, width: page.width, height: page.height),
+              let out = Self.compose(page, s.image, at: s.rect) else { return page }
         return out
     }
 
-    private func strandsImage(kind: PageKind, size: CGSize, scale: CGFloat) -> CGImage? {
-        if let s = strands, s.kind == kind, s.size == size, s.scale == scale { return s.image }
-        guard let img = Self.strands(kind: kind, size: size, scale: scale) else { return nil }
-        strands = (kind, size, scale, img)
-        return img
+    /// 가닥 그림 (가닥이 있는 띠만 · 그 띠의 자리 — 쪽 그림의 화소, 왼쪽 위 원점)
+    private func strandsStrip(kind: PageKind, size: CGSize, scale: CGFloat, width: Int, height: Int) -> (image: CGImage, rect: CGRect)? {
+        let rect = Self.stripRect(kind: kind, size: size, scale: scale, width: width, height: height)
+        if let s = strands, s.kind == kind, s.size == size, s.scale == scale, s.rect == rect { return (s.image, s.rect) }
+        guard let full = Self.strands(kind: kind, size: size, scale: scale),
+              let strip = Self.cut(full, to: rect, width: width, height: height) else { return nil }
+        strands = (kind, size, scale, strip, rect)
+        return (strip, rect)
+    }
+
+    /// 종이 위 앞 가닥이 지나가는 제본 쪽 띠 (쪽 그림의 화소, 왼쪽 위 원점): 가장 안쪽 구멍 + 40 디자인 단위 (가닥은 구멍에서 끝난다 —
+    /// 그림자 · 안티에일리어싱 여유). 띠 밖에는 가닥이 없다 (RingOverCurlTests 가 전체를 얹은 것과 화소 하나까지 견준다)
+    static func stripRect(kind: PageKind, size: CGSize, scale: CGFloat, width: Int, height: Int) -> CGRect {
+        let leading = kind.edge == .leading
+        let u = size.width / kind.design.width
+        let reach = (SpiralBinding.holes(kind).map { leading ? $0.maxX : $0.maxY }.max() ?? 36) + 40
+        let depth = min(leading ? width : height, Int((reach * u * scale).rounded(.up)))
+        return leading ? CGRect(x: 0, y: 0, width: depth, height: height) : CGRect(x: 0, y: 0, width: width, height: depth)
+    }
+
+    /// 가닥 그림을 쪽 그림 크기(width × height 화소)에 compose 와 똑같이 펴 놓았을 때의 rect 부분 (그 자리에 얹으면 전체를 얹은 것과 같다)
+    static func cut(_ img: CGImage, to rect: CGRect, width w: Int, height h: Int) -> CGImage? {
+        let cw = Int(rect.width), ch = Int(rect.height)
+        guard cw > 0, ch > 0, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: cw, height: ch, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        ctx.interpolationQuality = .none
+        ctx.setBlendMode(.copy)
+        // CGContext 는 아래가 원점: 쪽 그림의 rect 부분이 이 작은 비트맵에 오도록 옮겨 그린다
+        ctx.draw(img, in: CGRect(x: -rect.minX, y: rect.maxY - CGFloat(h), width: CGFloat(w), height: CGFloat(h)))
+        return ctx.makeImage()
     }
 
     /// 종이 위 앞 가닥만 투명 바탕에 (종이 크기 × scale)
@@ -166,8 +186,9 @@ final class RingSnapshotBaker {
         return r.cgImage
     }
 
-    /// 종이 그림 위에 가닥 그림을 얹는다 (말림 텍스처와 같은 sRGB · BGRA premultiplied)
-    static func compose(_ page: CGImage, _ overlay: CGImage) -> CGImage? {
+    /// 종이 그림 위에 가닥 그림을 얹는다 (말림 텍스처와 같은 sRGB · BGRA premultiplied). at: 가닥 그림의 자리 (그림 화소, 왼쪽 위 원점 —
+    /// 없으면 쪽 전체)
+    static func compose(_ page: CGImage, _ overlay: CGImage, at: CGRect? = nil) -> CGImage? {
         let w = page.width, h = page.height
         guard w > 0, h > 0, let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
@@ -178,7 +199,12 @@ final class RingSnapshotBaker {
         ctx.setBlendMode(.copy)
         ctx.draw(page, in: rect)
         ctx.setBlendMode(.normal)
-        ctx.draw(overlay, in: rect)
+        if let at {
+            // CGContext 는 아래가 원점
+            ctx.draw(overlay, in: CGRect(x: at.minX, y: CGFloat(h) - at.maxY, width: at.width, height: at.height))
+        } else {
+            ctx.draw(overlay, in: rect)
+        }
         return ctx.makeImage()
     }
 }

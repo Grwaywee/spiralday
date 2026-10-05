@@ -94,6 +94,9 @@ final class RingOverCurlTests: XCTestCase {
         XCTAssertEqual(wc.ringPart, .outsidePaper, "플래너 창의 고리 창이 종이 위까지 그리면 넘어가는 종이 위로 고리가 비친다")
         state.curl.pageSize = daily
         let bitmaps = try XCTUnwrap(state.curl.snapshot?(1))
+        // 넘김을 다시 시작해도 굽지 않는다: 쪽 그림을 그릴 때 구워 둔 캐시의 그림 그대로 (미리 그리기 때 굽는다 — 넘김 첫 프레임이 끊기지 않게)
+        let again = try XCTUnwrap(state.curl.snapshot?(1))
+        XCTAssertTrue(again.current === bitmaps.current && again.neighbor === bitmaps.neighbor, "넘김을 시작할 때마다 다시 굽는다")
         let s = wc.window.backingScaleFactor
         let snap = PageSnapshotter(store: store, state: state)
         let plain = try XCTUnwrap(snap.image(kind: .daily, index: state.index, size: daily, scale: s))
@@ -132,6 +135,9 @@ final class RingOverCurlTests: XCTestCase {
             state.store = store
             let snap = PageSnapshotter(store: store, state: state)
             let baker = RingSnapshotBaker()
+            // 앱이 실제로 넘기는 그림 (WindowController: 쪽 그림을 그릴 때 가닥을 구워 캐시에 — state.curl.snapshot 은 그 캐시에서)
+            let bakedSnap = PageSnapshotter(store: store, state: state)
+            bakedSnap.decorate = { img, k, size, sc in baker.bake(img, kind: k, size: size, scale: sc) }
             // 고리 앞 가닥이 있는 자리 (가닥만 그린 그림의 불투명한 화소)
             let mask = try pixels(XCTUnwrap(RingSnapshotBaker.strands(kind: kind, size: page, scale: scale)))
             let frame = CurlFrame(edge: kind.edge, view: page)
@@ -139,11 +145,16 @@ final class RingOverCurlTests: XCTestCase {
             for dir in [FlipDirection.forward, .backward] {
                 let cur = try XCTUnwrap(snap.image(kind: kind, index: state.index, size: page, scale: scale))
                 let nb = try XCTUnwrap(snap.image(kind: kind, index: state.index + dir.delta, size: page, scale: scale))
-                // 앱이 실제로 넘기는 그림 (WindowController 의 state.curl.snapshot 과 같다)
-                let bakedCur = baker.bake(cur, kind: kind, size: page, scale: scale)
-                let bakedNb = baker.bake(nb, kind: kind, size: page, scale: scale)
-                XCTAssertTrue(baker.bake(cur, kind: kind, size: page, scale: scale) === bakedCur,
+                let bakedCur = try XCTUnwrap(bakedSnap.image(kind: kind, index: state.index, size: page, scale: scale))
+                let bakedNb = try XCTUnwrap(bakedSnap.image(kind: kind, index: state.index + dir.delta, size: page, scale: scale))
+                XCTAssertTrue(bakedSnap.image(kind: kind, index: state.index, size: page, scale: scale) === bakedCur,
                               "같은 장은 같은 그림 (말림 텍스처 캐시가 다시 올리지 않게)")
+                // 띠만 잘라 얹어도 가닥 그림 전체를 얹은 것과 화소 하나까지 같다 (같은 쪽 그림에 — 쪽 그림을 두 번 그리면 1/255 쯤 다를 수 있다)
+                let whole = try XCTUnwrap(RingSnapshotBaker.compose(cur, XCTUnwrap(RingSnapshotBaker.strands(kind: kind, size: page, scale: scale))))
+                let (p1, p2) = (try pixels(whole), try pixels(baker.bake(cur, kind: kind, size: page, scale: scale)))
+                var differ = 0
+                for y in 0..<p1.height { for x in 0..<p1.width where p1[x, y] != p2[x, y] { differ += 1 } }
+                XCTAssertEqual(differ, 0, "\(kind) \(dir): 잘라 얹은 가닥이 전체를 얹은 것과 다르다")
                 let progresses = stride(from: 0.1, through: 0.9001, by: 0.1).map { $0 }
                 let fingers = progresses.map { p -> CGPoint in
                     let x = frame.fingerX(progress: p, forward: dir == .forward)

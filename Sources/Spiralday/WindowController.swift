@@ -88,6 +88,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             self?.updateTitle()
             self?.snapshotter.schedulePrewarm()
         }
+        // 종이 위 고리 앞 가닥을 넘김 스냅숏에 굽는다: 평평한 곳에서는 고리가 그대로 보이고, 들린 종이(뒷면)는 그 위에 그려진다.
+        // 쪽 그림을 그릴 때 함께 구워 캐시에 넣는다 — 미리 그리기 때 굽고 넘김을 시작하는 순간(첫 프레임)에는 굽지 않는다
+        snapshotter.decorate = { [ringBaker] img, kind, size, scale in ringBaker.bake(img, kind: kind, size: size, scale: scale) }
         state.curl.snapshot = { [weak self] delta in
             // 책의 첫 장 / 마지막 장 너머로는 넘길 수 없다 (마우스 드래그·스와이프·모서리 들기도 막힌다)
             guard let self, self.state.canStep(delta) else { return nil }
@@ -97,9 +100,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             guard let cur = self.snapshotter.image(kind: kind, index: self.state.index, size: size, scale: scale),
                   let nb = self.snapshotter.image(kind: kind, index: self.state.index + delta, size: size, scale: scale)
             else { return nil }
-            // 종이 위 고리 앞 가닥을 두 장 모두에 굽는다: 평평한 곳에서는 고리가 그대로 보이고, 들린 종이(뒷면)는 그 위에 그려진다
-            return PageBitmaps(current: self.ringBaker.bake(cur, kind: kind, size: size, scale: scale),
-                               neighbor: self.ringBaker.bake(nb, kind: kind, size: size, scale: scale))
+            return PageBitmaps(current: cur, neighbor: nb)
         }
         // 둘러보기의 어두운 막이 보이는 동안 종이 밖 고리도 덮는다 (TourLiveStage 의 visible 과 같은 조건)
         Publishers.CombineLatest4(TourController.shared.$kind.map { $0 != nil }, TourController.shared.$arrived,
