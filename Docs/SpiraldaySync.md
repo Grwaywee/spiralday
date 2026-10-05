@@ -132,6 +132,7 @@ try await sync.initialize()                               // 그룹에 들어 �
 | `PlannerStore.encodeFile(_:)` · `decodeFile(_:from:)` | 앱 파일과 같은 JSON (`.iso8601`, `.sortedKeys`) |
 | `PlannerData.rebased(from:to:)` | 밖에서 온 변경(base → theirs)을 되돌리기 단계에 옮긴다 (칸마다) |
 | `PlanTask.carryTaskId(_ id: UUID) -> UUID` | → 미룸 사본 id = UUIDv5(원래 id, "carry") — `carryForward` 가 이미 쓴다. `CarryID.carryTaskId` 와 같은 값 |
+| `DDay.legacyID(title:date:) -> UUID` | 옛 D-day 하나짜리 파일(`ddayTitle` · `ddayDate`)의 D-day id = UUIDv5(NameSpace_URL, `"https://spiralday.com/ns/legacy-dday/" + ISO 날짜 + "/" + 제목`) — `Prefs` 디코더가 쓴다. 같은 옛 파일을 읽은 두 기기가 D-day 를 둘 만들지 않게 (Windows · Android `legacyDDayId` 와 같은 값, `DefaultCategoriesParityTests`) |
 
 `update*` 의 `transform` 은 동기 함수다: 호스트는 그것을 "지금" 값으로 불러 돌려받은 값을 같은 MainActor 차례 안에서 바로 넣는다 (그 사이 사용자의 편집이 끼어들면 안 된다). 그리고 **transform 을 부른 뒤에 넣지 못했으면 던진다** — 던지지 않으면 엔진은 넣은 것으로 적고, 다음 비교에서 옛 값을 새 편집으로 올려 다른 기기의 편집을 되돌린다. 넣으면 안 되는 책(읽지 못한 파일)은 transform 을 부르기 **전에** 돌아간다 (엔진은 다음에 다시 넣는다).
 
@@ -519,6 +520,8 @@ draft  = base64url(0x01 ‖ nonce(24, 늘 난수) ‖ XChaCha20-Poly1305(plain, 
   v 1 로 받은 책 설정은 v 2 로 다시 올리고, 예전 엔진의 저장소(메타에 `pv` 없음)로 켜면 처음부터 다시 받고(서버 순번도 잊는다) 보내지 못한 책 설정은 버린다 ·
   그룹을 만든 기기의 첫 가져오기는 형광펜을 모두 진짜 도장으로 (`Records.diff(seed: true)`) · 기본값 도장으로만 더한 형광펜은 진짜 순서 목록에 없으면 보이지 않는다 (`Records.isShown`) ·
   기본 형광펜을 보던 기기의 순서는 기본값 도장 · 책 정보(`b/`)는 맨 뒤에 올린다 · 그림자 없는 레코드의 바퀴 비교는 시각 0 도장 · 기본 형광펜 목록은 고정 상수 (`DefaultCategoriesPinTests`).
+  그 목록은 Windows · Android 와도 한 값이다: `Tests/Fixtures/default-categories.json` (비공개 저장소 `sync/engine/test/fixtures/default-categories.json` 을 그대로 옮긴 것) 과
+  Kit · 엔진을 견주고, Kit 이 채운 목록(새 책 · 형광펜 없는 파일 · 12개 넘는 파일)을 엔진이 "설정 안 됨" 으로 읽는지 본다 (`DefaultCategoriesParityTests`).
 - **앱 값을 Swift 가 늘 읽게**: `x:` 필드로 앱이 아는 키를 덮어쓰지 않고, 날짜는 Swift 가 읽는 범위(월 1–12 …, 0000–9999 년)만 넣는다. 둘 다 받은 상태를 꾸며 넣었을 때만 생기는 일이다.
 - **없는 것**: 같은 객체면 비교를 건너뛰기 — Swift 값 타입에는 객체 정체성이 없다. 저장 알림(`localChanged(bookId:)`)으로는 그 책만 비교하고, 모든 책을 비교하는 것은 시작 · `syncNow()` · `resume()` 때뿐이다.
 - **실시간 쓰기의 모양**: 동작 · 바이트는 같고, Swift 에 맞게 —

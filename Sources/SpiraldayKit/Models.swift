@@ -354,10 +354,12 @@ public struct Prefs: Codable, Equatable, Sendable {
         categories = (1...Prefs.maxCategories).contains(cats.count) ? cats : Prefs.defaultCategories
         lastKind = try c.decodeIfPresent(PageKind.self, forKey: .lastKind) ?? .daily
         ddays = try c.decodeIfPresent([DDay].self, forKey: .ddays) ?? []
-        // 예전 버전의 D-day 하나짜리 저장 형식
+        // 예전 버전의 D-day 하나짜리 저장 형식. id 는 그 값에서 정한다 (DDay.legacyID — 같은 옛 파일을 읽은 두 기기 ·
+        // 저장 전에 두 번 읽은 한 기기가 같은 D-day 를 만들어, 동기화로 합쳐도 하나다)
         if ddays.isEmpty, let legacy = try? decoder.container(keyedBy: LegacyKeys.self),
            let date = try legacy.decodeIfPresent(Date.self, forKey: .ddayDate) {
-            ddays = [DDay(title: try legacy.decodeIfPresent(String.self, forKey: .ddayTitle) ?? "", date: date)]
+            let title = try legacy.decodeIfPresent(String.self, forKey: .ddayTitle) ?? ""
+            ddays = [DDay(id: DDay.legacyID(title: title, date: date), title: title, date: date)]
         }
         defaultTheme = try c.decodeIfPresent(Int.self, forKey: .defaultTheme) ?? 0
         ddaysPerDay = try c.decodeIfPresent(Bool.self, forKey: .ddaysPerDay) ?? false
@@ -378,6 +380,25 @@ public struct DDay: Codable, Identifiable, Equatable, Sendable {
         self.date = date
         self.source = source
     }
+
+    /// 옛 D-day 하나짜리 파일(prefs.ddayTitle · prefs.ddayDate)에서 읽은 D-day 의 id — 값에서 정한다.
+    ///   legacyID(title, date) = UUIDv5(이름공간 = RFC 9562 NameSpace_URL, 이름 = UTF-8
+    ///                           "https://spiralday.com/ns/legacy-dday/" + date + "/" + title)
+    /// date 는 앱이 쓰는 ISO-8601 ("2026-11-01T15:00:00Z"). 예전에는 읽을 때마다 새 UUID 라서 같은 옛 파일을 읽은 두 기기가
+    /// D-day 를 둘 만들었다. Windows · Android (web core/model.ts legacyDDayId) 와 같은 규칙 · 같은 벡터 (비공개 docs/sync-engine.md §8):
+    /// legacyID("시험", 2026-11-01T15:00:00Z) = 116E4CC2-C837-5BC7-BDC4-D978F1815524
+    public static func legacyID(title: String, date: Date) -> UUID {
+        UUID(v5Namespace: urlNamespace, name: "https://spiralday.com/ns/legacy-dday/\(isoFormatter.string(from: date))/\(title)")
+    }
+
+    /// RFC 9562 NameSpace_URL
+    static let urlNamespace = UUID(uuidString: "6BA7B811-9DAD-11D1-80B4-00C04FD430C8")!
+    /// 앱이 파일에 쓰는 날짜 모양 (JSONEncoder .iso8601 과 같다: 초까지, UTC "Z")
+    static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 
     /// 기준 날에서 센 "D-3" / "D-DAY" / "D+2"
     public func count(from day: Date) -> String {

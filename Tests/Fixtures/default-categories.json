@@ -1,0 +1,12 @@
+{
+  "about": "앱 기본 형광펜 — 세 벌(web/src/core/model.ts DEFAULT_CATEGORIES · sync/engine/src/types.ts DEFAULT_CATEGORIES · 공개 저장소 Sources/SpiraldayKit/Models.swift Prefs.defaultCategories)이 이 값과 같아야 한다. 엔진은 이 목록 그대로를 '설정 안 됨'으로 본다(docs/sync-engine.md §4.1) — 한 벌만 달라도 그 기기의 기본 형광펜이 진짜 편집이 되어 다른 기기의 형광펜을 이긴다(2026-10-04 사고). 바꾸지 않는다.",
+  "categories": [
+    { "id": 0, "name": "집중 업무", "hex": "8EDCD2", "counts": true },
+    { "id": 1, "name": "미팅", "hex": "F8B38A", "counts": true },
+    { "id": 2, "name": "소통·메일", "hex": "A9CFF3", "counts": true },
+    { "id": 3, "name": "기획", "hex": "F3DB78", "counts": true },
+    { "id": 4, "name": "학습", "hex": "CDB6EF", "counts": true },
+    { "id": 5, "name": "개인", "hex": "F6AEC5", "counts": false },
+    { "id": 6, "name": "휴식·이동", "hex": "CFCFD4", "counts": false }
+  ]
+}
