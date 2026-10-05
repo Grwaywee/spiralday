@@ -3,11 +3,57 @@
 #   ./build.sh                 이 Mac 용 (애드혹 서명, 빠름)
 #   UNIVERSAL=1 ./build.sh     Apple Silicon + Intel 유니버설
 #   SIGN_ID="…" ./build.sh     그 인증서로 서명 (Hardened Runtime). SIGN_TIMESTAMP=1 이면 보안 타임스탬프도 붙인다
+#                              — 출시 빌드: 아래 고친 커밋이 모두 HEAD 에 있고 소스를 커밋한 그대로일 때만 만든다
+#   RELEASE=1 ./build.sh       서명 없이도 출시 빌드처럼 확인한다
+#   FIX_CHECK_ONLY=1 ./build.sh   그 확인만 하고 끝낸다 (빌드하지 않음)
 set -e
 cd "$(dirname "$0")"
 # 새 버전을 낼 때: VERSION 을 올리고 BUILD 를 1 씩 늘린다 (Sparkle 은 BUILD 로 새 버전을 판단한다)
+# 빌드 10: 1.1.0 빌드 9 (dbe5152) 는 형광펜 사고 고침 · 사장님 피드백 고침보다 먼저 만든 것이라, 고친 뒤의 1.1.0 은 10 부터
 VERSION="1.1.0"
-BUILD=9
+BUILD=10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 출시 지킴이: 사장님이 알려 준 문제의 고침이 빠진 앱이 나가지 않게, 출시 빌드는 이 커밋들이 모두 HEAD 의 조상일 때만 만든다
+# (Windows web/scripts/publish-windows.mjs · Android web/scripts/android.mjs · iOS apple/scripts/testflight.sh 와 같은 규칙).
+# 저장소를 다시 쓰면(rebase) 해시가 바뀌므로 여기도 같이 고친다 — 지우지 말 것.
+REQUIRED_FIXES=(
+  "3f074d4 형광펜 사고: 기기가 채운 기본값이 다른 기기의 진짜 값을 이기지 않게 (A)"
+  "63d21fc 형광펜 사고 검토: 예전 엔진 · 옛 사본 · 파일 없이 연 책이 형광펜을 덮지 못하게 (A)"
+  "63ab4fb 팔레트의 지금 플래너 책 모양 (E)"
+  "478e1de 넘어가는 종이 위로 스프링 고리가 비치지 않게 (B)"
+  "d43ba6c 다른 창의 키 · 스크롤을 먹지 않게 · 주간 세로 넘김 · 작은 화면 팔레트 (G · H · J · E · D)"
+  "0331099 기본 형광펜 세 벌을 한 값으로 · 옛 D-day id (A · O)"
+  "cacdff6 처음 안내에서 동기화로 합류 · 빈 '내 플래너' 를 퍼뜨리지 않음 (I · P · O)"
+)
+check_required_fixes() {
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "✗ 출시 빌드는 git 저장소에서만 만들어요 (고친 커밋이 들어 있는지 확인할 수 없어요)"
+    exit 1
+  fi
+  local missing=0 line c
+  for line in "${REQUIRED_FIXES[@]}"; do
+    c=${line%% *}
+    if ! git merge-base --is-ancestor "$c" HEAD 2>/dev/null; then
+      echo "✗ 빠진 고침: $line"
+      missing=1
+    fi
+  done
+  if [ $missing != 0 ]; then
+    echo "출시 빌드를 멈춰요: 위 커밋이 HEAD($(git rev-parse --short HEAD)) 에 없어요 — 고침이 빠진 앱이 나가지 않게."
+    exit 1
+  fi
+  if [ -n "$(git status --porcelain -- Sources Resources Package.swift Package.resolved)" ]; then
+    echo "✗ 커밋하지 않은 소스 변경이 있어요 — 출시 빌드는 커밋한 그대로 만들어요."
+    git status --short -- Sources Resources Package.swift Package.resolved
+    exit 1
+  fi
+  echo "✓ 고친 커밋 ${#REQUIRED_FIXES[@]}개가 모두 들어 있어요 ($(git rev-parse --short HEAD))"
+}
+if [ -n "$SIGN_ID" ] || [ "$RELEASE" = 1 ] || [ "$FIX_CHECK_ONLY" = 1 ]; then
+  check_required_fixes
+  [ "$FIX_CHECK_ONLY" = 1 ] && exit 0
+fi
 
 # 빌드한 컴퓨터의 경로가 실행 파일에 남지 않게 소스 경로를 저장소 기준(.)으로 적는다
 FLAGS=(-c release -Xswiftc -file-prefix-map -Xswiftc "$PWD=.")
