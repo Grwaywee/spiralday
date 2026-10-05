@@ -17,16 +17,16 @@
 <meta property="og:url" content="https://spiralday.com/">
 <meta property="og:title" content="Spiralday — 화면 하나가 종이 한 장인 10분 플래너">
 <meta property="og:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) 는 지금 무료, iPhone · iPad · Android 는 곧 나와요.">
-<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261004">
+<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261005">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone, Android 폰에 함께 떠 있는 모습">
+<meta property="og:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone 에 함께 떠 있는 모습. iPad 는 바닷가 책상, iPhone 두 대는 학교 책상의 낮과 저녁">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Spiralday — 화면 하나가 종이 한 장인 10분 플래너">
 <meta name="twitter:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) 는 지금 무료, iPhone · iPad · Android 는 곧 나와요.">
-<meta name="twitter:image" content="https://spiralday.com/assets/og.jpg?v=20261004">
-<meta name="twitter:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone, Android 폰에 함께 떠 있는 모습">
+<meta name="twitter:image" content="https://spiralday.com/assets/og.jpg?v=20261005">
+<meta name="twitter:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone 에 함께 떠 있는 모습. iPad 는 바닷가 책상, iPhone 두 대는 학교 책상의 낮과 저녁">
 <!-- 검색 엔진용 앱 정보. 스토어에 나오면 operatingSystem · downloadUrl 을 함께 늘려 주세요 (아래 스크립트 맨 위의 출시 체크리스트) -->
 <script type="application/ld+json">
 {
@@ -382,6 +382,16 @@
   .widget-stack img { width: 100%; filter: drop-shadow(0 18px 24px rgba(40,30,20,.2)); }
   .widgets h3 { font-size: clamp(28px, 3.4vw, 40px); line-height: 1.2; font-weight: 400; color: var(--ink); margin: 0 0 14px; }
 
+  /* 책상 — 앞의 셋은 실제 화면, 뒤의 여섯은 앱 설정 › 책상의 미리 보기 그림 */
+  .desks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; align-items: end; max-width: 840px; margin: 8px auto 0; }
+  .desk-more { margin: 64px auto 0; max-width: 1000px; }
+  .desk-more h3 { margin: 0 0 22px; text-align: center; font-size: clamp(24px, 2.8vw, 30px); line-height: 1.3; font-weight: 400; color: var(--ink); }
+  .desk-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 22px 14px; }
+  .desk-list li { text-align: center; font-size: 15px; line-height: 1.4; color: var(--soft); }
+  .desk-list img { width: 100%; margin: 0 0 10px; border-radius: 12px; background: var(--paper-2); box-shadow: 0 14px 24px -18px rgba(40,30,20,.55), 0 0 0 1px rgba(0,0,0,.06); }
+  .desk-list b { display: block; font-size: 18px; color: var(--ink); }
+  .desk-note { margin: 26px auto 0; max-width: 660px; text-align: center; font-size: 17px; color: var(--soft); }
+
   /* 동기화 */
   .sync { background: #fff; border: 1px solid rgba(0,0,0,.07); border-radius: 28px; padding: 50px 48px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); gap: 44px; align-items: center; box-shadow: 0 14px 40px -30px rgba(0,0,0,.45); }
   .sync .intro { margin: 0 0 18px; font-size: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
@@ -479,9 +489,10 @@
     .hero-shot { padding-top: 24px; }
     .hero-shot .tag { left: -6px; font-size: 20px; }
   }
-  /* 위젯 두 개는 가로로 */
+  /* 위젯 두 개는 가로로. 한 단이 된 기능 그림은 가운데 540px 까지만 (태블릿에서 2배 그림이 1600px 까지 커지지 않게) */
   @media (min-width: 600px) and (max-width: 900px) {
     .widget-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+    .split > .shot { width: 100%; max-width: 540px; justify-self: center; }
   }
   @media (max-width: 767px) {
     .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "text" "shot" "act"; grid-template-rows: auto; padding-top: 24px; }
@@ -494,6 +505,7 @@
     .plats, .installs { grid-template-columns: minmax(0, 1fr); }
     .phones { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 16px; margin-top: 40px; }
     .phones .opt { display: none; }
+    .desk-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   /* 좁은 머리: 문의 · Threads 만 (문의는 언제나 보이게) */
   @media (max-width: 700px) {
@@ -523,6 +535,16 @@
     section p.desc { font-size: 20px; }
     .soon-note { padding: 18px 16px 16px; }
     .soon-note .soon-title { font-size: 22px; }
+    /* 책상: 바닷가를 크게 한 대, 학교 책상 낮 · 저녁은 그 아래 나란히 */
+    .desks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 16px; }
+    .desks .lead { grid-column: 1 / -1; justify-self: center; width: min(100%, 250px); }
+    .desk-more { margin-top: 48px; }
+  }
+  @media (max-width: 420px) {
+    .desk-list { gap: 18px 10px; }
+    .desk-list li { font-size: 14px; }
+    .desk-list b { font-size: 16px; }
+    .desk-list img { border-radius: 10px; }
   }
   @media (max-width: 339px) {
     header nav a.threads span { display: none; }
@@ -660,7 +682,8 @@
         <ul class="spec">
           <li>iPad 는 [어제 | 오늘] 이 펼쳐진 책상</li>
           <li>Apple Pencil — 손바닥이 닿아도 괜찮고, 스크리블로 손글씨를 글자로 바꿔요</li>
-          <li>iPhone 은 WRITE · TIME 칸으로 카메라처럼 다가가서 쓰고 칠해요</li>
+          <li>iPhone 은 ‘쓰기’ · ‘시간’ 칸으로 카메라처럼 다가가서 쓰고 칠해요</li>
+          <li>종이 밑에 깔 <a href="#desk">책상 8가지</a> — 바닷가, 학교 책상… 저녁엔 조명이 켜져요</li>
           <li>홈 화면 · 잠금 화면 위젯</li>
         </ul>
         <div class="act">
@@ -748,7 +771,7 @@
     <p class="label">Weekly</p>
     <h2 id="weekly-h">한 주는 <span class="hl" style="--c: #CDB6EF">가로로 한 장</span>.</h2>
     <p class="desc">MY GOAL 과 주간 회고, 월–일 7칸에 할 일 10줄과 타임테이블. 주간으로 바꾸면 종이가 가로로 놓이고, 스프링은 위로 올라가요.</p>
-    <div class="shot bare wide"><img src="assets/weekly.webp" alt="주간 페이지" width="1600" height="999" loading="lazy" decoding="async"></div>
+    <div class="shot bare wide"><img src="assets/weekly.webp" srcset="assets/weekly-1100.webp 1100w, assets/weekly.webp 1600w" sizes="(max-width: 1120px) calc(100vw - 32px), 1072px" alt="주간 페이지" width="1600" height="999" loading="lazy" decoding="async"></div>
   </section>
 
   <!-- 홈 -->
@@ -759,7 +782,7 @@
         <h2 id="home-h">쌓인 하루들을 <span class="hl" style="--c: #F8B38A">한눈에</span>.</h2>
         <p class="desc">이번 주·이번 달 시간, 하루 평균, 연속 기록, 할 일 완료율, 최근 12주, 형광펜별 시간, 가장 자주 칠한 시간대와 요일, 최근 35일 달력까지. 날짜를 누르면 그날로 바로 가요.</p>
       </div>
-      <div class="shot bare"><img src="assets/home.webp" alt="홈 통계 페이지" width="1600" height="999" loading="lazy" decoding="async"></div>
+      <div class="shot bare"><img src="assets/home.webp" srcset="assets/home-560.webp 560w, assets/home-1100.webp 1100w, assets/home.webp 1600w" sizes="(max-width: 600px) calc(100vw - 32px), (max-width: 900px) 540px, 508px" alt="홈 통계 페이지" width="1600" height="999" loading="lazy" decoding="async"></div>
     </div>
   </section>
 
@@ -771,7 +794,7 @@
         <h2 id="books-h">플래너는 <span class="hl">책처럼</span>, 여러 권.</h2>
         <p class="desc">권마다 이름, 시작일, 종료일, 표지 색을 정해요. 시작일보다 앞으로는 넘어가지 않고, 종료일을 정하면 그날에서 멈춰요. 업무용 한 권, 공부용 한 권 — 기록과 형광펜이 권마다 따로 저장돼요.</p>
       </div>
-      <div class="shot"><img src="assets/settings-books.webp" alt="설정의 플래너 책장" width="1100" height="855" loading="lazy" decoding="async"></div>
+      <div class="shot"><img src="assets/settings-books.webp" srcset="assets/settings-books-560.webp 560w, assets/settings-books.webp 1100w" sizes="(max-width: 600px) calc(100vw - 32px), (max-width: 900px) 540px, 508px" alt="설정의 플래너 책장" width="1100" height="855" loading="lazy" decoding="async"></div>
     </div>
   </section>
 
@@ -784,7 +807,7 @@
         <p class="desc">일간은 A4 가로 한 장에 이틀씩 — 가운데 선을 따라 자르면 손에 드는 종이 플래너 크기예요. A4 세로로 하루 한 장, 주간과 홈은 A4 가로. 기간을 정해 한 번에 뽑고, 벡터라 인쇄가 선명해요.</p>
         <p class="hand" style="font-size:24px;color:var(--soft);margin:0">기록이 없는 날은 빈 양식 — 종이로도 쓸 수 있어요.</p>
       </div>
-      <div class="shot"><img src="assets/pdf-half.webp" alt="A4 가로에 일간 두 장이 나란히 있는 PDF" width="1400" height="989" loading="lazy" decoding="async"></div>
+      <div class="shot"><img src="assets/pdf-half.webp" srcset="assets/pdf-half-560.webp 560w, assets/pdf-half-1100.webp 1100w, assets/pdf-half.webp 1400w" sizes="(max-width: 600px) calc(100vw - 32px), (max-width: 900px) 540px, 508px" alt="A4 가로에 일간 두 장이 나란히 있는 PDF" width="1400" height="989" loading="lazy" decoding="async"></div>
     </div>
   </section>
 
@@ -805,28 +828,28 @@
   <section id="devices" aria-labelledby="devices-h">
     <p class="label keep">iPad · iPhone · Android</p>
     <h2 id="devices-h">iPad 에선 <span class="hl" style="--c: #F3DB78">펼친 노트</span>,<br>폰에선 <span class="hl">손바닥 수첩</span>.</h2>
-    <p class="desc">iPad 는 어제와 오늘이 나란히 펼쳐진 책상이에요. Apple Pencil 로 쓰고, 손바닥이 화면에 닿아도 괜찮아요. 폰에서는 WRITE 칸과 TIME 칸으로 카메라처럼 다가가서 쓰고 칠해요.</p>
+    <p class="desc">iPad 는 어제와 오늘이 나란히 펼쳐진 책상이에요. Apple Pencil 로 쓰고, 손바닥이 화면에 닿아도 괜찮아요. 폰에서는 ‘쓰기’ · ‘시간’ 을 누르면 그 칸으로 카메라처럼 다가가서, 크게 쓰고 칠해요.</p>
     <p class="preview-note" data-show="ios:soon android:soon"><span class="badge is-soon">미리 보기</span> 출시를 준비 중인 앱의 실제 화면이에요.</p>
 
     <figure class="device tablet ipad-wrap">
       <div class="frame">
-        <img src="assets/ipad-spread-1400.webp" srcset="assets/ipad-spread-760.webp 760w, assets/ipad-spread-1400.webp 1400w, assets/ipad-spread-1880.webp 1880w" sizes="(max-width: 990px) calc(100vw - 32px), 940px" width="1400" height="1050" loading="lazy" decoding="async" alt="iPad 가로 화면. 9월 28일과 9월 29일 일간 페이지가 나란히 펼쳐져 있고, 오른쪽에 형광펜과 도구 막대가 있어요">
+        <img src="assets/ipad-spread-1400.webp" srcset="assets/ipad-spread-760.webp 760w, assets/ipad-spread-1400.webp 1400w, assets/ipad-spread-1880.webp 1880w" sizes="(max-width: 990px) calc(100vw - 32px), 940px" width="1400" height="1050" loading="lazy" decoding="async" alt="iPad 가로 화면. 바닷가 책상 위에 10월 5일과 10월 6일 일간 페이지가 나란히 펼쳐져 있고, 파라솔 그늘이 비스듬히 드리워 있어요. 오른쪽에는 형광펜과 도구 막대">
       </div>
       <figcaption><b>iPad</b>[어제 | 오늘] 펼침면 · Apple Pencil</figcaption>
     </figure>
 
     <div class="phones">
       <figure class="device iphone opt">
-        <div class="frame"><img src="assets/iphone-daily.webp" width="520" height="1131" loading="lazy" decoding="async" alt="iPhone 에서 본 일간 페이지 한 장 전체. 위에 주간 · 일간 · 홈 전환, 아래에 형광펜 막대"></div>
-        <figcaption><b>iPhone</b>한 장 전체</figcaption>
+        <div class="frame"><img src="assets/iphone-pens.webp" srcset="assets/iphone-pens-260.webp 260w, assets/iphone-pens.webp 520w" sizes="(max-width: 1120px) 22vw, 232px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 에서 시간 칸으로 다가간 화면. 아래 필통에서 미팅 형광펜을 꺼내 들었고, ‘미팅’ 이름표가 떠 있어요"></div>
+        <figcaption><b>iPhone</b>필통에서 형광펜 고르기</figcaption>
       </figure>
       <figure class="device iphone">
-        <div class="frame"><img src="assets/iphone-write.webp" width="520" height="1131" loading="lazy" decoding="async" alt="iPhone 에서 WRITE 칸으로 확대한 화면. 할 일 글씨가 크게 보여요"></div>
-        <figcaption><b>iPhone</b>WRITE 칸으로 확대</figcaption>
+        <div class="frame"><img src="assets/iphone-write.webp" srcset="assets/iphone-write-260.webp 260w, assets/iphone-write.webp 520w" sizes="(max-width: 760px) 45vw, (max-width: 1120px) 22vw, 232px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 에서 쓰기 칸으로 확대한 화면. 학교 책상 위에서 할 일 글씨가 크게 보여요"></div>
+        <figcaption><b>iPhone</b>쓰기 칸으로 확대</figcaption>
       </figure>
       <figure class="device android">
-        <div class="frame"><img src="assets/android-paint.webp" width="520" height="924" loading="lazy" decoding="async" alt="Android 폰에서 TIME 칸으로 확대해 형광펜을 칠하는 화면. 22:00 부터 22:50 까지 50분이라고 떠 있어요"></div>
-        <figcaption><b>Android</b>TIME 칸에 칠하기</figcaption>
+        <div class="frame"><img src="assets/android-paint.webp" width="520" height="924" loading="lazy" decoding="async" alt="Android 폰에서 시간 칸으로 확대해 형광펜을 칠하는 화면. 22:00 부터 22:50 까지 50분이라고 떠 있어요"></div>
+        <figcaption><b>Android</b>시간 칸에 칠하기</figcaption>
       </figure>
       <figure class="device android opt">
         <div class="frame"><img src="assets/android-daily.webp" width="520" height="924" loading="lazy" decoding="async" alt="Android 폰에서 본 일간 페이지 한 장 전체"></div>
@@ -837,18 +860,52 @@
     <div class="split widgets">
       <div>
         <h3>위젯으로 오늘을 <span class="hl" style="--c: #CDB6EF">한눈에</span>.</h3>
-        <p class="desc">앱을 열지 않아도 오늘 칠한 시간과 D-day, 미니 타임테이블이 홈 화면에 보여요. iPhone 은 잠금 화면에도, Android 는 2×2 · 4×2 두 가지 크기로 놓을 수 있어요.</p>
+        <p class="desc">앱을 열지 않아도 오늘 칠한 시간과 D-day, 타임테이블, 할 일이 홈 화면에 보여요. iPhone · iPad 는 오늘 한 장을 통째로 띄우는 큰 위젯과 잠금 화면 위젯도 있고, Android 는 2×2 · 4×2 두 가지 크기로 놓을 수 있어요.</p>
       </div>
       <div class="widget-stack">
         <figure>
-          <img src="assets/widget-ios.webp" width="728" height="340" loading="lazy" decoding="async" alt="iPhone 중간 크기 위젯. 기획안 마감 D-4, TOTAL TIME 7시간 30분, 오전 · 오후 타임테이블">
-          <figcaption><b>iPhone · iPad</b>홈 화면 위젯</figcaption>
+          <img src="assets/widget-ios.webp" srcset="assets/widget-ios-380.webp 380w, assets/widget-ios.webp 760w" sizes="(max-width: 420px) calc(100vw - 32px), 380px" width="760" height="355" loading="lazy" decoding="async" alt="iPhone 중간 크기 타임테이블 위젯. 10월 6일 화요일 8시간, 아침 6시부터 다음 날 새벽 5시까지 형광펜으로 칠한 칸">
+          <figcaption><b>iPhone · iPad</b>타임테이블 위젯</figcaption>
         </figure>
         <figure>
           <img src="assets/widget-android.webp" width="800" height="399" loading="lazy" decoding="async" alt="Android 4×2 위젯. 10월 4일 일요일, 런칭 D-3, TOTAL TIME 3시간 50분, 미니 타임테이블과 할 일 1/2">
           <figcaption><b>Android</b>4×2 미니 타임테이블</figcaption>
         </figure>
       </div>
+    </div>
+  </section>
+
+  <!-- 책상 (iPhone · iPad) -->
+  <section id="desk" aria-labelledby="desk-h">
+    <p class="label">Desk</p>
+    <h2 id="desk-h">종이 밑에 깔 <span class="hl" style="--c: #F8B38A">책상</span>도 골라요.</h2>
+    <p class="desc">바닷가의 파라솔 그늘, 블라인드 사이로 드는 교실 햇살. 종이는 그대로 두고 그 밑의 책상과 빛만 바뀌어요. 해 질 무렵이면 스탠드나 랜턴 같은 저녁 조명으로 천천히 넘어가고, 도구 막대도 그 빛을 따라가요.</p>
+    <p class="preview-note"><span class="badge is-soon" data-show="ios:soon">미리 보기</span> <span>iPhone · iPad 앱의 설정 › 이 기기 › 책상에서 골라요.</span></p>
+    <div class="desks">
+      <figure class="device iphone lead">
+        <div class="frame"><img src="assets/desk-beach-day.webp" srcset="assets/desk-beach-day-260.webp 260w, assets/desk-beach-day.webp 520w" sizes="(max-width: 600px) 46vw, (max-width: 900px) 30vw, 246px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 일간 페이지를 바닷가 책상에 놓은 화면. 고운 모래 위로 파라솔 그늘이 비스듬히 드리워 있어요"></div>
+        <figcaption><b>바닷가 · 낮</b>파라솔 그늘이 비스듬히</figcaption>
+      </figure>
+      <figure class="device iphone">
+        <div class="frame"><img src="assets/desk-school-day.webp" srcset="assets/desk-school-day-260.webp 260w, assets/desk-school-day.webp 520w" sizes="(max-width: 600px) 46vw, (max-width: 900px) 30vw, 246px" width="520" height="1130" loading="lazy" decoding="async" alt="학교 책상에 놓은 일간 페이지. 블라인드 사이로 든 햇살이 종이 위에 줄무늬로 비쳐요"></div>
+        <figcaption><b>학교 책상 · 낮</b>블라인드 사이로 드는 햇살</figcaption>
+      </figure>
+      <figure class="device iphone">
+        <div class="frame"><img src="assets/desk-school-evening.webp" srcset="assets/desk-school-evening-260.webp 260w, assets/desk-school-evening.webp 520w" sizes="(max-width: 600px) 46vw, (max-width: 900px) 30vw, 246px" width="520" height="1130" loading="lazy" decoding="async" alt="저녁의 학교 책상. 어두워진 교실에서 책상 스탠드 불빛이 종이를 비춰요"></div>
+        <figcaption><b>학교 책상 · 저녁</b>다들 돌아간 교실, 스탠드 하나</figcaption>
+      </figure>
+    </div>
+    <div class="desk-more">
+      <h3>책상은 여섯 가지 더 있어요</h3>
+      <ul class="desk-list">
+        <li><img src="assets/desk-default.webp" srcset="assets/desk-default-168.webp 1x, assets/desk-default.webp 2x" width="168" height="224" loading="lazy" decoding="async" alt=""><b>기본</b>따뜻한 회색<br>원래 책상 그대로</li>
+        <li><img src="assets/desk-white.webp" srcset="assets/desk-white-168.webp 1x, assets/desk-white.webp 2x" width="168" height="224" loading="lazy" decoding="async" alt=""><b>흰 책상</b>잎 그림자<br>저녁엔 탁상 램프</li>
+        <li><img src="assets/desk-cafe.webp" srcset="assets/desk-cafe-168.webp 1x, assets/desk-cafe.webp 2x" width="168" height="224" loading="lazy" decoding="async" alt=""><b>카페 테이블</b>창가 햇살<br>저녁엔 펜던트 등</li>
+        <li><img src="assets/desk-library.webp" srcset="assets/desk-library-168.webp 1x, assets/desk-library.webp 2x" width="168" height="224" loading="lazy" decoding="async" alt=""><b>도서관</b>높은 창<br>저녁엔 뱅커스 램프</li>
+        <li><img src="assets/desk-linen.webp" srcset="assets/desk-linen-168.webp 1x, assets/desk-linen.webp 2x" width="168" height="224" loading="lazy" decoding="async" alt=""><b>리넨</b>커튼 너머 낮빛<br>저녁엔 촛불</li>
+        <li><img src="assets/desk-night.webp" srcset="assets/desk-night-168.webp 1x, assets/desk-night.webp 2x" width="168" height="224" loading="lazy" decoding="async" alt=""><b>밤 책상</b>해 질 녘 노을<br>밤엔 스탠드</li>
+      </ul>
+      <p class="desk-note">책상은 기기마다 따로 골라요. 같은 플래너라도 iPad 는 바닷가, iPhone 은 학교 책상에 둘 수 있어요. 어두운 모드에서는 늘 저녁 빛이에요.</p>
     </div>
   </section>
 
@@ -866,9 +923,9 @@
           <li><span class="m" aria-hidden="true">○</span><div><b>켤 때만</b> — 처음엔 꺼져 있어요. 켜지 않으면 기록은 내 기기 밖으로 나가지 않아요.</div></li>
         </ul>
       </div>
-      <figure class="device android">
-        <div class="frame"><img src="assets/sync-preview.webp" width="520" height="924" loading="lazy" decoding="async" alt="동기화 설정 화면. 동기화됨, 이 기기는 종단간 암호화, 연결된 기기 2대"></div>
-        <figcaption><span data-show="sync:soon">준비 중인 동기화 화면 (Android)</span><span data-show="sync:out" hidden>동기화 화면 (Android)</span></figcaption>
+      <figure class="device iphone">
+        <div class="frame"><img src="assets/sync-iphone.webp" srcset="assets/sync-iphone-260.webp 260w, assets/sync-iphone.webp 520w" sizes="(max-width: 900px) 226px, 253px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 의 동기화 설정 화면. 동기화됨, 이 기기는 종단간 암호화, 연결된 기기 4대 — iPhone, MacBook, 회사 PC, iPad"></div>
+        <figcaption><span data-show="sync:soon">준비 중인 동기화 화면 (iPhone)</span><span data-show="sync:out" hidden>동기화 화면 (iPhone)</span></figcaption>
       </figure>
     </div>
   </section>
