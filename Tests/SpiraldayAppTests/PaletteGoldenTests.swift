@@ -5,7 +5,8 @@ import AppKit
 @testable import Spiralday
 
 /// 팔레트 그림 지킴이 (사장님 피드백 D · E). `--palette-test` 가 찍는 26장의 팔레트 자리를 골든 그림(Tests/Golden/palette/*.png)과
-/// 화소로 견준다 — 필통 · 도구 그림(펜 아래 흰 주머니 없음, 피드백 D)과 지금 플래너의 책 모양(표지 색 · 책등, 피드백 E)이 바뀌면 빨개진다.
+/// 화소로 견준다 — 그림 전체와 8pt 칸마다 (가로 팔레트의 작은 펜도). 필통 · 도구 그림(펜 아래 흰 주머니 없음, 피드백 D)과
+/// 지금 플래너의 책 모양(표지 색 · 책등, 피드백 E)이 바뀌면 빨개진다. 흰 주머니는 골든과 상관없이도 본다 (펜 하나의 순백 화소).
 /// 이 골든은 Windows 팔레트(SNAP_PALETTE) · iPad / Android 레일 그림을 견줄 때의 기준 그림이기도 하다.
 ///
 /// 책 메뉴는 점검용 그림에서도 실제 앱의 단추(Button + NSMenu) 를 그대로 그린다 — 예전처럼 Menu 로 바꾸면(macOS 가 label 의 그림을 지움)
@@ -50,11 +51,28 @@ final class PaletteGoldenTests: XCTestCase {
                 continue
             }
             let d = Pixels(crop).difference(Pixels(want))
-            if !d.sameSize || d.strongFraction > 0.002 || d.meanDiff > 1.5 {
+            if ProcessInfo.processInfo.environment["SPIRALDAY_GOLDEN_STATS"] == "1" {
+                print(String(format: "GOLDEN %@ strong %.4f%% mean %.3f tileStrong %.3f tileMean %.2f",
+                             name, d.strongFraction * 100, d.meanDiff, d.worstTileStrong, d.worstTileMean))
+            }
+            // 골든과 상관없이 (골든을 새로 찍어도): 펼친 팔레트의 펜 아래에 흰 주머니가 없다 — 펜 하나의 순백 화소 (2배 그림)가
+            // 세로 팔레트 1500 · 가로 팔레트 1000 을 넘지 않는다. 지금 그림은 약 900 · 710 (펜 몸통 · 도구 칩 포함), 펜마다
+            // 62 × 24 pt 흰 캡슐을 깔면 약 2350 · 1250 (2026-10-05 돌연변이로 잼 — 피드백 D)
+            if name.hasSuffix("_open.png") {
+                let white = Pixels(crop).count { $0.3 > 250 && $0.0 >= 250 && $0.1 >= 250 && $0.2 >= 250 }
+                let perPen = Double(white) / Double(max(1, store.categories.count))
+                let limit: Double = name.hasPrefix("top_") || name.hasPrefix("bottom_") ? 1000 : 1500
+                if ProcessInfo.processInfo.environment["SPIRALDAY_GOLDEN_STATS"] == "1" { print("GOLDEN \(name) white per pen \(Int(perPen))") }
+                XCTAssertLessThan(perPen, limit, "\(name): 펜 아래에 흰 주머니가 생겼어요 (피드백 D) — 순백 화소 펜 하나에 \(Int(perPen))")
+            }
+            // 전체 비율에 더해 8pt 칸마다: 가로 팔레트의 펜 하나 아래 흰 주머니처럼 작은 자리의 변화는 전체로 나누면 묻힌다
+            // (2026-10-05 검토 — 위 · 아래 팔레트에서 전체 0.05% · 평균 0.72 로 지나갔다. 같은 그림의 잡음은 칸 평균 0.1 아래)
+            if !d.sameSize || d.strongFraction > 0.002 || d.meanDiff > 1.5 || d.worstTileStrong > 0.02 || d.worstTileMean > 3 {
                 try? FileManager.default.createDirectory(at: actualDir, withIntermediateDirectories: true)
                 try? write(crop, actualDir.appendingPathComponent(name))
                 XCTFail("\(name): 팔레트 그림이 골든과 달라요 (크기 같음 \(d.sameSize), 많이 다른 화소 \(String(format: "%.3f", d.strongFraction * 100))%, " +
-                        "평균 차이 \(String(format: "%.2f", d.meanDiff))) — 지금 그림: \(actualDir.appendingPathComponent(name).path)")
+                        "평균 차이 \(String(format: "%.2f", d.meanDiff)), 가장 다른 칸 \(String(format: "%.1f", d.worstTileStrong * 100))% · " +
+                        "평균 \(String(format: "%.2f", d.worstTileMean))) — 지금 그림: \(actualDir.appendingPathComponent(name).path)")
             }
             compared += 1
         }
@@ -133,22 +151,50 @@ final class PaletteGoldenTests: XCTestCase {
             var strongFraction: Double
             /// 채널 차이의 평균
             var meanDiff: Double
+            /// 가장 많이 다른 칸(tile × tile 화소)에서 많이 다른 화소의 비율 — 그림 전체로 나누면 묻히는 작은 자리의 변화
+            /// (가로 팔레트의 펜 하나 아래 흰 주머니 같은 것)를 잡는다
+            var worstTileStrong: Double = 0
+            /// 가장 많이 다른 칸의 채널 차이 평균
+            var worstTileMean: Double = 0
         }
+
+        /// 칸 크기 (화소, 2배 그림에서 8pt)
+        static let tile = 16
 
         func difference(_ o: Pixels) -> Difference {
             guard width == o.width, height == o.height else { return Difference(sameSize: false, strongFraction: 1, meanDiff: 255) }
+            let t = Self.tile
+            let cols = (width + t - 1) / t, rows = (height + t - 1) / t
+            var tileStrong = [Int](repeating: 0, count: cols * rows)
+            var tileSum = [Int](repeating: 0, count: cols * rows)
+            var tileCount = [Int](repeating: 0, count: cols * rows)
             var strong = 0, sum = 0
-            for i in stride(from: 0, to: data.count, by: 4) {
-                var m = 0
-                for c in 0..<4 {
-                    let d = abs(Int(data[i + c]) - Int(o.data[i + c]))
-                    sum += d
-                    m = max(m, d)
+            for y in 0..<height {
+                for x in 0..<width {
+                    let i = (y * width + x) * 4
+                    var m = 0, s = 0
+                    for c in 0..<4 {
+                        let d = abs(Int(data[i + c]) - Int(o.data[i + c]))
+                        s += d
+                        m = max(m, d)
+                    }
+                    sum += s
+                    let k = (y / t) * cols + x / t
+                    tileSum[k] += s
+                    tileCount[k] += 1
+                    if m > 40 {
+                        strong += 1
+                        tileStrong[k] += 1
+                    }
                 }
-                if m > 40 { strong += 1 }
             }
             let n = max(1, width * height)
-            return Difference(sameSize: true, strongFraction: Double(strong) / Double(n), meanDiff: Double(sum) / Double(n * 4))
+            var d = Difference(sameSize: true, strongFraction: Double(strong) / Double(n), meanDiff: Double(sum) / Double(n * 4))
+            for k in tileCount.indices where tileCount[k] > 0 {
+                d.worstTileStrong = max(d.worstTileStrong, Double(tileStrong[k]) / Double(tileCount[k]))
+                d.worstTileMean = max(d.worstTileMean, Double(tileSum[k]) / Double(tileCount[k] * 4))
+            }
+            return d
         }
     }
 }
