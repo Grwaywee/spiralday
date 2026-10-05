@@ -196,9 +196,15 @@ extension CurlController {
     /// (`CurlSheetShape.none` when nothing is lifted inside the page view). Nothing is called while the
     /// overlay is hidden — `isActive` turning false means nothing is lifted.
     ///
-    /// While anyone watches, the overlay presents its frames with the Core Animation transaction, so a
-    /// layer the host changes in `handler` (a mask over the rings) appears on exactly the same display
-    /// frame as the sheet. Keep the returned token; the watch ends when it is released or cancelled.
+    /// Watching does not change how the overlay presents its frames: they go to the screen as soon as
+    /// the GPU is done (`MTLCommandBuffer.present`), and a layer the host changes in `handler` (a mask over
+    /// the rings) is committed in the same main-thread turn — both reach the screen on the next display
+    /// refresh. Only the first frame of a turn goes with the Core Animation transaction (`present()` — the
+    /// overlay appears without a flash). The build that presented every watched frame with the transaction
+    /// (`presentsWithTransaction`) showed no curl on an iPhone 12 Pro Max (iOS 26.6): the page went white
+    /// until the turn ended (owner report, 2026-10-05) — it was the only change in how curl frames reach
+    /// the screen since the build that turned fine. Keep the returned token; the watch ends when it is
+    /// released or cancelled.
     public func watchLiftedSheet(_ handler: @escaping @MainActor (CurlSheetShape) -> Void) -> CurlSheetWatch {
         let watch = CurlSheetWatch(handler)
         guard let view = makeOverlayView() as? CurlMetalView else { return watch }
@@ -210,11 +216,8 @@ extension CurlController {
             curlSheetWatchers.setObject(box, forKey: view)
             let draw = view.onFrame
             view.onFrame = { [weak self, weak box] v in
-                // 지켜보는 쪽이 있으면 그림을 CA 트랜잭션과 함께 내보낸다 (가림판과 같은 프레임에)
-                let watched = box?.isWatched == true
-                if watched { v.presentsWithTransaction = true }
                 draw?(v)
-                guard watched, let self, let box else { return }
+                guard box?.isWatched == true, let self, let box else { return }
                 box.notify(self.liftedSheet ?? .none)
             }
         }

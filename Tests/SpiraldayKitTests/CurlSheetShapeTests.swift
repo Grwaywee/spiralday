@@ -46,6 +46,45 @@ final class CurlSheetShapeTests: XCTestCase {
         }
     }
 
+    // MARK: 지켜보기 — 프레임이 화면에 가는 길
+
+    /// 들린 부분을 지켜봐도 넘김 오버레이는 프레임을 CA 트랜잭션에 묶지 않는다 (MTLCommandBuffer.present 그대로).
+    /// 지켜보는 동안 프레임마다 presentsWithTransaction 으로 내보내던 빌드에서 iPhone 12 Pro Max(iOS 26.6)는 넘길 때
+    /// 말림이 보이지 않고 종이 자리가 하얘졌다가 다음 장이 보였다 (2026-10-05 소유자 제보) — 잘 넘어가던 빌드와
+    /// 말림 프레임이 화면에 가는 길에서 다른 것은 이것 하나였다. 첫 프레임만 트랜잭션과 함께 (깜빡임 없이 나타나게).
+    func testWatchingKeepsEveryFrameOffTheTransaction() throws {
+        try XCTSkipIf(CurlGPU.shared == nil, "Metal 없음")
+        let c = CurlController()
+        let view = try XCTUnwrap(c.makeOverlayView() as? CurlMetalView)
+        let page = try solidPage(width: 390, height: 611)
+        c.pageSize = CGSize(width: 390, height: 611)
+        c.snapshot = { _ in PageBitmaps(current: page, neighbor: page) }
+        var shapes: [CurlSheetShape] = []
+        let watch = c.watchLiftedSheet { shapes.append($0) }
+        c.flip(.forward)
+        XCTAssertEqual(c._testPhase, "gliding")
+        XCTAssertFalse(view.presentsWithTransaction, "첫 프레임 뒤에는 트랜잭션에서 풀려 있다")
+        var lifted = 0
+        for _ in 0..<40 {
+            c._testAdvance(1.0 / 60)
+            view.onFrame?(view)
+            XCTAssertFalse(view.presentsWithTransaction, "지켜보는 동안에도 프레임은 바로 화면으로")
+            if shapes.last.map({ !$0.isEmpty }) == true { lifted += 1 }
+        }
+        XCTAssertGreaterThanOrEqual(shapes.count, 40, "프레임마다 (나타날 때의 첫 프레임 포함) 들린 부분을 알려 준다")
+        XCTAssertGreaterThan(lifted, 10, "넘김 중에는 들린 부분이 있다")
+        withExtendedLifetime(watch) {}
+    }
+
+    private func solidPage(width: Int, height: Int) throws -> CGImage {
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(CGColor(red: 0.98, green: 0.97, blue: 0.95, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return try XCTUnwrap(ctx.makeImage())
+    }
+
     // MARK: 셰이더와 견주기
 
     /// 움직이는 종이 = 빨강, 아래 장 = 파랑으로 그린 넘김에서:
