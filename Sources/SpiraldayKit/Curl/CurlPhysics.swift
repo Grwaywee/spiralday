@@ -53,9 +53,10 @@ struct CurlFrame {
         var H: Double
         /// g/2: the open gap [0, g/2) from the hinge (the coil's axis) holds no paper — the leaf's paper starts there.
         var halfGutter: Double
-        /// 1 = paper, 2.4 = board (cover / inside back): barely bows.
+        /// 1 = paper, 2.4 = board (cover / inside back): rounder, less tilt.
         var stiffness: Double
-        /// Radius of the coil = distance of the holes from the hinge (≥ g/2): the leaf is rigid up to its holes.
+        /// Radius of the coil = distance of the holes from the hinge (≥ g/2): the roll never passes the holes —
+        /// the strip up to them rides around the coil instead (CurlSpreadFold).
         var coil: Double
     }
 
@@ -89,9 +90,10 @@ struct CurlFrame {
     var E: CurlVec { spread == nil ? CurlVec(-1.08 * W, H) : CurlVec(-W, H) }
     /// Canonical turn arc (cubic Bézier K → c1 → c2 → E): the corner lifts first,
     /// sweeps over in a gentle arc and lands flat behind the binding.
-    /// Spread: a symmetric arc — the corner lifts, passes over the gutter and lies down on the other side.
-    var c1: CurlVec { spread == nil ? CurlVec(0.55 * W, 0.75 * H) : CurlVec(0.5 * W, 0.80 * H) }
-    var c2: CurlVec { spread == nil ? CurlVec(-0.35 * W, 0.92 * H) : CurlVec(-0.5 * W, 0.80 * H) }
+    /// Spread: the same arc fitted to the spread's span (2W′ instead of 2.08W) — at any progress the finger is as
+    /// high as on a single page, so the leaf curls the same way — ending on the other side.
+    var c1: CurlVec { spread == nil ? CurlVec(0.55 * W, 0.75 * H) : CurlVec(W - span * (0.45 / 2.08), 0.75 * H) }
+    var c2: CurlVec { spread == nil ? CurlVec(-0.35 * W, 0.92 * H) : CurlVec(W - span * (1.35 / 2.08), 0.92 * H) }
     /// Horizontal travel of a full turn.
     var span: Double { K.x - E.x }
 
@@ -102,13 +104,14 @@ struct CurlFrame {
     // MARK: fold
 
     static let maxTilt = 35.0 * .pi / 180
+    /// A board (cover) barely twists.
+    static let boardTilt = 12.0 * .pi / 180
     var rMax: Double { 0.10 * W }
     var rMin: Double { 0.012 * W }
 
-    /// Cylinder fold for a finger position (single page). An open book does not roll: its leaf turns about the
-    /// coil (CurlHingeLeaf) — a spread frame answers a flat fold here.
+    /// Cylinder fold for a finger position. An open book's leaf (spread frame): its cylinder (`spreadFold`).
     func fold(_ F: CurlVec) -> CurlFold {
-        if spread != nil { return .flat(at: K) }
+        if spread != nil { return spreadFold(F).fold }
         let D = K - F
         guard simd_length(D) > 1e-6 else { return .flat(at: K) }
         // 스프링에서 찢어지지 않게 축 기울기를 제한한다
@@ -282,9 +285,10 @@ struct CurlGlide {
         }
         let slope = along * duration / (3 * lead) + entrySlope
         let path = CurlPath(F0, F0 + dir * lead, goal - arrive * (0.356 * dist), goal)
-        // 한 장은 넘긴 장이 고리 뒤로 미끄러져 나간다 (exitSlope). 펼친 책의 잎은 코일을 돌아 어느 쪽에든
-        // 멈추듯 내려앉는다 (끝 기울기 0 — 잎의 각은 acos 로 따라가므로 마지막 순간 각속도도 0, 툭 튀지 않는다)
-        let final = f.landing == .mirrored ? 0 : toTurned ? CurlTiming.exitSlope : CurlTiming.landingSlope
+        // 한 장은 넘긴 장이 고리 뒤로 미끄러져 나간다 (exitSlope), 제자리로는 사뿐히 (landingSlope).
+        // 펼친 책의 잎은 반대쪽에 멈추듯 내려앉는다 (끝 기울기 0): 마지막에 구멍 띠가 코일을 돌아 눕는 각은 손가락이 남은
+        // 거리의 제곱근으로 따라가므로, 손가락이 멈추며 와야 각속도도 0 으로 — 띠가 탁 떨어지지 않는다 (CurlSpreadFold)
+        let final = toTurned ? (f.landing == .mirrored ? 0 : CurlTiming.exitSlope) : CurlTiming.landingSlope
         return CurlGlide(path: path, duration: duration, timing: CurlTiming(initialSlope: slope, finalSlope: final))
     }
 

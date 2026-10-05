@@ -51,12 +51,8 @@ final class CurlMetalView: MTKView {
     #endif
 
     /// Spread mode (an open book): the overlay is see-through (premultiplied alpha) — the live pages below
-    /// show wherever the turning sheet does not cover — and draws the bowed leaf as a mesh (4× MSAA + depth).
-    /// A single page stays opaque, one sample, no depth (as always).
+    /// show wherever the turning sheet does not cover. A single page stays opaque (as always).
     func setTransparent(_ transparent: Bool) {
-        sampleCount = transparent ? CurlGPU.spreadSamples : 1
-        depthStencilPixelFormat = transparent ? .depth32Float : .invalid
-        clearDepth = 1
         if let metal = layer as? CAMetalLayer { metal.isOpaque = !transparent }
         #if !os(macOS)
         isOpaque = !transparent

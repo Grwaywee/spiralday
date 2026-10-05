@@ -210,18 +210,20 @@ enum CurlShader {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Spread mode (an open spiral-bound book, iPad): one overlay covers the whole book (both pages, the open gap with
-// the coil and a bleed along the binding). The leaf turns about the coil (CurlHingeLeaf): a mesh of the bowed
-// leaf seen through a gentle perspective, its front = the lifted page, its back = the page that lands on the other
-// side, over a background pass that draws the page it uncovers and the leaf's soft shadow on both sides.
-//   background  revealed page (lifted side, nil = desk) · shadow alpha elsewhere      revealedTex @ lifted page rect
-//   leaf        front face  frontTex @ lifted page rect · back face  backTex @ opposite page rect (mirrored)
-// Every texture is read at the place where that page lives on screen, so the landing frame is exactly the new live
-// pages. 4× MSAA + depth (the bowed leaf can overlap itself on screen). Output is premultiplied alpha: where the
-// leaf does not cover, the live pages / the desk show. Its own source and pipelines — the single-page shader above
-// is untouched (the Mac never builds these).
+// the coil and a bleed along the binding). The leaf CURLS like the single page above — the same cylinder, the same
+// shading, back face and shadows — and lies down MIRRORED about the coil axis on the opposite page. It hangs on the
+// coil by its holes: once the roll has reached them, the binding strip turns about the coil (θ) while the roll turns
+// the rest of the way (CurlSpreadFold.swift):
+//   front     the lifted page (its live content)            frontTex  @ lifted page rect
+//   back      the page that lands on the other side          backTex   @ opposite page rect
+//   revealed  the page under the lifted one (nil = desk)     revealedTex @ lifted page rect
+// Every texture is read at the place where that page lives on screen, so the mirror comes for free and the landing
+// frame is exactly the new live pages. Output is premultiplied alpha: where the leaf does not cover, the live pages
+// / the desk show. While θ = 0 every value is computed as on the single page. Kept in its own source (own library)
+// so the single-page shader is untouched (the Mac never builds this one).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Uniforms of the spread shaders (layout must match `CurlSpreadUniforms` in the MSL below).
+/// Uniforms of the spread shader (layout must match `CurlSpreadUniforms` in the MSL below).
 struct CurlSpreadUniforms {
     /// Overlay points: the lifted page, the page on the other side (x, y, w, h).
     var liftRect: SIMD4<Float>
@@ -229,26 +231,58 @@ struct CurlSpreadUniforms {
     /// Board edge colour (rgb) and strength (a, 0 = paper).
     var rim: SIMD4<Float>
     var viewSize: SIMD2<Float>
-    /// W′ (half gap + page across), H (along the binding).
+    var pixelScale: SIMD2<Float>
+    /// Page space size (W′ = half gap + page length across the binding, H along it).
     var pageSize: SIMD2<Float>
-    /// Overlay coordinate of the hinge line (x for a vertical binding, y for a horizontal one).
+    /// The cylinder in the leaf's plane (σ-space): a point on its axis, the normal toward the free edge, the radius.
+    var axisPoint: SIMD2<Float>
+    var normal: SIMD2<Float>
+    var radius: Float
+    var effect: Float
+    /// Overlay coordinate of the hinge line = the coil's axis (x for a vertical binding, y for a horizontal one).
     var hinge: Float
     /// +1 lifting the recto (forward), −1 lifting the verso (backward).
     var sigma: Float
     var halfGutter: Float
+    /// 1: the far corner along the binding is held (page y runs from the other end).
+    var holdTop: Float
+    /// 1: horizontal binding (weekly: top / bottom pages).
     var horizontal: Float
     var hasRevealed: Float
-    /// 0 at rest / landed (exactly the pages) … 1 in the air.
-    var effect: Float
-    /// Perspective: camera distance (points).
-    var camera: Float
-    /// Light toward the source in σ-space (across component) and its height component (normalised together).
-    var lightAcross: Float
-    var lightZ: Float
-    /// The shadow profile spans ±shadowReach·W′ across.
-    var shadowReach: Float
-    var shadowBins: Float
+    /// 0 at rest (the back face cannot show).
+    var lifted: Float
+    /// The binding strip's turn about the coil axis (0 … π), its cosine and sine (exactly ±1 · 0 at both ends).
+    var theta: Float
+    var cosTheta: Float
+    var sinTheta: Float
     var pad: Float = 0
+
+    init(fold f: CurlSpreadFold, geometry g: CurlSpread, sigma: Double, holdTop: Bool, rim: SIMD3<Float>?, stiffness: Double,
+         hasRevealed: Bool, pixelScale: SIMD2<Float>) {
+        let lift = sigma > 0 ? g.rectoRect : g.versoRect
+        let opp = sigma > 0 ? g.versoRect : g.rectoRect
+        func rect(_ r: CGRect) -> SIMD4<Float> { SIMD4(Float(r.minX), Float(r.minY), Float(r.width), Float(r.height)) }
+        liftRect = rect(lift)
+        oppRect = rect(opp)
+        self.rim = stiffness > 1.01 ? (rim.map { SIMD4($0.x, $0.y, $0.z, 1) } ?? .zero) : .zero
+        viewSize = SIMD2(Float(g.overlaySize.width), Float(g.overlaySize.height))
+        self.pixelScale = pixelScale
+        pageSize = SIMD2(Float(f.W), Float(f.H))
+        axisPoint = SIMD2(Float(f.fold.axisPoint.x), Float(f.fold.axisPoint.y))
+        normal = SIMD2(Float(f.fold.normal.x), Float(f.fold.normal.y))
+        radius = Float(f.fold.radius)
+        effect = Float(f.fold.effect)
+        hinge = Float(g.hinge)
+        self.sigma = Float(sigma)
+        halfGutter = Float(g.halfGutter)
+        self.holdTop = holdTop ? 1 : 0
+        horizontal = g.axis == .horizontal ? 1 : 0
+        self.hasRevealed = hasRevealed ? 1 : 0
+        lifted = f.lifted ? 1 : 0
+        theta = Float(f.theta)
+        cosTheta = Float(f.cosTheta)
+        sinTheta = Float(f.sinTheta)
+    }
 }
 
 enum CurlSpreadShader {
@@ -261,22 +295,37 @@ enum CurlSpreadShader {
         float4 oppRect;
         float4 rim;
         float2 viewSize;
+        float2 pixelScale;
         float2 pageSize;
+        float2 axisPoint;
+        float2 normal;
+        float  radius;
+        float  effect;
         float  hinge;
         float  sigma;
         float  halfGutter;
+        float  holdTop;
         float  horizontal;
         float  hasRevealed;
-        float  effect;
-        float  camera;
-        float  lightAcross;
-        float  lightZ;
-        float  shadowReach;
-        float  shadowBins;
+        float  lifted;
+        float  theta;
+        float  cosTheta;
+        float  sinTheta;
         float  pad;
     };
 
-    static inline float hg_hash(float2 p) {
+    struct SpreadVertexOut {
+        float4 position [[position]];
+    };
+
+    vertex SpreadVertexOut curl_spread_vertex(uint vid [[vertex_id]]) {
+        float2 p = float2(float((vid << 1) & 2), float(vid & 2));
+        SpreadVertexOut o;
+        o.position = float4(p * 2.0 - 1.0, 0.0, 1.0);
+        return o;
+    }
+
+    static inline float sp_hash(float2 p) {
         uint2 q = uint2(int2(floor(p)) + int2(65536));
         uint h = (q.x * 0x8da6b343u) ^ (q.y * 0xd8163841u);
         h ^= h >> 15; h *= 0x2c1b3c6du;
@@ -285,133 +334,174 @@ enum CurlSpreadShader {
         return float(h) * (1.0 / 4294967296.0);
     }
 
-    // ── background: the page the leaf uncovers + the leaf's shadow on both sides ──
-
-    struct HingeBgOut {
-        float4 position [[position]];
-        float2 point;      // overlay points
-    };
-
-    vertex HingeBgOut hinge_bg_vertex(uint vid [[vertex_id]], constant CurlSpreadUniforms &U [[buffer(0)]]) {
-        float2 p = float2(float((vid << 1) & 2), float(vid & 2));
-        HingeBgOut o;
-        o.position = float4(p * 2.0 - 1.0, 1.0, 1.0);
-        o.point = float2(p.x, 1.0 - p.y) * U.viewSize;
-        return o;
+    static inline float sp_box(float2 s, float2 size) {
+        float2 m = min(s, size - s);
+        return (m.x < 0.0 || m.y < 0.0) ? -length(min(m, 0.0)) : min(m.x, m.y);
     }
 
-    fragment float4 hinge_bg_fragment(HingeBgOut in [[stage_in]],
-                                      constant CurlSpreadUniforms &U [[buffer(0)]],
-                                      constant float *shadowLUT [[buffer(1)]],
-                                      texture2d<float> revealedTex [[texture(0)]],
-                                      sampler smp [[sampler(0)]]) {
-        float2 P = in.point;
-        bool hz = U.horizontal > 0.5;
-        float W = U.pageSize.x, H = U.pageSize.y;
-        float across = U.sigma * (hz ? P.y - U.hinge : P.x - U.hinge);
-        float along = hz ? P.x - U.liftRect.x : P.y - U.liftRect.y;
-        // the shadow profile across (linear between bins), faded at the ends of the binding
-        float n = U.shadowBins;
-        float t = (across / W + U.shadowReach) / (2.0 * U.shadowReach) * n - 0.5;
-        int i0 = clamp(int(floor(t)), 0, int(n) - 1);
-        int i1 = clamp(i0 + 1, 0, int(n) - 1);
-        float sh = mix(shadowLUT[i0], shadowLUT[i1], saturate(t - floor(t)));
-        if (t < -0.5 || t > n - 0.5) sh = 0.0;
-        sh *= smoothstep(-5.0, 0.0, along) * (1.0 - smoothstep(H, H + 5.0, along));
-        float2 uvR = (P - U.liftRect.xy) / U.liftRect.zw;
-        bool inLift = uvR.x >= 0.0 && uvR.x <= 1.0 && uvR.y >= 0.0 && uvR.y <= 1.0;
-        if (inLift && U.hasRevealed > 0.5) {
-            float4 r = revealedTex.sample(smp, uvR, level(0.0));
-            float3 c = r.rgb * (1.0 - sh);
-            if (sh > 0.0) c = saturate(c + (hg_hash(in.position.xy + 3.0) - 0.5) * (1.0 / 255.0));
-            return float4(c, 1.0);
-        }
-        return float4(0.0, 0.0, 0.0, sh);
+    static inline float sp_boxPx(float2 s, float2 size) {
+        float2 k = float2(length(float2(dfdx(s.x), dfdy(s.x))), length(float2(dfdx(s.y), dfdy(s.y))));
+        float2 m = min(s, size - s) / max(k, 1e-5);
+        return (m.x < 0.0 || m.y < 0.0) ? -length(min(m, 0.0)) : min(m.x, m.y);
     }
 
-    // ── the leaf: a strip mesh of the bowed sheet (two vertices per profile sample) ──
+    static inline float sp_sq(float x) { return x * x; }
 
-    struct HingeLeafOut {
-        float4 position [[position]];
-        float s;           // arc length from the hinge (page across of the lifted page)
-        float y;           // along the binding (page y)
-        float phi;         // local angle
-    };
-
-    vertex HingeLeafOut hinge_leaf_vertex(uint vid [[vertex_id]],
-                                          constant CurlSpreadUniforms &U [[buffer(0)]],
-                                          constant float4 *profile [[buffer(1)]]) {
-        float4 p = profile[vid >> 1];                  // X, Z, s, φ
-        float H = U.pageSize.y;
-        float y = (vid & 1) ? H : 0.0;
-        float k = U.camera / (U.camera - p.y);
-        float c = 0.5 * H;
-        float acr = U.hinge + U.sigma * p.x * k;
-        float alg = c + (y - c) * k;
-        bool hz = U.horizontal > 0.5;
-        float2 P = hz ? float2(U.liftRect.x + alg, acr) : float2(acr, U.liftRect.y + alg);
-        float2 ndc = float2(P.x / U.viewSize.x * 2.0 - 1.0, 1.0 - P.y / U.viewSize.y * 2.0);
-        float w = 1.0 / k;
-        float depth = 0.5 - 0.4 * p.y / U.camera;
-        HingeLeafOut o;
-        o.position = float4(ndc * w, depth * w, w);
-        o.s = p.z;
-        o.y = y;
-        o.phi = p.w;
-        return o;
+    // page space of the turning leaf → overlay points (landed: where it lies after the turn)
+    static inline float2 sp_toOverlay(float2 s, bool landed, constant CurlSpreadUniforms &U) {
+        float acr = (landed ? -U.sigma : U.sigma) * s.x;
+        float alg = U.holdTop > 0.5 ? U.pageSize.y - s.y : s.y;
+        return U.horizontal > 0.5 ? float2(U.liftRect.x + alg, U.hinge + acr)
+                                  : float2(U.hinge + acr, U.liftRect.y + alg);
     }
 
-    fragment float4 hinge_leaf_fragment(HingeLeafOut in [[stage_in]],
-                                        bool front [[front_facing]],
-                                        constant CurlSpreadUniforms &U [[buffer(0)]],
-                                        texture2d<float> frontTex [[texture(0)]],
-                                        texture2d<float> backTex [[texture(1)]],
-                                        sampler smp [[sampler(0)]]) {
+    fragment float4 curl_spread_fragment(SpreadVertexOut in [[stage_in]],
+                                         constant CurlSpreadUniforms &U [[buffer(0)]],
+                                         texture2d<float> frontTex [[texture(0)]],
+                                         texture2d<float> backTex [[texture(1)]],
+                                         texture2d<float> revealedTex [[texture(2)]],
+                                         sampler smp [[sampler(0)]]) {
         const float3 paperFront = float3(252.0, 251.0, 247.0) / 255.0;   // #FCFBF7
-        bool hz = U.horizontal > 0.5;
-        float fx = U.effect;
-        bool flat = fx <= 0.0;
-        float s = in.s, y = in.y;
-        float W = U.pageSize.x, H = U.pageSize.y;
 
-        // where this point of the leaf lies flat: on its own side (front), mirrored on the other side (back)
-        float fa = U.hinge + U.sigma * s;
-        float ba = U.hinge - U.sigma * s;
-        float2 pf = hz ? float2(U.liftRect.x + y, fa) : float2(fa, U.liftRect.y + y);
-        float2 pb = hz ? float2(U.oppRect.x + y, ba) : float2(ba, U.oppRect.y + y);
-        float2 uvF = (pf - U.liftRect.xy) / U.liftRect.zw;
-        float2 uvB = (pb - U.oppRect.xy) / U.oppRect.zw;
+        float2 frag = in.position.xy;
+        float2 P = frag / U.pixelScale;                  // overlay points
+        bool hz = U.horizontal > 0.5;
+        float W = U.pageSize.x;
+        float H = U.pageSize.y;
+        float hg = U.halfGutter;
+        float across = hz ? P.y - U.hinge : P.x - U.hinge;
+        float along = hz ? P.x - U.liftRect.x : P.y - U.liftRect.y;
+        float2 q = float2(U.sigma * across, U.holdTop > 0.5 ? H - along : along);
+        float px = 2.0 / (U.pixelScale.x + U.pixelScale.y);
+        float2 N = U.normal;
+        float r = U.radius;
+        float rs = max(r, 1e-4);
+        float fx = U.effect;
+        float th = U.theta;
+        float cT = U.cosTheta;
+        float sT = U.sinTheta;
+        bool pivot = th > 0.0;
+        // past upright the strip shows its back and nothing of the leaf lies over anything else
+        bool upright = th > M_PI_2_F;
+
+        // ── geometry: the single page's cylinder (d, a, sF, sB) ──────────────
+        // the strip turned by θ about the coil moves the roll on screen: dS = distance from the roll's centre line,
+        // 0 … r sin θ the part of the roll right after the strip (dS = d while θ = 0)
+        float d = dot(q - U.axisPoint, N);
+        float ax = U.axisPoint.x - N.y / N.x * (q.y - U.axisPoint.y);
+        float dS = d + ((1.0 - cT) * ax + r * sT) * N.x;
+        float a = asin(saturate(clamp(dS, 0.0, r) / rs));  // 0 at the crease … π/2 at the silhouette
+        float cosA = cos(a);
+        float rsT = r * sT;
+        bool flat = upright || dS <= rsT;
+        // arc length past the axis of the lower layer (the strip / flat part · lower half of the roll) and of the
+        // upper one (upper half of the roll · the flap) → source points s = q + N (u − d)
+        float cTs = abs(cT) < 1e-4 ? (cT < 0.0 ? -1e-4 : 1e-4) : cT;
+        float uFlat = cT == 1.0 ? d : d + q.x * (1.0 / cTs - 1.0) * N.x;
+        float uLo = flat ? uFlat : r * (a - th);
+        float uHi = r * (M_PI_F - a - th) + max(-dS, 0.0);
+        float2 sF = q + N * (uLo - d);
+        float2 sB = q + N * (uHi - d);
+        bool landed = fx <= 0.0;
+        bool frontFlat = flat && !pivot;                 // the page itself, untouched
+        bool lowerBack = flat && cT < 0.0;               // the strip past upright
+
+        // ── sampling (top level so derivatives stay valid) ─────────────────
+        float2 uvF = (sp_toOverlay(sF, false, U) - U.liftRect.xy) / U.liftRect.zw;
+        float2 uvB = (sp_toOverlay(sB, true, U) - U.oppRect.xy) / U.oppRect.zw;
+        float2 uvL = (sp_toOverlay(sF, true, U) - U.oppRect.xy) / U.oppRect.zw;
+        float2 uvT = (sp_toOverlay(sB, false, U) - U.liftRect.xy) / U.liftRect.zw;
+        float2 uvR = (P - U.liftRect.xy) / U.liftRect.zw;
         float2 dFx = dfdx(uvF), dFy = dfdy(uvF);
         float2 dBx = dfdx(uvB), dBy = dfdy(uvB);
-        float4 fc = frontTex.sample(smp, uvF, gradient2d(flat ? float2(0.0) : dFx, flat ? float2(0.0) : dFy));
-        float4 bc = backTex.sample(smp, uvB, gradient2d(flat ? float2(0.0) : dBx, flat ? float2(0.0) : dBy));
-        // the ink of the other side shows faintly through the thin paper (diffused by the fibres)
-        float4 thru = frontTex.sample(smp, uvF, gradient2d(dFx * 3.0, dFy * 3.0));
+        float2 dLx = dfdx(uvL), dLy = dfdy(uvL);
+        float2 dTx = dfdx(uvT), dTy = dfdy(uvT);
+        float4 front = frontTex.sample(smp, uvF, gradient2d(frontFlat ? float2(0.0) : dFx, frontFlat ? float2(0.0) : dFy));
+        float4 back = backTex.sample(smp, uvB, gradient2d(landed ? float2(0.0) : dBx, landed ? float2(0.0) : dBy));
+        float4 backLow = backTex.sample(smp, uvL, gradient2d(landed ? float2(0.0) : dLx, landed ? float2(0.0) : dLy));
+        float4 revealed = revealedTex.sample(smp, uvR, level(0.0));
+        // ink of the front shows faintly through the thin paper (softer: fibres diffuse it)
+        float4 thru = frontTex.sample(smp, uvT, gradient2d(dTx * 3.0, dTy * 3.0));
 
-        // light: the face's normal in σ-space (across, z) against a light from above, a little from the top-left
-        float phi = in.phi;
-        float2 nf = float2(-sin(phi), cos(phi));
-        float2 n = front ? nf : -nf;
-        float2 L = float2(U.lightAcross, U.lightZ);
-        float d = dot(n, L);
-        float shade = 1.0 + fx * (0.22 * (d - U.lightZ) - 0.02);
-        float sheen = fx * 0.045 * smoothstep(0.90, 1.0, d);
+        // ── coverage: the leaf's paper is s ∈ [g/2, W′] × [0, H] ─────────
+        float2 bo = float2(hg, 0.0);
+        float2 bs = float2(W - hg, H);
+        float sdF = sp_box(sF - bo, bs);
+        float sdFpx = sp_boxPx(sF - bo, bs);
+        float sdBpx = sp_boxPx(sB - bo, bs);
+        float covSil = saturate((r - dS) / px + 0.5);
+        // past upright the strip ends at the axis and the roll where the strip begins (they meet without a seam)
+        float lowOK = (!upright || uFlat <= 0.0) ? 1.0 : 0.0;
+        float upOK = (!upright || dS <= rsT) ? 1.0 : 0.0;
+        float covF = saturate(sdFpx + 0.5) * (flat ? lowOK : covSil);
+        float covB = U.lifted > 0.5 ? saturate(sdBpx + 0.5) * covSil * upOK : 0.0;
 
-        // the leaf's own edges read as paper (a hairline), a board shows its thickness in the cover colour
-        float ws = max(fwidth(s), 1e-4), wy = max(fwidth(y), 1e-4);
-        float edgePx = min(min((W - s) / ws, (s - U.halfGutter) / ws), min(y / wy, (H - y) / wy));
-        float edge = 1.0 - smoothstep(0.0, 1.4, edgePx);
+        // ── shadows ─────────────────────────────────────────────────────────
+        // the rolled part over the revealed page (beyond the top of the roll; past upright: beyond the strip's edge)
+        float dropW = 0.012 * W + 1.6 * r;
+        float beyond = upright ? (q.x - hg * cT) * N.x : dS - r;
+        float g = 1.0 - smoothstep(0.0, dropW, max(beyond, 0.0));
+        float h = smoothstep(-0.5 * dropW, 0.2 * dropW, sdF);
+        float drop = 0.30 * fx * g * g * h;
+        // the flap lying above: soft shadow around its edge, on whichever side it is (both pages)
+        float outB = max(-sdBpx, 0.0) * px;
+        bool underFlap = upright ? dS <= rsT : dS <= r;
+        float flap = underFlap ? 0.22 * fx * (1.0 - smoothstep(0.0, 1.5 + 1.1 * r + 0.02 * W, outB)) : 0.0;
+        // occlusion where the leaf stands up from the coil (both pages)
+        float hingeOcc = 0.10 * fx * (1.0 - smoothstep(0.0, 0.08 * W, abs(q.x)));
 
-        float3 col;
-        if (front) {
-            col = fc.rgb * shade * (1.0 - 0.12 * fx * edge) + sheen;
+        // ── what is below the leaf ──────────────────────────────────────────
+        bool inLift = uvR.x >= 0.0 && uvR.x <= 1.0 && uvR.y >= 0.0 && uvR.y <= 1.0;
+        float4 base;
+        if (inLift && U.hasRevealed > 0.5) {
+            base = float4(revealed.rgb * (1.0 - drop) * (1.0 - flap) * (1.0 - hingeOcc), 1.0);
         } else {
-            float3 ink = saturate(1.0 - thru.rgb / paperFront);
-            col = bc.rgb * (1.0 - 0.02 * fx * ink) * shade * (1.0 - 0.12 * fx * edge) + sheen;
+            // the other page (live, below this overlay), the gap, the desk: only shadow —
+            // within the book's length along the binding (the bleed beyond it only carries the leaf itself)
+            float inBook = (along >= 0.0 && along <= H) ? 1.0 : 0.0;
+            base = float4(0.0, 0.0, 0.0, saturate(drop + flap + hingeOcc) * inBook);
         }
-        col = mix(col, U.rim.rgb, U.rim.a * fx * (1.0 - smoothstep(0.0, 2.2, edgePx)));
-        if (!flat) col = saturate(col + (hg_hash(in.position.xy + 7.0) - 0.5) * (1.0 / 255.0));
-        return float4(col, 1.0);
+
+        // ── front of the leaf (the strip turned by θ is lit by its tilt) ───
+        float tiltF = flat ? th : a;
+        float shadeF = frontFlat ? 1.0 : (0.78 + 0.22 * cos(tiltF) - 0.04 * sin(tiltF));
+        float crease = fx * smoothstep(-0.9 * rs, 0.3 * rs, dS - rsT);
+        float flapShadow = underFlap ? 0.2 * fx * (1.0 - smoothstep(0.0, 1.5 + 1.1 * r, outB)) : 0.0;
+        float edgeF = (1.0 - smoothstep(0.0, 1.5, sdFpx)) * smoothstep(0.0, 0.6, tiltF);
+        float3 frontCol = front.rgb * (shadeF * (1.0 - 0.10 * crease) * (1.0 - flapShadow) * (1.0 - 0.14 * edgeF));
+        // a board shows its thickness: a thin rim in the cover colour while it turns
+        float rimPx = 1.5 * U.pixelScale.x;
+        frontCol = mix(frontCol, U.rim.rgb, U.rim.a * fx * (1.0 - smoothstep(0.0, rimPx, sdFpx)));
+
+        // ── back of the leaf = the page that lands on the other side ────────
+        float3 ink = saturate(1.0 - thru.rgb / paperFront);
+        float spec = 0.075 * exp(-sp_sq((a - 0.42) / 0.24));
+        float edgeB = 1.0 - smoothstep(0.0, 1.5, sdBpx);
+        // lit like the single page while it moves; exactly the page once it lies flat (fx = 0)
+        float light = mix(1.0, (0.66 + 0.30 * cosA) * (1.0 - 0.18 * edgeB), fx);
+        float3 backCol = back.rgb * (1.0 - 0.035 * fx * ink) * light + spec * fx;
+        backCol = mix(backCol, U.rim.rgb, U.rim.a * fx * (1.0 - smoothstep(0.0, rimPx, sdBpx)));
+        // the strip past upright: its back, tilted π − θ from lying face down
+        float aL = M_PI_F - th;
+        float3 inkL = saturate(1.0 - front.rgb / paperFront);
+        float edgeL = 1.0 - smoothstep(0.0, 1.5, sdFpx);
+        float lightL = mix(1.0, (0.66 + 0.30 * cos(aL)) * (1.0 - 0.18 * edgeL), fx);
+        float3 lowBackCol = backLow.rgb * (1.0 - 0.035 * fx * inkL) * lightL + 0.075 * exp(-sp_sq((aL - 0.42) / 0.24)) * fx;
+        lowBackCol = mix(lowBackCol, U.rim.rgb, U.rim.a * fx * (1.0 - smoothstep(0.0, rimPx, sdFpx)));
+
+        // ── composite (premultiplied) ───────────────────────────────────────
+        float4 col = base;
+        col = mix(col, float4(lowerBack ? lowBackCol : frontCol, 1.0), covF);
+        col = mix(col, float4(backCol, 1.0), covB);
+
+        // dither only where the image is shaded and opaque (flat / landed regions stay bit-exact)
+        bool shadedF = pivot ? fx > 0.0 : !flat;
+        bool touched = (covF > 0.0 && (shadedF || crease > 0.0 || flapShadow > 0.0)) || (covB > 0.0 && fx > 0.0)
+                       || drop > 0.0 || flap > 0.0 || hingeOcc > 0.0;
+        if (touched && col.a > 0.999) {
+            col.rgb = saturate(col.rgb + (sp_hash(frag + 7.0) - 0.5) * (1.0 / 255.0));
+        }
+        return col;
     }
     """
 }

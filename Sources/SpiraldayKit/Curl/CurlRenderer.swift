@@ -20,7 +20,7 @@ final class CurlGPU: @unchecked Sendable {
     private var state: MTLRenderPipelineState?
     // 펼친 책(iPad) 넘김: 따로 컴파일한다 (한 장 셰이더는 그대로 — Mac 은 이것을 만들지 않는다)
     private var spreadCompiled = false
-    private var spreadState: CurlSpreadPipelines?
+    private var spreadState: MTLRenderPipelineState?
     private var emptyTexture: MTLTexture?
 
     private init(device: MTLDevice, queue: MTLCommandQueue) {
@@ -53,44 +53,25 @@ final class CurlGPU: @unchecked Sendable {
         return state
     }
 
-    /// Starts compiling the spread pipelines in the background (idempotent).
+    /// Starts compiling the spread pipeline in the background (idempotent).
     func warmUpSpread() {
         DispatchQueue.global(qos: .userInitiated).async { _ = self.spreadPipeline }
     }
 
-    /// MSAA samples of the spread overlay (the bowed leaf's silhouette).
-    static let spreadSamples = 4
-
-    /// The spread (open book) pipelines: background (revealed page + shadow) and the leaf mesh, 4× MSAA + depth,
-    /// premultiplied output over the live pages.
-    var spreadPipeline: CurlSpreadPipelines? {
+    /// The spread (open book) pipeline: premultiplied output over the live pages.
+    var spreadPipeline: MTLRenderPipelineState? {
         lock.lock()
         defer { lock.unlock() }
         if !spreadCompiled {
             spreadCompiled = true
             do {
                 let library = try device.makeLibrary(source: CurlSpreadShader.source, options: MTLCompileOptions())
-                func pipe(_ v: String, _ f: String, _ label: String) throws -> MTLRenderPipelineState {
-                    let desc = MTLRenderPipelineDescriptor()
-                    desc.label = label
-                    desc.vertexFunction = library.makeFunction(name: v)
-                    desc.fragmentFunction = library.makeFunction(name: f)
-                    desc.colorAttachments[0].pixelFormat = pixelFormat
-                    desc.depthAttachmentPixelFormat = .depth32Float
-                    desc.rasterSampleCount = Self.spreadSamples
-                    return try device.makeRenderPipelineState(descriptor: desc)
-                }
-                let bg = try pipe("hinge_bg_vertex", "hinge_bg_fragment", "Spiralday.curl.spread.background")
-                let leaf = try pipe("hinge_leaf_vertex", "hinge_leaf_fragment", "Spiralday.curl.spread.leaf")
-                let always = MTLDepthStencilDescriptor()
-                always.depthCompareFunction = .always
-                always.isDepthWriteEnabled = false
-                let near = MTLDepthStencilDescriptor()
-                near.depthCompareFunction = .lessEqual
-                near.isDepthWriteEnabled = true
-                if let a = device.makeDepthStencilState(descriptor: always), let n = device.makeDepthStencilState(descriptor: near) {
-                    spreadState = CurlSpreadPipelines(background: bg, leaf: leaf, backgroundDepth: a, leafDepth: n)
-                }
+                let desc = MTLRenderPipelineDescriptor()
+                desc.label = "Spiralday.curl.spread"
+                desc.vertexFunction = library.makeFunction(name: "curl_spread_vertex")
+                desc.fragmentFunction = library.makeFunction(name: "curl_spread_fragment")
+                desc.colorAttachments[0].pixelFormat = pixelFormat
+                spreadState = try device.makeRenderPipelineState(descriptor: desc)
             } catch {
                 NSLog("Spiralday: spread curl shader unavailable: \(error)")
                 spreadState = nil
@@ -171,32 +152,21 @@ final class CurlGPU: @unchecked Sendable {
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
-    /// One spread frame: the background (revealed page + shadow), then the leaf mesh over it.
-    func encodeSpread(_ enc: MTLRenderCommandEncoder, pipelines p: CurlSpreadPipelines, frame f: inout CurlSpreadFrame,
+    func encodeSpread(_ enc: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState, uniforms: inout CurlSpreadUniforms,
                       front: MTLTexture, back: MTLTexture, revealed: MTLTexture?) {
-        enc.setFragmentSamplerState(sampler, index: 0)
-        enc.setRenderPipelineState(p.background)
-        enc.setDepthStencilState(p.backgroundDepth)
-        enc.setVertexBytes(&f.uniforms, length: MemoryLayout<CurlSpreadUniforms>.stride, index: 0)
-        enc.setFragmentBytes(&f.uniforms, length: MemoryLayout<CurlSpreadUniforms>.stride, index: 0)
-        f.shadow.withUnsafeBytes { enc.setFragmentBytes($0.baseAddress!, length: $0.count, index: 1) }
-        enc.setFragmentTexture(revealed ?? empty(), index: 0)
-        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-
-        enc.setRenderPipelineState(p.leaf)
-        enc.setDepthStencilState(p.leafDepth)
-        enc.setFrontFacing(f.counterClockwise ? .counterClockwise : .clockwise)
-        enc.setCullMode(.none)
-        f.profile.withUnsafeBytes { enc.setVertexBytes($0.baseAddress!, length: $0.count, index: 1) }
+        enc.setRenderPipelineState(pipeline)
         enc.setFragmentTexture(front, index: 0)
         enc.setFragmentTexture(back, index: 1)
-        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: f.profile.count * 2)
+        enc.setFragmentTexture(revealed ?? empty(), index: 2)
+        enc.setFragmentSamplerState(sampler, index: 0)
+        enc.setFragmentBytes(&uniforms, length: MemoryLayout<CurlSpreadUniforms>.stride, index: 0)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
-    /// Renders spread frames into premultiplied sRGB bitmaps of the whole overlay (tests · frame captures). Synchronous.
-    func renderSpreadOffscreen(overlay: CGSize, frames: [CurlSpreadFrame], front: CGImage, back: CGImage,
+    /// Renders spread states into premultiplied sRGB bitmaps of the whole overlay (tests · frame captures). Synchronous.
+    func renderSpreadOffscreen(overlay: CGSize, uniforms: [CurlSpreadUniforms], front: CGImage, back: CGImage,
                                revealed: CGImage?, scale: CGFloat) -> [CGImage] {
-        guard let pipelines = spreadPipeline, !frames.isEmpty, let upload = queue.makeCommandBuffer(),
+        guard let pipeline = spreadPipeline, !uniforms.isEmpty, let upload = queue.makeCommandBuffer(),
               let frontTex = makeTexture(front, commandBuffer: upload),
               let backTex = makeTexture(back, commandBuffer: upload) else { return [] }
         let revealedTex = revealed.flatMap { makeTexture($0, commandBuffer: upload) }
@@ -205,39 +175,27 @@ final class CurlGPU: @unchecked Sendable {
         let w = max(1, Int((overlay.width * scale).rounded()))
         let h = max(1, Int((overlay.height * scale).rounded()))
         let bytesPerRow = (w * 4 + 255) & ~255
-        func target(_ format: MTLPixelFormat, samples: Int, usage: MTLTextureUsage) -> MTLTexture? {
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)
-            d.textureType = samples > 1 ? .type2DMultisample : .type2D
-            d.sampleCount = samples
-            d.usage = usage
-            d.storageMode = .private
-            return device.makeTexture(descriptor: d)
-        }
-        guard let msaa = target(pixelFormat, samples: Self.spreadSamples, usage: .renderTarget),
-              let resolved = target(pixelFormat, samples: 1, usage: [.renderTarget, .shaderRead]),
-              let depth = target(.depth32Float, samples: Self.spreadSamples, usage: .renderTarget),
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: pixelFormat, width: w, height: h, mipmapped: false)
+        desc.usage = .renderTarget
+        desc.storageMode = .private
+        guard let target = device.makeTexture(descriptor: desc),
               let readback = device.makeBuffer(length: bytesPerRow * h, options: .storageModeShared),
               let space = CGColorSpace(name: CGColorSpace.sRGB) else { return [] }
         let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
 
         var images: [CGImage] = []
-        for var f in frames {
+        for var u in uniforms {
+            u.pixelScale = SIMD2(Float(Double(w) / Double(overlay.width)), Float(Double(h) / Double(overlay.height)))
             guard let cb = queue.makeCommandBuffer() else { break }
             let pass = MTLRenderPassDescriptor()
-            pass.colorAttachments[0].texture = msaa
-            pass.colorAttachments[0].resolveTexture = resolved
-            pass.colorAttachments[0].loadAction = .clear
-            pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-            pass.colorAttachments[0].storeAction = .multisampleResolve
-            pass.depthAttachment.texture = depth
-            pass.depthAttachment.loadAction = .clear
-            pass.depthAttachment.clearDepth = 1
-            pass.depthAttachment.storeAction = .dontCare
+            pass.colorAttachments[0].texture = target
+            pass.colorAttachments[0].loadAction = .dontCare
+            pass.colorAttachments[0].storeAction = .store
             guard let enc = cb.makeRenderCommandEncoder(descriptor: pass) else { break }
-            encodeSpread(enc, pipelines: pipelines, frame: &f, front: frontTex, back: backTex, revealed: revealedTex)
+            encodeSpread(enc, pipeline: pipeline, uniforms: &u, front: frontTex, back: backTex, revealed: revealedTex)
             enc.endEncoding()
             guard let blit = cb.makeBlitCommandEncoder() else { break }
-            blit.copy(from: resolved, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+            blit.copy(from: target, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
                       sourceSize: MTLSize(width: w, height: h, depth: 1), to: readback, destinationOffset: 0,
                       destinationBytesPerRow: bytesPerRow, destinationBytesPerImage: bytesPerRow * h)
             blit.endEncoding()
@@ -299,23 +257,6 @@ final class CurlGPU: @unchecked Sendable {
         }
         return images
     }
-}
-
-/// The spread overlay's pipelines (CurlSpreadShader).
-struct CurlSpreadPipelines {
-    let background: MTLRenderPipelineState
-    let leaf: MTLRenderPipelineState
-    let backgroundDepth: MTLDepthStencilState
-    let leafDepth: MTLDepthStencilState
-}
-
-/// Everything one spread frame draws with besides the textures: uniforms, the leaf profile (X, Z, s, φ per sample),
-/// the shadow profile, and which winding is the leaf's front.
-struct CurlSpreadFrame {
-    var uniforms: CurlSpreadUniforms
-    var profile: [SIMD4<Float>]
-    var shadow: [Float]
-    var counterClockwise: Bool
 }
 
 /// Small LRU of page textures keyed by bitmap identity (the host caches its bitmaps,
