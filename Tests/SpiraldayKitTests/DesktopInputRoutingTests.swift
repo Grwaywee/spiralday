@@ -124,7 +124,14 @@ final class DesktopInputRoutingTests: XCTestCase {
             let ate = state.handleKey(window: .planner, responder: typing ? .text : .none, keyCode: codes[key]!, characters: nil, modifiers: [])
             XCTAssertEqual(ate, want != nil, "\(r): 넘기는 키만 먹는다")
             XCTAssertEqual(state.kind, k)
-            if want == nil { XCTAssertEqual(state.index, before, "\(r)") }
+            if let want, k.flips {
+                // 먹기만 하지 않고 실제로 그 쪽으로 한 장 넘긴다 (넘김 그림이 없는 시험에서는 바로 넘어간다)
+                XCTAssertEqual(state.index, before + want.delta, "\(r): 넘어가야 한다")
+            } else {
+                // 넘기지 않는 키 · Mac 의 홈(한 장뿐 — PageKind.flips == false): 장이 바뀌지 않는다.
+                // 홈의 ← → ↑ ↓ 는 먹지만 아무 일도 하지 않는다 (먹지 않으면 시스템이 '삑' 한다)
+                XCTAssertEqual(state.index, before, "\(r)")
+            }
             #endif
             checked += 1
         }
