@@ -16,7 +16,8 @@ BUILD=10
 # ─────────────────────────────────────────────────────────────────────────────
 # 출시 지킴이: 사장님이 알려 준 문제의 고침이 빠진 앱이 나가지 않게, 출시 빌드는 이 커밋들이 모두 HEAD 의 조상일 때만 만든다
 # (Windows web/scripts/publish-windows.mjs · Android web/scripts/android.mjs · iOS apple/scripts/testflight.sh 와 같은 규칙).
-# 저장소를 다시 쓰면(rebase) 해시가 바뀌므로 여기도 같이 고친다 — 지우지 말 것.
+# 저장소를 다시 쓰면(rebase) 해시가 바뀌므로 여기도 같이 고친다 — 지우지 말 것. 그래서 origin/main 의 커밋(사이트 등)을 로컬 main 에
+# 들일 때는 rebase 말고 merge 를 쓴다 (rebase 하면 아래 해시가 모두 바뀌어 release/release.sh 가 멈춘다).
 REQUIRED_FIXES=(
   "3f074d4 형광펜 사고: 기기가 채운 기본값이 다른 기기의 진짜 값을 이기지 않게 (A)"
   "63d21fc 형광펜 사고 검토: 예전 엔진 · 옛 사본 · 파일 없이 연 책이 형광펜을 덮지 못하게 (A)"
@@ -25,6 +26,8 @@ REQUIRED_FIXES=(
   "d43ba6c 다른 창의 키 · 스크롤을 먹지 않게 · 주간 세로 넘김 · 작은 화면 팔레트 (G · H · J · E · D)"
   "0331099 기본 형광펜 세 벌을 한 값으로 · 옛 D-day id (A · O)"
   "cacdff6 처음 안내에서 동기화로 합류 · 빈 '내 플래너' 를 퍼뜨리지 않음 (I · P · O)"
+  "9a1bd73 실패한 합류 · 되살리기는 빈 플래너를 지우지 않음 · 받는 중 30초 전에는 만들 수 없음 (I · P · O 검토)"
+  "2a08fbe 넘김 고리 가닥을 쪽 그림을 그릴 때 구움 (B 검토 — 첫 프레임 · 메모리)"
 )
 check_required_fixes() {
   if ! git rev-parse --git-dir >/dev/null 2>&1; then
@@ -41,6 +44,8 @@ check_required_fixes() {
   done
   if [ $missing != 0 ]; then
     echo "출시 빌드를 멈춰요: 위 커밋이 HEAD($(git rev-parse --short HEAD)) 에 없어요 — 고침이 빠진 앱이 나가지 않게."
+    echo "  로컬 main 을 rebase 해서 해시만 바뀌었으면: git log --oneline HEAD | grep '<제목 일부>' 로 새 해시를 찾아"
+    echo "  이 목록과 Tests/SpiraldayAppTests/ReleaseGuardTests.swift 를 함께 고친다 (다음부터는 rebase 말고 merge)."
     exit 1
   fi
   if [ -n "$(git status --porcelain -- Sources Resources Package.swift Package.resolved)" ]; then
