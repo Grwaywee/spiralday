@@ -76,7 +76,7 @@
     windows: { status: 'beta',      url: 'https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe' },
     ios:     { status: 'soon',      url: null },
     android: { status: 'soon',      url: null },
-    sync:    { status: 'soon' }
+    sync:    { status: 'available' }
   };
   var THREADS = 'https://www.threads.com/@owlu_app';
   // 나왔나: 'soon' 이 아니고, 받을 주소가 있으면 (Sync 는 주소 없이 상태만)
@@ -915,7 +915,7 @@
       <div>
         <p class="label">Spiralday Sync</p>
         <h2 id="sync-h">내 기기끼리,<br><span class="hl" style="--c: #8EDCD2">나만 읽을 수 있게</span>.</h2>
-        <p class="intro"><span class="badge is-soon" data-badge="sync">곧 나와요</span> <span>켜고 싶은 사람만 켜는 동기화예요.</span></p>
+        <p class="intro"><span class="badge is-available" data-badge="sync">지금 쓸 수 있어요</span> <span>켜고 싶은 사람만 켜는 동기화예요. 지금은 Mac · Windows 끼리 맞춰요.</span></p>
         <ul class="marks">
           <li><span class="m" aria-hidden="true">○</span><div><b>종단간 암호화</b> — 플래너는 내 기기에서 잠근 뒤에 보내요. 서버에는 알아볼 수 없는 암호문으로만 남아서, 만든 저희도 읽을 수 없어요.</div></li>
           <li><span class="m" aria-hidden="true">○</span><div><b>계정 없이</b> — 이메일도 비밀번호도 없어요. QR 코드를 찍거나 8자리 코드를 넣으면 연결돼요. 기기를 바꾸거나 잃어버려도 25자리 복구 코드로 다시 이어요. 복구 코드는 저희도 모르니 꼭 따로 적어 두세요.</div></li>
@@ -925,7 +925,7 @@
       </div>
       <figure class="device iphone">
         <div class="frame"><img src="assets/sync-iphone.webp" srcset="assets/sync-iphone-260.webp 260w, assets/sync-iphone.webp 520w" sizes="(max-width: 900px) 226px, 253px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 의 동기화 설정 화면. 동기화됨, 이 기기는 종단간 암호화, 연결된 기기 4대 — iPhone, MacBook, 회사 PC, iPad"></div>
-        <figcaption><span data-show="sync:soon">준비 중인 동기화 화면 (iPhone)</span><span data-show="sync:out" hidden>동기화 화면 (iPhone)</span></figcaption>
+        <figcaption><span data-show="ios:soon">준비 중인 iPhone 앱의 동기화 화면</span><span data-show="ios:out" hidden>동기화 화면 (iPhone)</span></figcaption>
       </figure>
     </div>
   </section>
@@ -974,7 +974,7 @@
       </div>
       <ul>
         <li><b>인터넷은 꼭 필요할 때만</b> — Mac · Windows 앱의 하루 한 번 업데이트 확인, 그리고 설정에서 끌 수 있는 익명 사용 통계. 나머지는 인터넷 없이 다 돼요 (<a href="privacy.html">개인정보 처리방침</a>)</li>
-        <li><b>동기화는 켤 때만</b> — Spiralday Sync<span data-show="sync:soon">(곧 나와요)</span>를 켜지 않으면 기록은 기기 밖으로 나가지 않아요. 켜도 종단간 암호화라 저희는 읽을 수 없어요</li>
+        <li><b>동기화는 켤 때만</b> — Spiralday Sync<span data-show="sync:soon" hidden>(곧 나와요)</span>를 켜지 않으면 기록은 기기 밖으로 나가지 않아요. 켜도 종단간 암호화라 저희는 읽을 수 없어요</li>
         <li><b>파일로 저장</b> — Mac 은 <code>~/Library/<wbr>Application&nbsp;Support/<wbr>Spiralday</code>,<br>Windows 는 <code>%APPDATA%\<wbr>Spiralday</code></li>
         <li><b>오픈소스</b> — Mac 앱 코드는 GitHub 에 공개돼 있어요 (MIT)</li>
       </ul>
