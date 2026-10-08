@@ -31,12 +31,15 @@ public struct InlineField: View {
     public var alignment: Alignment = .leading
     public var onSubmit: (() -> Void)? = nil
     public var onEnd: (() -> Void)? = nil
+    /// 여러 줄 칸에서 Return = 줄 바꿈 (MultilineReturn — 일간 COMMENT). 줄 바꿈을 넣은 뒤의 글이 칸에 들어가는지 답한다.
+    /// nil 이면 예전처럼: Mac 의 Return 은 쓰기를 마치고(⌥↩ 만 줄 바꿈), iOS 글상자는 Return 을 그대로 넣는다
+    public var newlineFits: ((String) -> Bool)? = nil
 
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
     @FocusState private var focused: Bool
 
-    public init(text: Binding<String>, placeholder: String = "", font: Font, key: String, tapKey: String? = nil, color: Color = Ink.text, highlight: Color? = nil, strike: Color? = nil, lines: Int = 1, lineSpacing: CGFloat = 0, alignment: Alignment = .leading, onSubmit: (() -> Void)? = nil, onEnd: (() -> Void)? = nil) {
+    public init(text: Binding<String>, placeholder: String = "", font: Font, key: String, tapKey: String? = nil, color: Color = Ink.text, highlight: Color? = nil, strike: Color? = nil, lines: Int = 1, lineSpacing: CGFloat = 0, alignment: Alignment = .leading, onSubmit: (() -> Void)? = nil, onEnd: (() -> Void)? = nil, newlineFits: ((String) -> Bool)? = nil) {
         self._text = text
         self.placeholder = placeholder
         self.font = font
@@ -50,6 +53,7 @@ public struct InlineField: View {
         self.alignment = alignment
         self.onSubmit = onSubmit
         self.onEnd = onEnd
+        self.newlineFits = newlineFits
     }
 
     public var body: some View {
@@ -90,11 +94,23 @@ public struct InlineField: View {
         }
         #if !os(macOS)
         // iOS: 여러 줄 글상자는 Return 이 줄바꿈이 된다. 다음 줄로 넘어가는 칸(할 일 · 메모)은 Mac 처럼 Return = 다음 줄
-        .submitLabel(onSubmit != nil ? .next : .done)
-        .onChange(of: text) { _, new in
-            guard lines > 1, onSubmit != nil, new.contains("\n") else { return }
-            text = new.replacingOccurrences(of: "\n", with: "")
-            submit()
+        .submitLabel(onSubmit != nil ? .next : newlineFits != nil ? .return : .done)
+        .onChange(of: text) { old, new in
+            if lines > 1, onSubmit != nil, new.contains("\n") {
+                text = new.replacingOccurrences(of: "\n", with: "")
+                submit()
+                return
+            }
+            // 줄 바꿈 칸(COMMENT): 칸을 넘칠 Return 은 받지 않는다 (Mac 과 같은 한도 — 가장 작은 글씨로 다 들어가는 줄까지)
+            if let newlineFits, focused, MultilineReturn.isNewlineInsertion(from: old, to: new), !newlineFits(new) {
+                text = old
+                Haptics.bump()
+            }
+        }
+        #else
+        // Mac: 줄 바꿈 칸은 Return 을 필드 편집기보다 먼저 받아 줄을 바꾼다 (필드 편집기는 Return 에 쓰기를 마친다)
+        .background {
+            if let newlineFits { ReturnNewlineMonitor(key: key, fits: newlineFits) }
         }
         #endif
         .onDisappear { onEnd?() }
@@ -128,6 +144,83 @@ public struct InlineField: View {
             .onTapGesture { state.editingKey = tapKey ?? key }
     }
 }
+
+#if os(macOS)
+/// 여러 줄 글 칸(일간 COMMENT)을 쓰는 동안, 그 칸이 있는 창의 Return 을 필드 편집기보다 먼저 받는다 (MultilineReturn 규칙).
+/// AppKit 필드 편집기는 Return(insertNewline:)에 먼저 포커스를 놓아 쓰기를 끝내 버려서 onSubmit 안에서는 줄을 넣을 수 없다.
+/// 그 창 · 그 칸(editingKey)의 필드 편집기가 키를 받을 때만 보고, 다른 창 · 다른 칸의 Return 은 그대로 흘려 보낸다.
+private struct ReturnNewlineMonitor: NSViewRepresentable {
+    let key: String
+    let fits: (String) -> Bool
+    @EnvironmentObject private var state: AppState
+
+    func makeNSView(context: Context) -> ReturnNewlineMonitorView { ReturnNewlineMonitorView() }
+
+    func updateNSView(_ v: ReturnNewlineMonitorView, context: Context) {
+        v.key = key
+        v.fits = fits
+        v.state = state
+    }
+
+    static func dismantleNSView(_ v: ReturnNewlineMonitorView, coordinator: ()) { v.stop() }
+}
+
+final class ReturnNewlineMonitorView: NSView {
+    var key = ""
+    var fits: (String) -> Bool = { _ in true }
+    weak var state: AppState?
+    private var token: Any?
+
+    /// 넘치는 Return 을 받지 않았을 때 (시험은 바꿔 끼워 센다)
+    @MainActor static var refuseFeedback: () -> Void = { NSSound.beep() }
+
+    // 마우스는 받지 않는다 (글 칸 뒤에 깔린 빈 뷰)
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stop()
+        guard window != nil else { return }
+        token = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            let eat = MainActor.assumeIsolated { self?.handle(e) ?? false }
+            return eat ? nil : e
+        }
+    }
+
+    func stop() {
+        if let token { NSEvent.removeMonitor(token) }
+        token = nil
+    }
+
+    /// 처리했으면 true (키를 먹는다)
+    @MainActor
+    func handle(_ e: NSEvent) -> Bool {
+        // ↩ 36 · 숫자패드 Enter 76
+        guard e.keyCode == 36 || e.keyCode == 76, let w = window, e.window === w,
+              let tv = w.firstResponder as? NSTextView, tv.isFieldEditor,
+              let state, state.editingKey == key else { return false }
+        let f = e.modifierFlags
+        var mods: MultilineReturn.Modifiers = []
+        if f.contains(.shift) { mods.insert(.shift) }
+        if f.contains(.option) { mods.insert(.option) }
+        if f.contains(.control) { mods.insert(.control) }
+        if f.contains(.command) { mods.insert(.command) }
+        let after = MultilineReturn.inserting(into: tv.string, selection: tv.selectedRange())
+        let action = MultilineReturn.action(mods) { fits(after) }
+        // 한글 조합 중: 조합하던 글자를 한 번만 확정한다 (입력기에도 버리라고 알려 같은 글자가 다시 들어가지 않게)
+        if tv.hasMarkedText() {
+            tv.unmarkText()
+            tv.inputContext?.discardMarkedText()
+        }
+        switch action {
+        case .newline: tv.insertNewlineIgnoringFieldEditor(nil)
+        case .refuse: Self.refuseFeedback()
+        case .end: state.endEditing()
+        }
+        return true
+    }
+}
+#endif
 
 /// 완료한 일 위에 펜으로 한 번 그은 줄 (살짝 기울고 끝이 둥근)
 public struct StrikeLine: View {

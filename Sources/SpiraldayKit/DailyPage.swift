@@ -42,7 +42,7 @@ public struct DailyPage: View {
                     .place(F.commentBox, u)
             } else {
                 comment
-                    .place(F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16), u)
+                    .place(F.commentTextRect, u)
             }
             // COMMENT ▾ : 작성하기 · DAY OFF (화면에서만 누를 수 있다. PDF 에는 없다)
             if showsCommentMenu {
@@ -133,17 +133,17 @@ public struct DailyPage: View {
     /// 누를 수 있는 ▾ 메뉴는 화면에서만
     private var showsCommentMenu: Bool { reservesCommentMenu && !isSnapshot }
 
-    private static let commentFont: CGFloat = 50
-    private var commentRect: CGRect { F.commentBox.inset(top: 16, left: 16, bottom: 10, right: 16) }
-
     /// 가운데 정렬. 글이 길어지면 상자 안에 다 들어가도록 글자가 조금씩 작아진다.
+    /// 여러 줄 칸: Return(⇧↩ · 숫자패드 Enter 도) 은 줄 바꿈 — iPhone 과 같게. 가장 작은 글씨로도 상자를 넘길 Return 은 받지 않고,
+    /// 쓰기는 바깥 누르기 · Esc · ⌘↩ 로 마친다. 상자보다 긴 예전 글 · 붙여 넣은 글은 상자 안에서 … 로 줄여 보인다.
     private var comment: some View {
-        let text = store.day(date).comment
-        let r = commentRect
-        let sc = RuledText.fitScale(text, fontSize: Self.commentFont, width: r.width - 16,
-                                    height: r.height - 6, maxLines: 99)
-        return InlineField(text: store.dayField(date, \.comment), font: Fonts.hand(Self.commentFont * sc * u),
-                           key: "c|\(Dates.key(date))", lines: 8, alignment: .center)
+        let sc = F.commentScale(store.day(date).comment)
+        return InlineField(text: store.dayField(date, \.comment), font: Fonts.hand(F.commentFont * sc * u),
+                           key: "c|\(Dates.key(date))", lines: F.commentMaxLines, alignment: .center,
+                           newlineFits: { F.commentFits($0) })
+            #if os(macOS)
+            .help("↩ 줄 바꿈 · ⌘↩ · Esc · 바깥을 누르면 쓰기 끝")
+            #endif
     }
 
     // MARK: TASKS

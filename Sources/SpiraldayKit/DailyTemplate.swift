@@ -131,6 +131,42 @@ public enum DailyForm {
     /// 줄바꿈 계산 폭: 편집 칸보다 살짝 좁게 잡아서 입력 중에도 줄 수가 어긋나지 않게 한다
     public static var taskWrapWidth: CGFloat { taskTextWidth - 12 }
 
+    // MARK: COMMENT 글 (여러 줄 — Return 은 줄 바꿈)
+
+    /// COMMENT 글자 크기 (디자인 단위, 줄이지 않았을 때)
+    public static let commentFont: CGFloat = 50
+    /// 글이 길면 이 비율까지 글자를 줄여 상자에 넣는다
+    public static let commentMinScale: CGFloat = 0.4
+    /// COMMENT 글을 쓰는 칸 (인쇄된 상자 안쪽)
+    public static var commentTextRect: CGRect {
+        CGRect(x: commentBox.minX + 16, y: commentBox.minY + 16, width: commentBox.width - 32, height: commentBox.height - 26)
+    }
+    /// 줄 나눔 계산 폭 · 글이 들어갈 높이 (편집 칸보다 살짝 작게 잡아 쓰는 중에도 어긋나지 않게)
+    public static var commentWrapWidth: CGFloat { commentTextRect.width - 16 }
+    public static var commentFitHeight: CGFloat { commentTextRect.height - 6 }
+
+    /// COMMENT 글자 비율: 상자에 다 들어가도록 줄인 것. 끝의 빈 줄(쓰는 중 Return 을 막 친 줄)도 한 줄로 센다
+    public static func commentScale(_ text: String) -> CGFloat {
+        Fonts.register()
+        return RuledText.fitScale(text, fontSize: commentFont, width: commentWrapWidth, height: commentFitHeight,
+                                  maxLines: 99, minScale: commentMinScale, countsTrailingNewline: true)
+    }
+
+    /// 가장 작은 글씨로 상자에 들어가는 줄 수 (5). 편집 칸 · 보기 글의 줄 수 한도
+    public static var commentMaxLines: Int {
+        Fonts.register()
+        return max(1, Int(commentFitHeight / RuledText.lineHeight(fontSize: commentFont * commentMinScale)))
+    }
+
+    /// 이 글이 가장 작은 글씨로 상자에 다 들어가는지 — Return 으로 줄을 더해도 되는지 (모든 기기 같은 규칙,
+    /// 공유 벡터 Tests/Fixtures/comment-return.json). 넘치면 그 Return 은 받지 않는다 (글자를 더 치는 것은 글씨를 줄여 받는다)
+    public static func commentFits(_ text: String) -> Bool {
+        Fonts.register()
+        let fs = commentFont * commentMinScale
+        let n = RuledText.lineCount(text, fontSize: fs, width: commentWrapWidth)
+        return CGFloat(n) * RuledText.lineHeight(fontSize: fs) <= commentFitHeight
+    }
+
     // MARK: 할 일 왼쪽 분류 칸 (형광펜 고르기)
 
     /// 누르면 형광펜(분류) 메뉴가 뜨는 자리 (디자인 단위): 인쇄된 분류 칸 전체 — 왼쪽 끝부터 글이 시작하는 곳까지,

@@ -1786,6 +1786,8 @@ private struct SettingsShortcutsPane: View {
                 SettingsShortcutRow(keys: ["E"], title: "지우개",
                                     detail: "팔레트가 접혀 있으면 잠깐 펼쳐 무엇을 골랐는지 보여 줘요")
                 SettingsShortcutRow(keys: ["esc"], title: "글쓰기 마치기")
+                SettingsShortcutRow(keys: ["↩"], title: "COMMENT 줄 바꿈",
+                                    detail: "다섯 줄까지 써요 (길어지면 글씨가 작아져요). 마칠 때는 ⌘↩ · esc · 종이 빈 곳 클릭")
             } header: {
                 SettingsSectionTitle(title: "도구")
             }

@@ -322,4 +322,40 @@ final class PlannerSyncHostTests: XCTestCase {
         XCTAssertEqual(b.store.day(d1).comment, "다른 칸")
         XCTAssertTrue(reported.isEmpty, "설정 창의 글이 아니면 알리지 않는다")
     }
+
+    /// 사장님 신고 (2026-10-08) 의 두 고침이 다른 Mac 에도 그대로 간다: 설정에서 바꾼 형광펜 순서 (숫자 키 1–7 도 그 순서),
+    /// 그리고 Return 으로 줄을 바꾼 COMMENT (줄 바꿈이 그대로)
+    func testPenOrderAndMultilineCommentReachTheOtherMac() async throws {
+        let server = FakeSyncServer()
+        let a = dev(server, ip: "10.0.0.1")
+        let b = dev(server, ip: "10.0.0.2")
+        _ = a.store.createBook(name: "내 플래너", start: d1, end: nil)
+        a.store.saveNow()
+        try await a.engine.initialize()
+        _ = try await a.engine.createGroup(deviceName: "A")
+        try await b.engine.initialize()
+        try await pair(a, b)
+        try await sync(a, b)
+        let start = a.store.categories.map(\.id)
+        XCTAssertEqual(b.store.categories.map(\.id), start)
+
+        // A: 첫 펜을 세 번째 아래로 (설정 › 형광펜 에서 끌어 놓기와 같은 호출)
+        a.store.moveCategories(from: IndexSet(integer: 0), to: 3)
+        let moved = [start[1], start[2], start[0]] + start[3...]
+        XCTAssertEqual(a.store.categories.map(\.id), moved)
+        try await sync(a, b)
+        XCTAssertEqual(b.store.categories.map(\.id), moved, "다른 Mac 에서도 같은 순서")
+
+        // B: 맨 아래를 맨 위로 → A 에도
+        b.store.moveCategories(from: IndexSet(integer: moved.count - 1), to: 0)
+        let back = [moved[moved.count - 1]] + moved[0..<(moved.count - 1)]
+        try await sync(b, a)
+        XCTAssertEqual(a.store.categories.map(\.id), back)
+        XCTAssertEqual(b.store.categories.map(\.id), back)
+
+        // 여러 줄 COMMENT
+        a.store.editDay(d1) { $0.comment = "오늘은\n맑음\n" }
+        try await sync(a, b)
+        XCTAssertEqual(b.store.day(d1).comment, "오늘은\n맑음\n")
+    }
 }
