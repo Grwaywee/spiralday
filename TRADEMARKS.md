@@ -37,7 +37,7 @@ LICENSE 의 ‘No Other Rights’ 항목에 적힌 대로 그 밖의 라이선�
 | 데이터 폴더 이름 · 앱 그룹 — 공식 앱의 플래너 파일을 읽고 쓰지 않게 | `Sources/SpiraldayKit/Models.swift` (`PlannerStore` 의 `appendingPathComponent("Spiralday")` → `~/Library/Application Support/Spiralday`, `appGroupID` = `group.com.spiralday.app`) |
 | 업데이트 피드와 서명 키 — 공식 피드 · 키를 그대로 두지 않기 (자기 키를 만들거나 업데이트 끄기) | `build.sh` (`SUFeedURL` = `https://spiralday.com/appcast.xml`, `SUPublicEDKey`) |
 | 동기화 서버 — 직접 운영하는 서버로 바꾸거나 동기화 끄기 | `Sources/SpiraldaySync/ServerConfig.swift` (`https://sync.spiralday.com`), `Sources/Spiralday/Sync/SyncServer.swift` |
-| 사용 통계 주소 — 지우거나 자기 주소로 | `Sources/Spiralday/Telemetry.swift` (`https://leanagilehungry.com/api/spiralday/ping`) |
+| 사용 통계 주소 — 지우거나 자기 주소로 (공식 서명이 없는 빌드는 원래 보내지 않아요) | `Sources/Spiralday/Telemetry.swift` (`TelemetryGate.production` = `https://leanagilehungry.com/api/spiralday/ping`, 보내는 서명 팀 `releaseTeamID`) |
 | 링크 · 문의처 | `Sources/SpiraldayKit/Platform.swift` 의 `Links` (웹사이트 · 개인정보 처리방침 · GitHub · 회사), 도움말 메뉴, 버그 신고 메일 |
 
 공식 동기화 서버 · 업데이트 피드 · 통계 주소는 공식 앱을 위한 것입니다.

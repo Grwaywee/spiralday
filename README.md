@@ -173,7 +173,7 @@ open build/Spiralday.app
 
 ### 개인정보
 
-동기화를 켜지 않으면 플래너 기록은 내 Mac 밖으로 나가지 않습니다. 켜면 내 기기끼리 맞추려고 **종단간 암호화한** 기록만 동기화 서버로 보내고, 서버의 사본은 설정 → 동기화 → 그룹 지우기로 언제든 바로 지울 수 있습니다. 1.0.2 부터 하루 한 번 **익명 사용 통계**(무작위 설치 번호 · 앱 버전 · macOS 버전 · 칩 종류 · 언어)만 보내고, 설정 → 데이터에서 끌 수 있습니다. 자세한 내용은 [개인정보 처리방침](https://spiralday.com/privacy.html).
+동기화를 켜지 않으면 플래너 기록은 내 Mac 밖으로 나가지 않습니다. 켜면 내 기기끼리 맞추려고 **종단간 암호화한** 기록만 동기화 서버로 보내고, 서버의 사본은 설정 → 동기화 → 그룹 지우기로 언제든 바로 지울 수 있습니다. 1.0.2 부터 하루 한 번 **익명 사용 통계**(무작위 설치 번호 · 앱 버전 · macOS 버전 · 칩 종류 · 언어)만 보내고, 설정 → 데이터에서 끌 수 있습니다. 통계는 공식 출시 앱(Developer ID 서명)만 보내고, 소스에서 직접 빌드한 앱은 보내지 않습니다. 자세한 내용은 [개인정보 처리방침](https://spiralday.com/privacy.html).
 
 ## 아키텍처
 
@@ -243,7 +243,7 @@ swift test                                   # SpiraldayKit: 페이지 · 넘김
 .build/debug/Spiralday --sync-qa ./out       # 설정 → 동기화의 모든 상태 (라이트 · 다크) · 팔레트 표시 · 안내 PNG (메모리에서만, 서버 · 키체인 없이)
 swift test --filter SpiraldayAppTests        # Mac 앱의 동기화 붙이기 (호스트 · 컨트롤러 · 말) — 가짜 서버 · 메모리 열쇠
 SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter SyncKeychainTests   # 진짜 로그인 키체인 (실행마다 새로 만든 테스트용 서비스 이름)
-build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 한 번 보내 보고 결과 출력
+SPIRALDAY_PING_URL=http://127.0.0.1:8787/ping build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 시험 서버로 한 번 보내 보고 결과 출력 (운영 서버로는 출시 서명 앱만 보낸다)
 ```
 
 `site/` 에는 소개 페이지 [spiralday.com](https://spiralday.com) 이 들어 있습니다.
