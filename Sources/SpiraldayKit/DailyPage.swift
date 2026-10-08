@@ -189,11 +189,15 @@ public struct DailyPage: View {
                 .place(CGRect(x: F.left + 6, y: F.gridTop + CGFloat(r0) * p + 3 * sc, width: F.categoryX - F.left - 12,
                               height: p - 6 * sc), u)
         }
-        // 왼쪽 칸: 누르면 형광펜(분류) 메뉴. 화면에서만 (넘김 스냅샷 · PDF 에는 없다)
+        // 왼쪽 칸: 누르면 형광펜(분류) 메뉴. 화면에서만 (넘김 스냅샷 · PDF 에는 없다).
+        // 누르는 자리는 인쇄된 분류 칸 전체 (DailyForm.taskCategoryHitRect), 옅게 칠하는 모양은 점선 안쪽에만
         if !isSnapshot {
-            TaskCategoryCell(date: date, taskID: id, hint: Fonts.hand(30 * sc * u), cornerRadius: 6 * u)
-                .place(CGRect(x: F.left + 3, y: F.gridTop + CGFloat(r0) * p + 3 * sc, width: F.categoryX - F.left - 7,
-                              height: CGFloat(item.span) * p - 6 * sc), u)
+            let hit = F.taskCategoryHitRect(row: r0, span: item.span, rows: L.rows)
+            let shade = F.taskCategoryHighlightRect(row: r0, span: item.span, rows: L.rows)
+            TaskCategoryCell(date: date, taskID: id, hint: Fonts.hand(30 * sc * u), cornerRadius: 6 * u,
+                             highlightInsets: EdgeInsets(top: (shade.minY - hit.minY) * u, leading: (shade.minX - hit.minX) * u,
+                                                         bottom: (hit.maxY - shade.maxY) * u, trailing: (hit.maxX - shade.maxX) * u))
+                .place(hit, u)
         }
 
         RuledEntry(

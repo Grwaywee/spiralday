@@ -287,10 +287,12 @@ private struct WeekDayColumn: View {
                 .frame(width: 4 * u, height: 17 * u)
                 .offset(x: WK.tickX * u, y: (y + 11) * u)
         }
-        // 왼쪽 색 막대 자리: 누르면 형광펜(분류) 메뉴 (화면에서만)
+        // 왼쪽 색 막대 자리: 누르면 형광펜(분류) 메뉴 (화면에서만). 누르는 자리는 그 줄 전체 높이 · 글이 시작하는 곳까지,
+        // 옅게 칠하는 모양은 예전 그대로 (위아래 3, 글 앞 2 만큼 안쪽)
         if let task, !isSnapshot {
-            TaskCategoryCell(date: d, taskID: task.id, cornerRadius: 3 * u)
-                .place(CGRect(x: WK.tickX - 8, y: y + 3, width: WK.textX - WK.tickX + 6, height: WK.taskH - 6), u)
+            TaskCategoryCell(date: d, taskID: task.id, cornerRadius: 3 * u,
+                             highlightInsets: EdgeInsets(top: 3 * u, leading: 0, bottom: 3 * u, trailing: 2 * u))
+                .place(CGRect(x: WK.tickX - 8, y: y, width: WK.textX - (WK.tickX - 8), height: WK.taskH), u)
         }
 
         if let task {

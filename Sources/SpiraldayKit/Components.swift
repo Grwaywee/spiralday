@@ -297,8 +297,18 @@ extension AppState {
 #if os(macOS)
 @MainActor
 public enum TaskCategoryMenu {
+    /// 시험용: 메뉴를 마우스 자리에 띄우는 대신 이 클로저에 넘긴다 (NSMenu.popUp 은 메뉴를 닫을 때까지 돌아오지 않는다)
+    static var presentForTesting: ((NSMenu) -> Void)?
+
     public static func show(store: PlannerStore, date: Date, taskID: UUID) {
-        guard let task = store.day(date).tasks.first(where: { $0.id == taskID }) else { return }
+        guard let menu = menu(store: store, date: date, taskID: taskID) else { return }
+        if let presentForTesting { presentForTesting(menu); return }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    /// 그 할 일의 형광펜 메뉴 (할 일이 없으면 nil)
+    static func menu(store: PlannerStore, date: Date, taskID: UUID) -> NSMenu? {
+        guard let task = store.day(date).tasks.first(where: { $0.id == taskID }) else { return nil }
         let current = store.category(task.cat)?.id
         let menu = NSMenu(title: "형광펜")
         menu.autoenablesItems = false
@@ -314,7 +324,7 @@ public enum TaskCategoryMenu {
         none.image = swatch(nil)
         none.state = current == nil ? .on : .off
         menu.addItem(none)
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        return menu
     }
 
     /// 형광펜으로 짧게 한 번 그은 색 견본 (없음: 옅은 점선 테두리만)
@@ -405,21 +415,26 @@ public enum CategorySwatch {
 
 /// 할 일 왼쪽 칸 (일간: 카테고리 칸, 주간: 색 막대 자리). 누르면 형광펜 메뉴가 뜬다.
 /// 화면에서만 있고 (넘김 스냅샷 · PDF 에는 없다), 마우스를 올리면 옅게 드러난다.
+/// 놓인 사각형 전체를 누를 수 있고, 옅게 칠하는 모양은 highlightInsets 만큼 안쪽에 그린다 (인쇄된 칸 안에만).
 public struct TaskCategoryCell: View {
     public let date: Date
     public let taskID: UUID
     /// 형광펜이 없는 할 일이면 마우스를 올렸을 때 "분류" 글씨를 옅게 보여 준다 (nil = 보여 주지 않는다)
     public var hint: Font? = nil
     public var cornerRadius: CGFloat = 6
+    /// 누르는 자리(놓인 사각형)에서 옅게 칠하는 모양까지 안쪽 여백 (pt)
+    public var highlightInsets: EdgeInsets = EdgeInsets()
 
     @EnvironmentObject private var store: PlannerStore
     @State private var hover = false
 
-    public init(date: Date, taskID: UUID, hint: Font? = nil, cornerRadius: CGFloat = 6) {
+    public init(date: Date, taskID: UUID, hint: Font? = nil, cornerRadius: CGFloat = 6,
+                highlightInsets: EdgeInsets = EdgeInsets()) {
         self.date = date
         self.taskID = taskID
         self.hint = hint
         self.cornerRadius = cornerRadius
+        self.highlightInsets = highlightInsets
     }
 
     public var body: some View {
@@ -435,14 +450,21 @@ public struct TaskCategoryCell: View {
                     .minimumScaleFactor(0.5)
             }
         }
+        .padding(highlightInsets)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         #if os(macOS)
-        cell
-            .onTapGesture { TaskCategoryMenu.show(store: store, date: date, taskID: taskID) }
+        // 단추로 받는다: 누른 채 포인터가 몇 pt 미끄러지거나(트랙패드를 눌러서 클릭) 천천히 눌러도 칸 안에서 떼면 열린다.
+        // (1.1.0 까지의 탭 제스처는 약 5pt 넘게 움직이거나 0.8초 넘게 누르면 아무 알림 없이 취소돼 '종종 안 눌렸다')
+        // 포커스를 받지 않으니 쓰던 글 칸 · 한글 조합 · 막 시작한 빈 할 일이 그대로 남는다.
+        Button { TaskCategoryMenu.show(store: store, date: date, taskID: taskID) } label: { cell }
+            .buttonStyle(TaskCategoryCellButtonStyle())
+            .focusable(false)
             .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
             .pointerCursor(.pointingHand)
             .onDisappear { if hover { PointerCursor.arrow.set() } }
             .help(cat.map { "형광펜: \($0.name) — 눌러서 바꾸기" } ?? "눌러서 형광펜(분류) 고르기")
+            .accessibilityLabel(cat.map { "형광펜: \($0.name)" } ?? "형광펜(분류) 고르기")
         #else
         // 누르면 그 자리에 형광펜 메뉴 (iPad 포인터를 올리면 옅게 드러난다)
         Menu {
@@ -458,6 +480,13 @@ public struct TaskCategoryCell: View {
         #endif
     }
 }
+
+#if os(macOS)
+/// 누르는 동안 칸을 흐리게 하지 않는 단추 모양 (옅은 칠 · "분류 ▾" 글씨는 마우스를 올렸을 때 그대로)
+private struct TaskCategoryCellButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { configuration.label }
+}
+#endif
 
 // MARK: - Stars
 

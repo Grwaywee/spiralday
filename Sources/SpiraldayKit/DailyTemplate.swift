@@ -131,6 +131,24 @@ public enum DailyForm {
     /// 줄바꿈 계산 폭: 편집 칸보다 살짝 좁게 잡아서 입력 중에도 줄 수가 어긋나지 않게 한다
     public static var taskWrapWidth: CGFloat { taskTextWidth - 12 }
 
+    // MARK: 할 일 왼쪽 분류 칸 (형광펜 고르기)
+
+    /// 누르면 형광펜(분류) 메뉴가 뜨는 자리 (디자인 단위): 인쇄된 분류 칸 전체 — 왼쪽 끝부터 글이 시작하는 곳까지,
+    /// 그 할 일이 쓰는 줄 전체 (위아래 여백 없이). 칸 가장자리 · 점선 언저리를 눌러도 종이(쓰기 끝)로 떨어지지 않는다.
+    /// (1.1.0 까지는 아래 highlight 사각형만 누를 수 있어서, 그 밖을 누르면 쓰기가 끝나고 막 시작한 빈 할 일이 지워졌다)
+    public static func taskCategoryHitRect(row: Int, span: Int, rows: Int) -> CGRect {
+        let p = taskPitch(rows)
+        return CGRect(x: left, y: gridTop + CGFloat(row) * p, width: taskTextX - left, height: CGFloat(max(span, 1)) * p)
+    }
+
+    /// 분류 칸에 마우스를 올렸을 때 옅게 칠하는 모양 (디자인 단위): 점선 안쪽, 줄 선에서 위아래로 3 · 배율만큼 떨어져
+    public static func taskCategoryHighlightRect(row: Int, span: Int, rows: Int) -> CGRect {
+        let p = taskPitch(rows)
+        let sc = CGFloat(taskCount) / CGFloat(max(rows, taskCount))
+        return CGRect(x: left + 3, y: gridTop + CGFloat(row) * p + 3 * sc, width: categoryX - left - 7,
+                      height: CGFloat(max(span, 1)) * p - 6 * sc)
+    }
+
     /// 할 일들을 제 줄에 놓는다 (tasks 는 row 순서, DayRecord.assignTaskRows 를 거친 것).
     /// 긴 할 일은 아래 빈 줄로 이어 쓰고, 막히면 가진 줄에 맞춰 글자를 줄인다.
     /// 할 일이 15번째 줄보다 아래에 있으면(할 일이 15개보다 많으면) 그 줄까지 칸을 늘려 같은 높이에 넣는다.
