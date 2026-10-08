@@ -82,6 +82,20 @@ final class CommentReturnTests: XCTestCase {
         }
     }
 
+    /// 넘치는 Return 을 되돌린 글 — 확정한 글자는 남고 줄 바꿈만 빠진다 (iOS: 조합 중 글자가 바인딩에 없던 때도)
+    func testTypedNewlineVectors() throws {
+        let rows = try XCTUnwrap(load()["typedNewline"] as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(rows.count, 8)
+        for r in rows {
+            let old = try XCTUnwrap(r["old"] as? String), new = try XCTUnwrap(r["new"] as? String)
+            XCTAssertEqual(MultilineReturn.refusingTypedNewline(from: old, to: new), r["kept"] as? String, "\(r["name"] ?? r)")
+        }
+        // 넘치는 글에서만 쓴다: 확정한 글자 + Return 이 다섯 줄을 넘기면 여섯째 줄이 빠지고 상자에 들어간다
+        let full = "가\n나\n다\n라\n오늘"
+        XCTAssertFalse(DailyForm.commentFits(full + "한\n"))
+        XCTAssertTrue(DailyForm.commentFits(try XCTUnwrap(MultilineReturn.refusingTypedNewline(from: full, to: full + "한\n"))))
+    }
+
     /// 끝의 줄 바꿈 뒤 빈 줄(Return 을 막 친 줄)도 센다 — 그래야 커서가 있는 줄까지 상자 안에 보이게 글씨를 줄인다
     func testTrailingNewlineCountsAsALine() {
         let w = DailyForm.commentWrapWidth
@@ -112,6 +126,7 @@ final class CommentReturnTests: XCTestCase {
         for w in windows { w.orderOut(nil) }
         windows = []
         ReturnNewlineMonitorView.refuseFeedback = { NSSound.beep() }
+        ReturnNewlineMonitorView.textSystem = { tv, e in tv.keyDown(with: e) }
     }
 
     private func until(_ what: String, timeout: Double = 5, _ cond: () -> Bool) async throws {
@@ -125,14 +140,15 @@ final class CommentReturnTests: XCTestCase {
     }
 
     /// editing: 처음에 쓸 칸의 키를 정한다 (기본: 오늘의 COMMENT)
-    private func rig(editing: ((PlannerStore) -> String)? = nil) async throws -> (PlannerStore, AppState, NSWindow, NSTextView) {
+    private func rig(u: CGFloat = 0.5, text: String = "",
+                     editing: ((PlannerStore) -> String)? = nil) async throws -> (PlannerStore, AppState, NSWindow, NSTextView) {
         _ = NSApplication.shared
         refused = 0
         ReturnNewlineMonitorView.refuseFeedback = { [weak self] in self?.refused += 1 }
         let store = PlannerStore(inMemory: true)
+        if !text.isEmpty { store.dayField(today, \.comment).wrappedValue = text }
         let state = AppState(kind: .daily)
         state.store = store
-        let u: CGFloat = 0.5
         let size = CGSize(width: PageKind.daily.design.width * u, height: PageKind.daily.design.height * u)
         let w = KeyWindow(contentRect: NSRect(origin: NSPoint(x: -30_000, y: -30_000), size: size), styleMask: [.borderless],
                           backing: .buffered, defer: false)
@@ -187,13 +203,63 @@ final class CommentReturnTests: XCTestCase {
         tv.setSelectedRange(NSRange(location: 1, length: 1))
         try await appKey(w, code: 76, chars: "\u{3}")
         XCTAssertEqual(store.day(today).comment, "가\n다")
-        // ⇧↩ · ⌥↩ 도 줄 바꿈 (⌥↩ 은 1.1.0 까지 Mac 에서 줄을 바꾸던 숨은 길 — 그대로 된다)
+        // ⇧↩ 도 줄 바꿈
         tv.setSelectedRange(NSRange(location: 3, length: 0))
         try await appKey(w, mods: [.shift])
         XCTAssertEqual(store.day(today).comment, "가\n다\n")
+        // ⌥↩ 는 입력기에 먼저 넘긴다. 입력기가 쓰지 않으면(여기는 ABC 자판 — 입력기 없음) AppKit 키 묶음대로 줄 바꿈
+        // (insertNewlineIgnoringFieldEditor: — 1.1.0 까지 Mac 에서 줄을 바꾸던 숨은 길 그대로)
         try await appKey(w, mods: [.option])
         XCTAssertEqual(store.day(today).comment, "가\n다\n\n")
         XCTAssertEqual(state.editingKey, commentKey)
+        XCTAssertTrue(tv.isFieldEditor, "입력기에 넘기는 동안만 보통 글상자로 둔다")
+        XCTAssertEqual(refused, 0)
+    }
+
+    /// ⌥↩ 은 macOS 한글 입력기의 한자 변환 키 — 감시가 줄 바꿈으로 가로채지 않고 입력기에 먼저 넘긴다 (회의적 검토 2026-10-08:
+    /// 1.1.1 첫 고침은 ⌥↩ 를 가로채 '오늘한\n' 을 만들어 한자 변환을 막았다). 한자 후보를 고르는 Return 도 입력기 몫이다.
+    /// xctest 에는 진짜 입력기가 돌지 않으므로, 입력기 자리에 한글 입력기의 한자 변환 흉내를 끼운다
+    func testOptionReturnAndCandidateReturnGoToTheInputMethod() async throws {
+        let (store, state, w, tv) = try await rig()
+        var seen: [NSEvent.ModifierFlags] = []
+        ReturnNewlineMonitorView.textSystem = { tv, e in
+            seen.append(e.modifierFlags.intersection([.option, .shift, .command, .control]))
+            XCTAssertFalse(tv.isFieldEditor, "입력기가 넘긴 Return 이 쓰기를 끝내지 않게, 키를 처리하는 동안은 보통 글상자")
+            if e.modifierFlags.contains(.option) {
+                // 한자 변환: 조합 중인 글자(없으면 고른 글)를 후보로 바꿔 보여 준다 — 아직 조합 중 (후보 창)
+                let r = tv.hasMarkedText() ? tv.markedRange() : tv.selectedRange()
+                let hanja = (tv.string as NSString).substring(with: r) == "한" ? "韓" : "今日"
+                tv.setMarkedText(hanja, selectedRange: NSRange(location: (hanja as NSString).length, length: 0), replacementRange: r)
+            } else if tv.hasMarkedText() {
+                // 후보 창의 Return: 고른 후보를 확정하고 키는 입력기가 먹는다 (줄을 바꾸지 않는다)
+                tv.unmarkText()
+            } else {
+                tv.keyDown(with: e)
+            }
+        }
+        try await type(tv, "오늘")
+        tv.setMarkedText("한", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await appKey(w, mods: [.option])
+        XCTAssertEqual(tv.string, "오늘韓", "⌥↩ 은 한자 변환 — 줄 바꿈이 아니다")
+        XCTAssertTrue(tv.hasMarkedText(), "후보를 고르는 중")
+        try await appKey(w)
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, "오늘韓", "후보를 고른 Return 은 입력기가 먹는다")
+        XCTAssertEqual(seen, [[.option], []])
+        // 고른 글을 ⌥↩ 로 한자로
+        tv.setSelectedRange(NSRange(location: 0, length: 2))
+        try await appKey(w, mods: [.option])
+        try await appKey(w)
+        XCTAssertEqual(tv.string, "今日韓", "고른 글을 줄 바꿈으로 바꾸지 않는다")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(store.day(today).comment, "今日韓")
+        // 조합이 끝난 뒤의 Return 은 그대로 줄 바꿈 (입력기에 넘기지 않는다)
+        tv.setSelectedRange(NSRange(location: 3, length: 0))
+        try await appKey(w)
+        XCTAssertEqual(store.day(today).comment, "今日韓\n")
+        XCTAssertEqual(seen.count, 4)
+        XCTAssertEqual(state.editingKey, commentKey)
+        XCTAssertTrue(tv.isFieldEditor)
         XCTAssertEqual(refused, 0)
     }
 
@@ -216,7 +282,59 @@ final class CommentReturnTests: XCTestCase {
         XCTAssertNil(state3.editingKey)
     }
 
-    /// 한글 조합 중 Return: 조합하던 글자가 한 번만 남고 줄이 바뀐다 ('오늘한한' · '오늘\n' 이 아니게). 다음 글자는 새 줄에
+    /// 한글 조합 중 Return: 입력기가 조합하던 글자를 확정하고 넘긴 Return 이 줄을 바꾼다 — 조합 글자는 한 번만 ('오늘한한' · '오늘\n' 이 아니게).
+    /// 한글 입력기 흉내: 확정(unmarkText) 하고 키는 넘긴다 (키 묶음 → insertNewline:)
+    func testReturnWhileComposingWithHangulInputMethod() async throws {
+        let (store, state, w, tv) = try await rig()
+        var calls = 0
+        ReturnNewlineMonitorView.textSystem = { tv, e in
+            calls += 1
+            if tv.hasMarkedText() { tv.unmarkText() }
+            tv.interpretKeyEvents([e])
+        }
+        try await type(tv, "오늘")
+        tv.setMarkedText("한", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await appKey(w)
+        XCTAssertEqual(calls, 1, "조합 중 Return 은 입력기가 먼저 본다")
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, "오늘한\n")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 4, length: 0))
+        XCTAssertEqual(store.day(today).comment, "오늘한\n")
+        XCTAssertEqual(state.editingKey, commentKey, "입력기가 넘긴 Return 으로 쓰기가 끝나면 안 된다")
+        XCTAssertTrue(tv.isFieldEditor)
+        try await type(tv, "가")
+        XCTAssertEqual(store.day(today).comment, "오늘한\n가")
+    }
+
+    /// 다섯 줄이 찬 상자에서 조합 중 Return: 확정한 글자는 남고 줄 바꿈만 받지 않는다 (삑). ⌥↩ 은 입력기에 넘기지도 않는다
+    func testReturnWhileComposingInAFullBoxKeepsTheSyllable() async throws {
+        let (store, state, w, tv) = try await rig(text: "가\n나\n다\n라\n마")
+        var calls = 0
+        ReturnNewlineMonitorView.textSystem = { tv, e in
+            calls += 1
+            if tv.hasMarkedText() { tv.unmarkText() }
+            tv.interpretKeyEvents([e])
+        }
+        tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        tv.setMarkedText("한", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await appKey(w)
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, "가\n나\n다\n라\n마한", "확정한 '한' 은 남고 여섯째 줄은 생기지 않는다")
+        XCTAssertEqual(refused, 1)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(store.day(today).comment, "가\n나\n다\n라\n마한")
+        XCTAssertEqual(state.editingKey, commentKey)
+        // 조합 중이 아니면 넘칠지 미리 안다: ⌥↩ 도 입력기에 넘기지 않고 받지 않는다
+        try await appKey(w, mods: [.option])
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(refused, 2)
+        XCTAssertEqual(tv.string, "가\n나\n다\n라\n마한")
+        XCTAssertTrue(tv.isFieldEditor)
+    }
+
+    /// 입력기가 없는데 조합 글자가 있을 때(시험 · 데드 키 같은 자판): 그 글자가 줄 바꿈으로 덮이지 않고 한 번 확정된 뒤 줄이 바뀐다.
+    /// 진짜 AppKit 길(keyDown → 키 묶음 → insertNewline:) 그대로
     func testReturnWhileComposingCommitsOnceThenBreaks() async throws {
         let (store, state, w, tv) = try await rig()
         try await type(tv, "오늘")
@@ -274,6 +392,41 @@ final class CommentReturnTests: XCTestCase {
         XCTAssertFalse(otherEditor.string.contains("\n"), "다른 창의 칸에는 줄 바꿈을 넣지 않는다")
         XCTAssertEqual(store.day(today).comment, "", "다른 창의 Return 이 COMMENT 로 가지 않는다")
         XCTAssertEqual(state.editingKey, commentKey)
+    }
+
+    // MARK: 쓰는 동안 모든 줄이 보인다 (회의적 검토 2026-10-08)
+
+    static let lineSamples = ["한 줄", "첫째\n둘째", "첫째\n둘째\n셋째", "첫째\n둘째\n셋째\n넷째", "첫째\n둘째\n셋째\n넷째\n다섯째",
+                                      "첫째\n", "첫째\n둘째\n셋째\n넷째\n"]
+
+    /// 1–5 줄을 쓰는 중, 화면 크기 0.3 · 0.5 · 0.8 배: 모든 줄이 보인다 (회의적 검토 2026-10-08). 필드 편집기는 TextKit 2 그대로
+    /// (Return · 입력기 길이 바꾸지 않는다). 이 시험은 layoutManager 를 꺼내지 않는다 — 꺼내면 그것만으로 TextKit 1 로 바뀐다
+    func testEditorShowsEveryLineWhileWriting() async throws {
+        for u in [CGFloat(0.3), 0.5, 0.8] {
+            for t in Self.lineSamples {
+                let (_, _, w, tv) = try await rig(u: u, text: t)
+                tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+                tv.scrollRangeToVisible(tv.selectedRange())
+                try await Task.sleep(nanoseconds: 120_000_000)
+                assertCommentLinesVisible(tv, u: u, "u \(u) \(t.debugDescription)")
+                w.orderOut(nil)
+            }
+        }
+        // 빈 칸부터 Return 으로 다섯 줄까지 (앱이 키를 받는 길): 줄마다 다 보이고, 필드 편집기는 TextKit 2 그대로
+        for u in [CGFloat(0.3), 0.8] {
+            let (store, _, w, tv) = try await rig(u: u)
+            // SwiftUI 글 칸이 같이 쓰는 필드 편집기는 보통 TextKit 2 (TextKit1FallbackTests 가 맨 뒤에서 바꾼다)
+            let textKit2 = tv.textLayoutManager != nil
+            for (i, word) in ["첫째", "둘째", "셋째", "넷째", "다섯째"].enumerated() {
+                try await type(tv, word)
+                if i < 4 { try await appKey(w) }
+                try await Task.sleep(nanoseconds: 80_000_000)
+                if textKit2 { XCTAssertNotNil(tv.textLayoutManager, "u \(u) \(i + 1)줄: Return 이 필드 편집기를 TextKit 1 로 바꾸지 않는다") }
+                assertCommentLinesVisible(tv, u: u, "u \(u) Return 으로 \(i + 1)줄")
+            }
+            XCTAssertEqual(store.day(today).comment, "첫째\n둘째\n셋째\n넷째\n다섯째")
+            w.orderOut(nil)
+        }
     }
 
     /// 할 일 · MEMO 는 바꾸지 않는다: Return = 아랫줄로 (1.0.5)

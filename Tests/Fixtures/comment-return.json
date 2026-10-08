@@ -5,7 +5,8 @@
     "mods": "shift · alt (Mac ⌥) · ctrl (Mac ⌃) · meta (Mac ⌘, Windows Win). Return, Shift+Return and the keypad Enter behave the same.",
     "expect": "newline = put a line break at the caret (replacing the selection) and keep writing; refuse = no line break, keep writing (Mac beep, iOS · Android haptic); end = finish writing",
     "fits": "whether the text with the line break added still fits the box at the smallest letters (see box)",
-    "composing": "Return while composing Hangul commits the syllable once and then follows the same rule (Mac catches the key first and commits; Windows lets the IME commit and acts on the Enter it sends again)"
+    "composing": "The input method sees Return first. Composing Hangul: the IME commits the syllable once and the Return it passes on follows the same rule. Picking a Hanja candidate or confirming a Japanese conversion: the IME keeps the Return (no line break). On the Mac, Option+Return is the Korean IME's Hanja key, so it goes to the IME first and breaks the line only when the IME passes it on (the 'alt' rows are that case). Windows lets the IME commit and acts on the Enter it sends again",
+    "typedNewline": "when a Return would overflow the box, the text goes back to typedNewline.kept: a bare line break (even one that replaced a selection) is undone; a syllable committed together with the line break stays and only the line break goes; pastes, text from another device and plain typing are left alone (kept = null)"
   },
   "box": {
     "about": "design units. Letters shrink to fit (fitScale) down to minScale; at the smallest size maxLines lines fit. A text ending in a line break counts the empty line after it (the caret's line).",
@@ -101,5 +102,17 @@
     { "name": "pasting lines", "old": "가", "new": "가\n나\n다", "isNewline": false },
     { "name": "deleting a line break", "old": "가\n나", "new": "가나", "isNewline": false },
     { "name": "text from another device", "old": "가", "new": "오늘\n맑음", "isNewline": false }
+  ],
+  "typedNewline": [
+    { "name": "Return at the end", "old": "가\n나\n다\n라\n마", "new": "가\n나\n다\n라\n마\n", "kept": "가\n나\n다\n라\n마" },
+    { "name": "Return replacing a selection keeps the selected text", "old": "가나다", "new": "가\n다", "kept": "가나다" },
+    { "name": "syllable committed by Return (not in the text before)", "old": "가\n나\n다\n라\n오늘", "new": "가\n나\n다\n라\n오늘한\n", "kept": "가\n나\n다\n라\n오늘한" },
+    { "name": "syllable committed by Return in the middle", "old": "가\n나\n다\n라\n마바", "new": "가\n나\n다\n라\n마한\n바", "kept": "가\n나\n다\n라\n마한바" },
+    { "name": "composing jamo replaced by the committed syllable", "old": "오늘하", "new": "오늘한\n", "kept": "오늘한" },
+    { "name": "typing a letter", "old": "가", "new": "가나", "kept": null },
+    { "name": "pasting lines", "old": "가", "new": "가\n나\n다", "kept": null },
+    { "name": "two line breaks at once (only line breaks — treated like Return)", "old": "가", "new": "가\n\n", "kept": "가" },
+    { "name": "deleting a line break", "old": "가\n나", "new": "가나", "kept": null },
+    { "name": "text from another device", "old": "가", "new": "오늘\n맑음", "kept": null }
   ]
 }

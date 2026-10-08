@@ -101,9 +101,10 @@ public struct InlineField: View {
                 submit()
                 return
             }
-            // 줄 바꿈 칸(COMMENT): 칸을 넘칠 Return 은 받지 않는다 (Mac 과 같은 한도 — 가장 작은 글씨로 다 들어가는 줄까지)
-            if let newlineFits, focused, MultilineReturn.isNewlineInsertion(from: old, to: new), !newlineFits(new) {
-                text = old
+            // 줄 바꿈 칸(COMMENT): 칸을 넘칠 Return 은 받지 않는다 (Mac 과 같은 한도 — 가장 작은 글씨로 다 들어가는 줄까지).
+            // 한글 조합 중 Return 으로 확정한 글자와 줄 바꿈이 한 번에 들어와도 줄 바꿈만 빼고 확정한 글자는 둔다
+            if let newlineFits, focused, let kept = MultilineReturn.refusingTypedNewline(from: old, to: new), !newlineFits(new) {
+                text = kept
                 Haptics.bump()
             }
         }
@@ -160,6 +161,7 @@ private struct ReturnNewlineMonitor: NSViewRepresentable {
         v.key = key
         v.fits = fits
         v.state = state
+        v.matchSwiftUILineHeight()
     }
 
     static func dismantleNSView(_ v: ReturnNewlineMonitorView, coordinator: ()) { v.stop() }
@@ -170,9 +172,15 @@ final class ReturnNewlineMonitorView: NSView {
     var fits: (String) -> Bool = { _ in true }
     weak var state: AppState?
     private var token: Any?
+    private var responderWatch: NSKeyValueObservation?
+    private var fallbackWatch: NSObjectProtocol?
 
     /// 넘치는 Return 을 받지 않았을 때 (시험은 바꿔 끼워 센다)
     @MainActor static var refuseFeedback: () -> Void = { NSSound.beep() }
+
+    /// 입력기가 먼저 보는 Return (조합 중 · ⌥↩) 을 글상자에 넘기는 길. 앱에서는 필드 편집기의 keyDown 그대로
+    /// (입력기 → 키 묶음 → insertNewline: 의 AppKit 길). 시험은 진짜 입력기 대신 한글 · 한자 입력기 흉내를 끼운다
+    @MainActor static var textSystem: (NSTextView, NSEvent) -> Void = { tv, e in tv.keyDown(with: e) }
 
     // 마우스는 받지 않는다 (글 칸 뒤에 깔린 빈 뷰)
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -180,25 +188,68 @@ final class ReturnNewlineMonitorView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         stop()
-        guard window != nil else { return }
+        guard let w = window else { return }
         token = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             let eat = MainActor.assumeIsolated { self?.handle(e) ?? false }
             return eat ? nil : e
+        }
+        // 이 칸을 쓰기 시작할 때 · 필드 편집기가 TextKit 1 로 바뀔 때 줄 높이를 SwiftUI 와 맞춘다
+        responderWatch = w.observe(\.firstResponder, options: [.initial, .new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.matchSwiftUILineHeight() }
+        }
+        fallbackWatch = NotificationCenter.default.addObserver(forName: NSTextView.didSwitchToNSLayoutManagerNotification,
+                                                               object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.matchSwiftUILineHeight() }
         }
     }
 
     func stop() {
         if let token { NSEvent.removeMonitor(token) }
         token = nil
+        responderWatch?.invalidate()
+        responderWatch = nil
+        if let fallbackWatch { NotificationCenter.default.removeObserver(fallbackWatch) }
+        fallbackWatch = nil
+    }
+
+    /// 이 칸을 쓰는 중인 필드 편집기 (그 창 · 그 칸일 때만)
+    @MainActor
+    private var editor: NSTextView? {
+        guard let w = window, let tv = w.firstResponder as? NSTextView, tv.isFieldEditor, let state, state.editingKey == key
+        else { return nil }
+        return tv
+    }
+
+    /// SwiftUI 는 여러 줄 글 칸의 높이를 글꼴의 줄 사이(leading) 없이 잡고, AppKit 필드 편집기(TextKit 2)도 그렇게 놓는다
+    /// (NSTextLayoutManager.usesFontLeading = false — 손글씨 글꼴은 줄 사이가 글자 크기의 1/4).
+    /// 그런데 필드 편집기가 TextKit 1 로 바뀌면(누군가 layoutManager 를 꺼내면) 새 NSLayoutManager 는 줄 사이를 넣어 줄이 1.25 배로 벌어지고,
+    /// 칸이 모자라 편집기가 커서 쪽으로 스크롤되면서 첫 줄 윗부분이 가려진다 (두 줄: '첫째' 가 '섯째' 처럼, 다섯 줄: 첫 줄이 통째로).
+    /// SwiftUI 글 칸은 앱의 모든 창이 필드 편집기 하나를 같이 쓰므로, 어느 창에서 한 번 바뀌면 앱을 끌 때까지 그대로다.
+    /// 그때는 TextKit 2 때와 같게 줄 사이를 뺀다 (되돌리지 않는다 — 바뀌기 전 그 편집기의 값이다).
+    /// TextKit 2 인 동안은 layoutManager 를 만지지 않는다 — 만지면 그것만으로 TextKit 1 로 바뀐다
+    @MainActor
+    func matchSwiftUILineHeight() {
+        guard let tv = editor else { return }
+        if let tlm = tv.textLayoutManager {
+            guard tlm.usesFontLeading else { return }
+            tlm.usesFontLeading = false
+            tlm.invalidateLayout(for: tlm.documentRange)
+        } else {
+            guard let lm = tv.layoutManager, lm.usesFontLeading else { return }
+            lm.usesFontLeading = false
+            lm.invalidateLayout(forCharacterRange: NSRange(location: 0, length: (tv.string as NSString).length), actualCharacterRange: nil)
+            if let tc = tv.textContainer { lm.ensureLayout(for: tc) }
+        }
+        tv.sizeToFit()
+        (tv.superview as? NSClipView)?.scroll(to: .zero)
+        tv.scrollRangeToVisible(tv.selectedRange())
     }
 
     /// 처리했으면 true (키를 먹는다)
     @MainActor
     func handle(_ e: NSEvent) -> Bool {
         // ↩ 36 · 숫자패드 Enter 76
-        guard e.keyCode == 36 || e.keyCode == 76, let w = window, e.window === w,
-              let tv = w.firstResponder as? NSTextView, tv.isFieldEditor,
-              let state, state.editingKey == key else { return false }
+        guard e.keyCode == 36 || e.keyCode == 76, let w = window, e.window === w, let tv = editor, let state else { return false }
         let f = e.modifierFlags
         var mods: MultilineReturn.Modifiers = []
         if f.contains(.shift) { mods.insert(.shift) }
@@ -206,18 +257,63 @@ final class ReturnNewlineMonitorView: NSView {
         if f.contains(.control) { mods.insert(.control) }
         if f.contains(.command) { mods.insert(.command) }
         let after = MultilineReturn.inserting(into: tv.string, selection: tv.selectedRange())
-        let action = MultilineReturn.action(mods) { fits(after) }
-        // 한글 조합 중: 조합하던 글자를 한 번만 확정한다 (입력기에도 버리라고 알려 같은 글자가 다시 들어가지 않게)
-        if tv.hasMarkedText() {
-            tv.unmarkText()
-            tv.inputContext?.discardMarkedText()
-        }
-        switch action {
-        case .newline: tv.insertNewlineIgnoringFieldEditor(nil)
-        case .refuse: Self.refuseFeedback()
-        case .end: state.endEditing()
+        let composing = tv.hasMarkedText()
+        switch MultilineReturn.action(mods, fits: { fits(after) }) {
+        case .end:
+            // 조합하던 글자는 확정하고 마친다 (입력기에도 버리라고 알려 같은 글자가 다시 들어가지 않게)
+            if composing {
+                tv.unmarkText()
+                tv.inputContext?.discardMarkedText()
+            }
+            state.endEditing()
+        case .refuse where !composing:
+            // 상자가 찼다 (조합 중이 아닐 때는 미리 안다 — ⌥↩ 도 입력기에 넘기지 않는다)
+            Self.refuseFeedback()
+        case .newline where !composing && !mods.contains(.option):
+            tv.insertNewlineIgnoringFieldEditor(nil)
+        default:
+            // 입력기가 먼저 본다: 조합 중 Return(한글 — 확정하고 넘긴다 · 한자 후보 · 일본어 변환 — 입력기가 먹는다),
+            // ⌥↩ (한글 입력기의 한자 변환 키 — 입력기가 쓰지 않으면 키 묶음의 insertNewlineIgnoringFieldEditor: 로 줄 바꿈)
+            passToInputMethod(tv, e)
         }
         return true
+    }
+
+    /// 입력기를 거쳐 글상자가 키를 받게 한다. 입력기가 넘긴 Return 이 쓰기를 끝내지 않고 줄을 바꾸도록,
+    /// 그 키를 처리하는 동안만 필드 편집기를 보통 글상자로 둔다 (insertNewline: = 줄 바꿈).
+    /// 그 뒤 상자를 넘치는 줄 바꿈은 빼고(확정한 글자는 남는다), 입력기가 없어 조합 글자가 줄 바꿈으로 덮였으면 확정해 되살린다.
+    @MainActor
+    private func passToInputMethod(_ tv: NSTextView, _ e: NSEvent) {
+        let before = tv.string
+        let marked = tv.hasMarkedText() ? tv.markedRange() : nil
+        tv.isFieldEditor = false
+        Self.textSystem(tv, e)
+        tv.isFieldEditor = true
+        if let marked, !tv.hasMarkedText(), marked.location != NSNotFound,
+           tv.string == (before as NSString).replacingCharacters(in: marked, with: "\n") {
+            // 조합하던 글자를 한 번만 남기고 줄을 바꾼다 ('오늘\n' 이 아니라 '오늘한\n')
+            Self.replace(tv, with: MultilineReturn.inserting(into: before, selection: NSRange(location: NSMaxRange(marked), length: 0)),
+                         caret: NSMaxRange(marked) + 1)
+        }
+        let now = tv.string
+        if now != before, !fits(now), let kept = MultilineReturn.refusingTypedNewline(from: before, to: now) {
+            Self.replace(tv, with: kept)
+            Self.refuseFeedback()
+        }
+    }
+
+    /// 글상자의 글을 target 으로 (바뀐 자리만 바꾼다 — 되돌리기 · 바인딩이 보통 입력처럼 따라온다). caret 이 없으면 바꾼 자리의 끝
+    @MainActor
+    private static func replace(_ tv: NSTextView, with target: String, caret: Int? = nil) {
+        let a = tv.string as NSString, b = target as NSString
+        var p = 0
+        while p < a.length, p < b.length, a.character(at: p) == b.character(at: p) { p += 1 }
+        var s = 0
+        while s < a.length - p, s < b.length - p, a.character(at: a.length - 1 - s) == b.character(at: b.length - 1 - s) { s += 1 }
+        let range = NSRange(location: p, length: a.length - p - s)
+        let insert = b.substring(with: NSRange(location: p, length: b.length - p - s))
+        tv.insertText(insert, replacementRange: range)
+        tv.setSelectedRange(NSRange(location: min(caret ?? (p + (insert as NSString).length), b.length), length: 0))
     }
 }
 #endif
