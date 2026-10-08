@@ -100,9 +100,11 @@ fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/Fonts"
 cp Resources/Fonts/* "$APP/Contents/Resources/Fonts/"
-# 오픈소스 고지 (libsodium · swift-sodium 은 ISC — 실행 파일에 정적으로 링크되므로 모든 사본에 고지를 넣는다 · Sparkle 은 MIT)
+# 외부 오픈소스 구성 요소의 고지 (libsodium · swift-sodium 은 ISC — 실행 파일에 정적으로 링크되므로 모든 사본에 고지를 넣는다 · Sparkle 은 MIT)
 mkdir -p "$APP/Contents/Resources/Licenses"
 cp Resources/Licenses/* "$APP/Contents/Resources/Licenses/"
+# Spiralday 자체 소스 코드의 라이선스 원문 (PolyForm Noncommercial 1.0.0 · 'Required Notice:' 줄 포함) — 이 빌드를 나눠 줄 때 고지가 함께 가도록
+cp LICENSE "$APP/Contents/Resources/Licenses/Spiralday-LICENSE.txt"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -118,7 +120,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>NSHumanReadableCopyright</key><string>© 2026 LeanAgileHungry.Inc · MIT License</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 LeanAgileHungry.Inc</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>ATSApplicationFontsPath</key><string>Fonts</string>

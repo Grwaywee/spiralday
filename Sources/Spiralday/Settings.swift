@@ -2085,7 +2085,8 @@ private struct SettingsDataPane: View {
             Section {
                 LabeledContent("버전", value: SettingsDataFile.version)
                 LabeledContent("손글씨 글꼴", value: "Poor Story · SIL OFL 1.1")
-                LabeledContent("오픈소스") {
+                // 앱에 들어 있는 외부 오픈소스. Spiralday 자체는 소스 공개 · 비영리 (오픈소스 아님 — LICENSE · LICENSE-HISTORY.md)
+                LabeledContent("사용한 오픈소스") {
                     HStack(spacing: 8) {
                         Text("libsodium · swift-sodium (ISC) · Sparkle (MIT)")
                         // build.sh 가 .app 의 Contents/Resources/Licenses 에 넣는다 (.app 이 아닌 실행에는 없다)

@@ -34,7 +34,7 @@ struct SpiraldayApp: App {
                     Button("Spiralday 웹사이트") { Links.open(Links.website) }
                     Button("버그 신고 · 기능 제안…") { Links.open(Links.feedback) }
                     Divider()
-                    Button("GitHub (오픈소스)") { Links.open(Links.github) }
+                    Button("GitHub (소스 코드)") { Links.open(Links.github) }
                     Button("GitHub에서 ⭐ 주기") { Links.open(Links.github) }
                     Button("개인정보 처리방침") { Links.open(Links.privacy) }
                     Button("린에자일헝그리") { Links.open(Links.company) }

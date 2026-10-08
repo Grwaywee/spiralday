@@ -12,7 +12,7 @@
 ![Apple Silicon & Intel](https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-universal-555555)
 ![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 ![Metal](https://img.shields.io/badge/page%20curl-Metal-8E8E93)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange)](#라이선스)
 
 <img src="Docs/images/curl-daily.gif" width="360" alt="일간 페이지 넘김">
 
@@ -80,6 +80,8 @@ open build/Spiralday.app
 ```
 
 직접 빌드한 앱은 이 Mac 에서만 쓰는 애드혹 서명이고, 공증은 받지 않습니다. Apple Silicon · Intel 유니버설로 빌드하려면 `UNIVERSAL=1 ./build.sh`.
+
+직접 빌드해 쓰는 것은 [라이선스](#라이선스)가 허용하는 목적 안에서 할 수 있습니다. 빌드한 앱을 남에게 나눠 줄 때는 라이선스의 고지(빌드한 `.app` 의 `Contents/Resources/Licenses/Spiralday-LICENSE.txt` 에 들어 있어요)를 함께 주고, [TRADEMARKS.md](TRADEMARKS.md) 대로 이름 · 아이콘 · 번들 id · 데이터 폴더 · 업데이트 피드와 키 · 동기화 서버 · 통계 주소를 바꿔 주세요.
 
 직접 빌드한 `.app` 은 설치한 Spiralday 와 번들 id 가 같아서 같은 데이터 폴더 · 설정 · 동기화 열쇠(로그인 키체인의 `com.spiralday.sync`)를 씁니다. 애드혹 서명은 빌드할 때마다 서명이 바뀌어서, 동기화를 켠 뒤에는 다시 빌드할 때마다 키체인이 접근을 허용할지 물어요. `swift run` · `.build/debug/Spiralday` 처럼 `.app` 이 아닌 실행은 데이터 폴더는 같지만 동기화 열쇠 · 상태는 따로(`com.spiralday.sync.dev` · `SyncState-dev`) 써서 설치한 앱의 동기화를 건드리지 않습니다 — 그래도 플래너 파일은 같은 폴더라, 동기화를 시험할 때는 `--demo` 나 디버그 빌드의 `--sync-drive <폴더>` (따로 된 폴더 · 키체인 이름) 를 쓰세요.
 
@@ -254,10 +256,33 @@ build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 �
 
 ## 라이선스
 
-[MIT](LICENSE) © 2026 LeanAgileHungry Inc.
+Spiralday 의 코드는 **소스 공개(source-available) · 비영리 목적용**입니다. 누구나 읽고 공부할 수 있지만, OSI 가 정의하는 오픈소스는 아닙니다.
+
+- **지금 (라이선스를 바꾼 커밋부터)**: [PolyForm Noncommercial License 1.0.0](LICENSE) — `Required Notice: Copyright 2026 LeanAgileHungry Inc. (https://spiralday.com)`
+- **그 전에 MIT 로 공개된 버전은 MIT 그대로**: 라이선스를 바꾸기 전에 MIT `LICENSE` 와 함께 공개된 버전 — [LICENSE-HISTORY.md](LICENSE-HISTORY.md) 의 범위 (`main` 의 `32d05f5` ~ `e40dd8e`, 공개 브랜치 `fix/mac-pens-task-comment`, 태그 `v1.0.0` ~ `v1.1.0` · `win-v0.9.1` · `win-v0.9.2` 등) — 에서 받은 코드는 그 버전에 들어 있는 MIT License 를 따릅니다. 라이선스를 바꾼 커밋과 그 뒤의 버전은 PolyForm Noncommercial 과 함께 공개됩니다.
+
+PolyForm Noncommercial 의 뼈대 (아래는 이해를 돕는 요약이고, 기준은 [LICENSE](LICENSE) 원문입니다. 괄호 안은 원문의 항목 이름):
+
+- **허용된 목적** — 비영리 목적은 모두 허용된 목적입니다 (*Noncommercial Purposes*). 원문은 특히 아래 둘을 허용된 목적으로 적어 둡니다.
+  - **개인적인 쓰임** (*Personal Uses*) — 공공의 지식을 위한 연구 · 실험 · 테스트, 개인 공부, 개인적인 즐거움, 취미 프로젝트, 아마추어 활동, 종교 활동 — 상업적 쓰임을 예상하지 않는 것
+  - **비영리 기관의 쓰임** (*Noncommercial Organizations*) — 자선 단체, 교육 기관, 공공 연구 기관, 공공 안전 · 보건 기관, 환경 보호 단체, 정부 기관 (재원이 어디서 오든)
+- **쓰기 · 고치기 · 새 작업 만들기** — 허용된 목적 안에서 (*Copyright License* · *Changes and New Works License*)
+- **나눠 주기** — *Distribution License* 와 *Notices* 항목대로. 받는 사람이 이 라이선스 사본(또는 URL)과 `Required Notice:` 줄을 함께 받게 해야 합니다. 이름 · 아이콘 등은 [TRADEMARKS.md](TRADEMARKS.md) 를 따라 주세요
+- 그 밖에 원문에는 특허 라이선스 (*Patent License*), 이 소프트웨어가 특허를 침해한다고 서면으로 주장하면 특허 라이선스가 끝나는 규칙 (*Patent Defense*), 처음 위반을 서면으로 알림받았을 때 32일 안에 바로잡으면 라이선스가 이어지고 그러지 않으면 끝나는 규칙 (*Violations*), 보증 · 책임 없음 (*No Liability*) 이 있습니다
+
+허용된 목적에 들지 않는 쓰임 — 예를 들어 이 코드를 회사의 유료 제품 · 서비스에 넣기, 이 코드로 만든 앱을 팔기 — 은 이 라이선스로 허락되지 않으니 **별도 상업 라이선스**를 문의해 주세요. 어디까지가 비영리인지 애매하면 먼저 물어봐 주세요: contact@leanagilehungry.com
+
+**공식 앱** — [spiralday.com](https://spiralday.com) · [Releases](https://github.com/Grwaywee/spiralday/releases) 에서 받는 서명된 Spiralday 앱은 지금처럼 무료로 받아 쓸 수 있습니다. 위 라이선스는 이 저장소의 소스 코드를 쓰고 · 고치고 · 나누는 조건입니다.
+
+**상표** — Spiralday™ 이름 · 로고 · 앱 아이콘은 LeanAgileHungry Inc. 의 상표이고, 코드 라이선스와는 따로입니다. 코드를 어느 버전으로 받았든 이름 · 로고 · 아이콘을 쓸 때는 [TRADEMARKS.md](TRADEMARKS.md) 를 따라 주세요 (포크 · 재배포 규칙, 공식 다운로드 확인법).
+
+함께 들어 있는 외부 구성 요소는 각자의 라이선스를 따릅니다 (바꾸기 전과 같음):
 
 - 손글씨 폰트 **Poor Story** — © YoonDesign Inc., [SIL Open Font License 1.1](Resources/Fonts/OFL-PoorStory.txt)
 - 동기화 암호 **libsodium** · **[swift-sodium](https://github.com/jedisct1/swift-sodium)** — ISC License ([고지](Resources/Licenses/libsodium-LICENSE.txt) · [고지](Resources/Licenses/swift-sodium-LICENSE.txt))
 - 앱 업데이트 **[Sparkle](https://sparkle-project.org)** — MIT License ([고지](Resources/Licenses/Sparkle-LICENSE.txt))
-- 이 고지들은 `.app` 의 `Contents/Resources/Licenses` 에도 들어가고, 설정 → 데이터 → 정보의 ‘고지 보기…’로 열 수 있습니다.
-- 페이지 구성은 흔히 쓰는 10분 단위 종이 플래너 형식에서 영감을 받았으며, 특정 제품의 상표와 로고는 포함하지 않습니다.
+- 이 고지들은 `.app` 의 `Contents/Resources/Licenses` 에도 들어가고, 설정 → 데이터 → 정보의 ‘고지 보기…’로 열 수 있습니다. 같은 폴더에 Spiralday 자체의 [LICENSE](LICENSE) 도 `Spiralday-LICENSE.txt` 로 들어갑니다.
+
+페이지 구성은 흔히 쓰는 10분 단위 종이 플래너 형식에서 영감을 받았으며, 특정 제품의 상표와 로고는 포함하지 않습니다.
+
+<sub>**English** — Spiralday is source-available for noncommercial purposes, not open source. Starting with the relicensing commit, this repository is published under the [PolyForm Noncommercial License 1.0.0](LICENSE). Versions published earlier with the MIT `LICENSE` — the range in [LICENSE-HISTORY.md](LICENSE-HISTORY.md): `32d05f5`–`e40dd8e` on `main`, the public branch `fix/mac-pens-task-comment`, and tags such as `v1.0.0`–`v1.1.0`, `win-v0.9.1` and `win-v0.9.2` — remain under the MIT License they shipped with. Uses outside the permitted purposes are not covered by this license; for a separate commercial license, contact contact@leanagilehungry.com. The summary above is for convenience only; the [LICENSE](LICENSE) text governs. The Spiralday name, logo and icon are trademarks of LeanAgileHungry Inc. and are not licensed with the code — see [TRADEMARKS.md](TRADEMARKS.md). Third-party components keep their own licenses.</sub>

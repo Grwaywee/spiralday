@@ -5,7 +5,7 @@ let package = Package(
     name: "Spiralday",
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
-        // 종이 · 저장소 · 페이지 그리기 · 넘김 엔진 (macOS · iOS 공용, 공개 MIT)
+        // 종이 · 저장소 · 페이지 그리기 · 넘김 엔진 (macOS · iOS 공용 · 소스 공개, PolyForm Noncommercial 1.0.0 — LICENSE · LICENSE-HISTORY.md)
         .library(name: "SpiraldayKit", targets: ["SpiraldayKit"]),
         // Spiralday Sync 클라이언트 엔진 (종단간 암호화 · 계정 없음 · 충돌 없는 합치기, macOS · iOS 공용)
         .library(name: "SpiraldaySync", targets: ["SpiraldaySync"]),
