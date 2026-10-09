@@ -36,7 +36,7 @@
   "description": "10분 단위 종이 플래너를 그대로 옮긴 플래너 앱. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄.",
   "url": "https://spiralday.com/",
   "applicationCategory": "BusinessApplication",
-  "operatingSystem": "macOS 14+, Windows 10, Windows 11, iOS, iPadOS",
+  "operatingSystem": "macOS 14+, Windows 10, Windows 11, iOS 17+, iPadOS 17+",
   "downloadUrl": [
     "https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg",
     "https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe",
@@ -637,7 +637,7 @@
         <span class="grp"><span class="badge is-soon">곧 나와요</span><span><a href="#p-android">Android</a></span></span>
       </p>
       <p class="other-note" id="other-note">Linux · ChromeOS 용 앱은 아직 없어요. 필요하면 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads DM<span class="sr"> (새 창)</span></a> 으로 알려 주세요.</p>
-      <p class="meta">무료 · 계정 없이 · 기록은 내 기기에만<span class="spec"><br>macOS 14 이상 (Apple Silicon &amp; Intel) · Windows&nbsp;10&nbsp;·&nbsp;11 64비트&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad</span></p>
+      <p class="meta">무료 · 계정 없이 · 기록은 내 기기에만<span class="spec"><br>macOS 14 이상 (Apple Silicon &amp; Intel) · Windows&nbsp;10&nbsp;·&nbsp;11 64비트&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad (iOS 17 이상)</span></p>
       <p class="ask-line">요청 · 버그는 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads DM<span class="sr"> (새 창)</span></a> 이나 <a href="mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EC%9A%94%EC%B2%AD%20%C2%B7%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0">메일</a>로 보내 주세요.</p>
     </div>
   </div>
@@ -695,6 +695,7 @@
           <span class="badge is-available" data-badge="ios">지금 무료</span>
         </div>
         <ul class="spec">
+          <li>iOS · iPadOS 17 이상</li>
           <li>iPad 는 [어제 | 오늘] 이 펼쳐진 책상</li>
           <li>Apple Pencil — 손바닥이 닿아도 괜찮고, 스크리블로 손글씨를 글자로 바꿔요</li>
           <li>iPhone 은 ‘쓰기’ · ‘시간’ 칸으로 카메라처럼 다가가서 쓰고 칠해요</li>
@@ -1026,7 +1027,7 @@
   <section class="final" id="download" aria-labelledby="download-h">
     <img class="icon" src="assets/icon-240.webp" alt="" width="120" height="120" loading="lazy" decoding="async">
     <h2 id="download-h">오늘 한 장, 넘겨 볼까요?</h2>
-    <p class="hand sub" data-text="final">무료 · Mac&nbsp;(macOS&nbsp;14&nbsp;이상) · Windows&nbsp;10&nbsp;·&nbsp;11&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad<br>Android 는 곧 나와요</p>
+    <p class="hand sub" data-text="final">무료 · Mac&nbsp;(macOS&nbsp;14&nbsp;이상) · Windows&nbsp;10&nbsp;·&nbsp;11&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad&nbsp;(iOS&nbsp;17&nbsp;이상)<br>Android 는 곧 나와요</p>
     <!-- 폰 · 태블릿으로 들어왔고 그 기기 앱이 아직이면 이 줄이 먼저 보인다 -->
     <div class="cta cta-mobile">
       <a class="btn primary" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
@@ -1091,7 +1092,7 @@
     var BADGE = { available: '지금 무료', beta: '베타 · 무료', soon: '곧 나와요' };
     var GET = { mac: 'Mac용 무료 다운로드', windows: 'Windows용 무료 다운로드', ios: 'App Store 에서 받기', android: 'Google Play 에서 받기' };
     var NAME = { mac: 'Mac', windows: 'Windows', ios: 'iPhone · iPad', android: 'Android' };
-    var SPEC = { mac: 'Mac (macOS 14 이상)', windows: 'Windows 10 · 11', ios: 'iPhone · iPad', android: 'Android' };
+    var SPEC = { mac: 'Mac (macOS 14 이상)', windows: 'Windows 10 · 11', ios: 'iPhone · iPad (iOS 17 이상)', android: 'Android' };
     // 영어 이름 뒤의 조사: 맥은 · 윈도우즈는 · 아이패드는 · 안드로이드는
     var TOPIC = { mac: '은', windows: '는', ios: '는', android: '는' };
     var ORDER = ['mac', 'windows', 'ios', 'android'];
