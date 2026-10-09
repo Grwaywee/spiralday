@@ -1058,6 +1058,7 @@ struct MealCircleHandle: NSViewRepresentable {
 
 /// 한 날에 붙일 D-day 를 고른다. 저장한 D-day 에서 고르거나 새로 만들어 붙이고,
 /// 여기서 붙이고 떼고 고친 것은 이 날에만 남는다 (다른 날, 저장한 목록은 그대로).
+/// ‘새로 만들기’에 이름을 적은 채 편집기를 닫으면 [붙이기]처럼 붙는다 — Esc(⌘.)로 닫을 때만 버린다 (draftClosed).
 public struct DDayEditor: View {
     public let date: Date
 
@@ -1068,6 +1069,9 @@ public struct DDayEditor: View {
     /// 달력을 펼친 줄: 붙인 D-day 의 id 또는 "new"
     @State private var picking: String? = nil
     @State private var showPast = false
+    #if !os(macOS)
+    @Environment(\.dismiss) private var dismiss
+    #endif
 
     public init(date: Date) {
         self.date = Dates.day(date)
@@ -1193,6 +1197,32 @@ public struct DDayEditor: View {
         .frame(width: 340)
         .animation(.snappy(duration: 0.2), value: mine)
         .animation(.snappy(duration: 0.2), value: picking)
+        // 닫힐 때 적어 둔 ‘새로 만들기’ (iPhone 시트의 [완료] · 아래로 쓸기, iPad 팝오버 바깥 톡: 내용이 사라진다)
+        .onDisappear { draftClosed(cancelled: false) }
+        #if os(macOS)
+        // macOS 팝오버는 닫혀도 내용의 onDisappear 가 오지 않는다 (다음에 열 때 새 내용을 만든다) — 팝오버의 닫힘을 듣는다
+        .background(PopoverCloseWatcher { cancelled in draftClosed(cancelled: cancelled) })
+        #else
+        // 하드웨어 키보드의 Esc = 취소: 적은 것은 버리고 닫는다
+        .onKeyPress(.escape) {
+            draftClosed(cancelled: true)
+            dismiss()
+            return .handled
+        }
+        #endif
+    }
+
+    /// 편집기가 닫혔다 (Mac: 팝오버 바깥 클릭 · iPhone: 시트의 [완료] · 아래로 쓸기 · iPad: 바깥 톡 …).
+    /// ‘새로 만들기’에 이름을 적어 두었으면 [붙이기]와 똑같이 붙인다 (날짜 · ‘목록에도 저장’ 그대로) — 직원 시험 5-1 (2026-10-08):
+    /// 적고 [완료]로 닫으면 말없이 사라졌다. 이름이 비었거나(날짜만 바꿈) 2개가 찬 날은 붙이지 않는다.
+    /// cancelled: Esc · ⌘. 로 닫았다 — 취소라 버린다 (사장님 약속: 키보드의 Esc 는 취소). 어느 쪽이든 적은 것은 비운다 — 닫힘 알림과
+    /// 사라짐이 둘 다 와도 한 번만, 그리고 나중에 (자리가 생긴 뒤) 예전에 적었던 것이 뒤늦게 붙지 않게.
+    private func draftClosed(cancelled: Bool) {
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        newTitle = ""
+        if picking == "new" { picking = nil }
+        guard !cancelled, !title.isEmpty, store.ddays(date).count < Prefs.maxDDays else { return }
+        store.addDDay(title: title, date: newDate, to: date, save: saveToLibrary)
     }
 
     // MARK: rows
@@ -1297,6 +1327,49 @@ public struct DDayEditor: View {
         if picking == "new" { picking = nil }
     }
 }
+
+#if os(macOS)
+/// 이 뷰가 든 팝오버가 닫히기 시작할 때 알린다 (NSPopover.willCloseNotification — 바깥 클릭 · Esc · 코드로 닫기 모두).
+/// macOS 의 SwiftUI 팝오버는 닫혀도 내용의 onDisappear 를 부르지 않아서 (다음에 열 때 새 내용을 만들고 예전 것은 그대로 둔다)
+/// 내용이 닫힘을 알 길이 이것뿐이다. 다른 팝오버(팔레트의 펜 · 다른 칸)의 닫힘은 내용이 이 뷰를 품었는지로 거른다.
+/// cancelled: 팝오버가 Esc · ⌘. 를 받는 그 자리에서 닫혔다 (그때 앱의 지금 이벤트가 이 팝오버 창이나 종이 창에 온 그 키).
+struct PopoverCloseWatcher: NSViewRepresentable {
+    let onClose: (_ cancelled: Bool) -> Void
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ v: Probe, context: Context) { v.onClose = onClose }
+
+    /// 팝오버 창 w 를 닫게 한 이벤트가 취소 키인지: w 나 w 가 매달린 창(종이)에 온 Esc, ⌘.
+    /// (앱의 지금 이벤트는 다음 이벤트까지 남아 있어서, 예전에 다른 창 · 다른 팝오버에 온 Esc 를 이번 닫기로 여기지 않게 창도 본다)
+    static func isCancel(_ e: NSEvent?, in w: NSWindow?) -> Bool {
+        guard let e, e.type == .keyDown, let target = e.window else { return false }
+        var ancestor = w
+        while let a = ancestor, a !== target { ancestor = a.parent }
+        guard ancestor != nil else { return false }
+        if e.keyCode == 53 { return true }
+        return e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command && e.charactersIgnoringModifiers == "."
+    }
+
+    final class Probe: NSView {
+        var onClose: ((Bool) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self, name: NSPopover.willCloseNotification, object: nil)
+            guard window != nil else { return }
+            NotificationCenter.default.addObserver(self, selector: #selector(popoverWillClose(_:)),
+                                                   name: NSPopover.willCloseNotification, object: nil)
+        }
+
+        @objc private func popoverWillClose(_ n: Notification) {
+            guard let content = (n.object as? NSPopover)?.contentViewController?.view, isDescendant(of: content) else { return }
+            onClose?(PopoverCloseWatcher.isCancel(NSApp.currentEvent, in: window))
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+#endif
 
 /// 편집기 안의 작은 제목 + 내용
 private struct DDayEditorSection<Content: View>: View {
