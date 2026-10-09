@@ -38,6 +38,10 @@ public struct InlineField: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
     @FocusState private var focused: Bool
+    #if !os(macOS)
+    /// 쓰는 중인 글상자 (넘치는 Return 을 되돌린 뒤 커서를 제자리로)
+    @State private var textInput = TextInputProbe()
+    #endif
 
     public init(text: Binding<String>, placeholder: String = "", font: Font, key: String, tapKey: String? = nil, color: Color = Ink.text, highlight: Color? = nil, strike: Color? = nil, lines: Int = 1, lineSpacing: CGFloat = 0, alignment: Alignment = .leading, onSubmit: (() -> Void)? = nil, onEnd: (() -> Void)? = nil, newlineFits: ((String) -> Bool)? = nil) {
         self._text = text
@@ -87,9 +91,22 @@ public struct InlineField: View {
         .focused($focused)
         .onAppear { DispatchQueue.main.async { focused = true } }
         .onSubmit {
+            #if !os(macOS)
+            // 하드웨어 키보드(iPad Magic Keyboard 등)의 Return: SwiftUI 의 여러 줄 글상자는 줄을 바꾸지 않고 '제출' 한다 —
+            // 글상자가 먼저 첫 응답자를 내려놓고 이것을 부른다 (↩ · ⇧↩ · ⌘↩ · ⌃↩. 화면 키보드의 Return 은 줄 바꿈).
+            // 그래서 1.0.0 은 COMMENT 에서 하드웨어 Return 을 누르면 쓰기가 끝났다 (Mac 신고와 같은 증상).
+            // 줄 바꿈 칸은 ⌘↩ · ⌃↩ 가 아니면 글상자를 다시 잡고 커서 자리에 줄을 바꾼다 — 상자를 넘치면 아래 onChange 가 받지 않는다
+            // (키 명령 ⌘↩ · ⌃↩ · Esc 로 이미 쓰기를 마쳤으면 다시 잡지 않는다)
+            if newlineFits != nil, state.editingKey == key, PlatformServices.commandOrControlHeld?() != true,
+               textInput.returnAfterSubmit() { return }
+            #endif
             if let onSubmit, !text.isEmpty { onSubmit() } else { state.endEditing() }
         }
         .onChange(of: focused) { _, f in
+            #if !os(macOS)
+            // 하드웨어 Return 뒤 글상자를 다시 잡는 동안에는 쓰기를 끝내지 않는다 (TextInputProbe.returnAfterSubmit)
+            if !f, textInput.keepsWriting { focused = true; return }
+            #endif
             if !f && state.editingKey == key { state.editingKey = nil }
         }
         #if !os(macOS)
@@ -102,12 +119,28 @@ public struct InlineField: View {
                 return
             }
             // 줄 바꿈 칸(COMMENT): 칸을 넘칠 Return 은 받지 않는다 (Mac 과 같은 한도 — 가장 작은 글씨로 다 들어가는 줄까지).
-            // 한글 조합 중 Return 으로 확정한 글자와 줄 바꿈이 한 번에 들어와도 줄 바꿈만 빼고 확정한 글자는 둔다
-            if let newlineFits, focused, let kept = MultilineReturn.refusingTypedNewline(from: old, to: new), !newlineFits(new) {
-                text = kept
+            // 키보드가 같은 차례에 고친 글(한글 조합 확정 · 자동 수정 'teh' → 'the')은 남기고 줄 바꿈만 뺀다 (refusingTypedNewline).
+            // 글을 되돌리면 글상자가 커서를 글 끝으로 옮기므로, 커서를 줄 바꿈이 들어가려던 자리로 돌려놓는다
+            // (다섯 줄 글 가운데에서 Return 을 눌러도 다음 글자가 커서 자리에 — MultilineReturn.returnEdit)
+            if let newlineFits, focused, MultilineReturn.refusingTypedNewline(from: old, to: new) != nil, !newlineFits(new),
+               let edit = MultilineReturn.returnEdit(from: old, to: new, caret: textInput.caret(in: new)) {
+                text = edit.refused
+                textInput.select(edit.selection, in: edit.refused)
                 Haptics.bump()
             }
         }
+        // 하드웨어 키보드 (iPad Magic Keyboard 등): 쓰는 동안 이 화면에 키 명령을 단다 — 글상자가 첫 응답자인 동안에는 앱의
+        // KeyCatcher 가 키를 받지 못해서 Esc 로 쓰기가 끝나지 않았다. Esc 는 쓰기를 마치고, 줄 바꿈 칸(COMMENT)에서는
+        // ⌘↩ · ⌃↩ 도 마친다 (MultilineReturn — Mac · Windows 와 같게). 쓰기가 끝나면 뗀다 (Esc 는 다시 KeyCatcher 몫: 가이드 투어 등)
+        .background { TextInputProbeView(probe: textInput) }
+        .onChange(of: focused) { _, f in
+            if f {
+                textInput.installKeyCommands(newlineField: newlineFits != nil) { [state] in state.endEditing() }
+            } else if !textInput.keepsWriting {
+                textInput.removeKeyCommands()
+            }
+        }
+        .onDisappear { textInput.removeKeyCommands() }
         #else
         // Mac: 줄 바꿈 칸은 Return 을 필드 편집기보다 먼저 받아 줄을 바꾼다 (필드 편집기는 Return 에 쓰기를 마친다)
         .background {
@@ -145,6 +178,158 @@ public struct InlineField: View {
             .onTapGesture { state.editingKey = tapKey ?? key }
     }
 }
+
+#if !os(macOS)
+/// 쓰는 글 칸의 UIKit 쪽 손잡이 (iOS): 첫 응답자 글상자(SwiftUI TextField 속의 UITextView · UITextField)를 그 창에서 찾아
+///   · 넘치는 Return 을 되돌린 뒤 커서 · 선택을 제자리로 (select)
+///   · 하드웨어 Return 의 '제출' 뒤 글상자를 다시 잡고 줄 바꿈 (returnAfterSubmit)
+///   · 쓰는 동안의 하드웨어 키 명령 Esc · (COMMENT) ⌘↩ · ⌃↩ (installKeyCommands)
+/// 글 칸 뒤에 깐 보이지 않는 뷰(TextInputProbeView)로 창 · 화면을 안다 (이 라이브러리는 위젯에도 들어가서 UIApplication.shared 를 쓰지 않는다).
+@MainActor
+final class TextInputProbe {
+    fileprivate weak var anchor: UIView?
+    /// 마지막으로 찾은 글상자 (첫 응답자를 놓은 뒤에도 — 하드웨어 Return 의 '제출' 뒤 다시 잡는다)
+    private weak var lastField: UIView?
+    /// 하드웨어 Return 뒤 글상자를 다시 잡는 동안: 초점이 잠깐 빠져도 쓰기를 끝내지 않는다
+    private(set) var keepsWriting = false
+
+    /// 지금 쓰는 글상자 (없으면 nil). 먼저 지난번 것을 보고, 아니면 창에서 찾는다
+    var field: (UIView & UITextInput)? {
+        if let v = lastField, v.isFirstResponder, let w = v.window, w === anchor?.window, let f = v as? (UIView & UITextInput) {
+            return f
+        }
+        guard let window = anchor?.window, let f = Self.firstResponder(in: window) else { return nil }
+        lastField = f
+        return f
+    }
+
+    private static func firstResponder(in v: UIView) -> (UIView & UITextInput)? {
+        if v.isFirstResponder, let f = v as? (UIView & UITextInput) { return f }
+        for s in v.subviews { if let f = firstResponder(in: s) { return f } }
+        return nil
+    }
+
+    private static func text(_ f: UITextInput) -> String? {
+        f.textRange(from: f.beginningOfDocument, to: f.endOfDocument).flatMap { f.text(in: $0) }
+    }
+
+    /// 글상자의 글이 text 일 때 그 커서 자리 (NSString 단위). 글이 다르면 nil
+    func caret(in text: String) -> Int? {
+        guard let f = field, Self.text(f) == text, let r = f.selectedTextRange else { return nil }
+        return f.offset(from: f.beginningOfDocument, to: r.end)
+    }
+
+    /// 글상자의 글이 text 가 되면 (SwiftUI 가 되돌린 글을 글상자에 넣은 뒤 — 그때 커서는 글 끝으로 간다) 커서 · 선택을 sel 로 둔다
+    func select(_ sel: NSRange, in text: String, tries: Int = 8) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let f = self.field else { return }
+            guard Self.text(f) == text else {
+                if tries > 0 { self.select(sel, in: text, tries: tries - 1) }
+                return
+            }
+            guard let a = f.position(from: f.beginningOfDocument, offset: sel.location),
+                  let b = f.position(from: a, offset: sel.length) else { return }
+            f.selectedTextRange = f.textRange(from: a, to: b)
+        }
+    }
+
+    /// 화면 키보드의 Return 처럼 글상자의 커서 자리에 줄 바꿈을 넣는다. 한글 조합 중이면 조합하던 글자를 먼저 한 번 확정한다
+    private static func insertReturn(into f: UITextInput) {
+        if f.markedTextRange != nil { f.unmarkText() }
+        f.insertText("\n")
+    }
+
+    /// 하드웨어 키보드의 Return (iPad Magic Keyboard 등): SwiftUI 의 여러 줄 글상자는 줄을 바꾸지 않고 첫 응답자를 내려놓은 뒤
+    /// '제출'(onSubmit) 한다 — 1.0.0 은 그래서 COMMENT 에서 하드웨어 Return 을 누르면 쓰기가 끝났다 (Mac 신고와 같은 증상).
+    /// onSubmit 에서 불러: 글상자를 다시 잡고 (커서 · 선택은 그대로) 화면 키보드의 Return 처럼 커서 자리에 줄을 바꾼다.
+    /// 상자를 넘치는 줄 바꿈은 InlineField 의 onChange 가 받지 않는다. 다시 잡지 못하면 false (예전처럼 쓰기를 마친다)
+    func returnAfterSubmit() -> Bool {
+        guard let v = lastField, let f = v as? (UIView & UITextInput), v.window != nil else { return false }
+        let sel = f.selectedTextRange
+        keepsWriting = true
+        guard v.isFirstResponder || v.becomeFirstResponder() else {
+            keepsWriting = false
+            return false
+        }
+        if let sel { f.selectedTextRange = sel }
+        Self.insertReturn(into: f)
+        // SwiftUI 가 초점이 빠졌다 돌아온 것을 다 본 뒤에 푼다
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.keepsWriting = false }
+        return true
+    }
+
+    // MARK: 쓰는 동안의 하드웨어 키 명령
+
+    private weak var commandHost: UIViewController?
+    private var commands: [UIKeyCommand] = []
+
+    /// 지금 키 명령을 단 칸 (한 번에 한 칸) — 키 명령(UIViewController.spiraldayKitEndWriting)이 부른다
+    fileprivate static var active: (owner: TextInputProbe, end: () -> Void)?
+
+    /// 이 글 칸이 놓인 화면(가장 가까운 뷰 컨트롤러 — 글상자의 응답자 사슬 위)에 쓰는 동안의 키 명령을 단다.
+    /// 글상자가 첫 응답자인 동안에는 앱의 KeyCatcher 가 키를 받지 못해 1.0.0 은 Esc 로 쓰기가 끝나지 않았다.
+    ///   Esc = 쓰기 끝. 줄 바꿈 칸(newlineField — COMMENT)은 ⌘↩ · ⌃↩ = 쓰기 끝 (MultilineReturn).
+    /// 시스템 동작보다 먼저 받는다 (wantsPriorityOverSystemBehavior). ↩ · ⇧↩ 에는 키 명령을 달지 않는다: SwiftUI 의 여러 줄
+    /// 글상자는 키 명령이 받은 ↩ 도 다시 '제출' 해서 줄이 두 번 바뀌었다 (iOS 26 시뮬레이터) — ↩ 는 InlineField 의
+    /// onSubmit(returnAfterSubmit)이 한 번만 바꾼다. ⌘↩ · ⌃↩ 가 '제출' 로도 오면 수식키(PlatformServices.commandOrControlHeld)로 가른다.
+    /// 다른 칸의 키 명령이 남아 있으면 먼저 뗀다 — 칸을 옮길 때 두 칸의 onChange 차례와 상관없이 한 벌만 달려 있게
+    func installKeyCommands(newlineField: Bool, end: @escaping () -> Void) {
+        if let other = Self.active?.owner, other !== self { other.removeKeyCommands() }
+        removeKeyCommands()
+        // 글상자를 기억해 둔다 (하드웨어 Return 의 '제출' 뒤 다시 잡을 것). 아직 첫 응답자가 아니면 한 차례 뒤에
+        if field == nil { DispatchQueue.main.async { [weak self] in _ = self?.field } }
+        var r: UIResponder? = anchor
+        while let x = r, !(x is UIViewController) { r = x.next }
+        guard let host = r as? UIViewController else { return }
+        let endWriting = #selector(UIViewController.spiraldayKitEndWriting(_:))
+        var list = [Self.command("쓰기 끝내기", endWriting, UIKeyCommand.inputEscape, [])]
+        if newlineField {
+            list += [Self.command("쓰기 끝내기", endWriting, "\r", .command), Self.command("쓰기 끝내기", endWriting, "\r", .control)]
+        }
+        list.forEach(host.addKeyCommand)
+        commands = list
+        commandHost = host
+        Self.active = (self, end)
+    }
+
+    func removeKeyCommands() {
+        if let host = commandHost { commands.forEach(host.removeKeyCommand) }
+        commands = []
+        commandHost = nil
+        if Self.active?.owner === self { Self.active = nil }
+    }
+
+    private static func command(_ title: String, _ action: Selector, _ input: String, _ mods: UIKeyModifierFlags) -> UIKeyCommand {
+        let c = UIKeyCommand(title: title, action: action, input: input, modifierFlags: mods)
+        c.wantsPriorityOverSystemBehavior = true
+        return c
+    }
+
+}
+
+extension UIViewController {
+    /// 쓰는 동안의 Esc · (COMMENT) ⌘↩ · ⌃↩ = 쓰기 끝 (TextInputProbe.installKeyCommands)
+    @objc func spiraldayKitEndWriting(_ sender: Any?) {
+        TextInputProbe.active?.end()
+    }
+
+}
+
+/// TextInputProbe 가 창을 알게 하는 보이지 않는 뷰 (누르기 · 손쉬운 사용에 나오지 않는다)
+private struct TextInputProbeView: UIViewRepresentable {
+    let probe: TextInputProbe
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.isUserInteractionEnabled = false
+        v.isAccessibilityElement = false
+        probe.anchor = v
+        return v
+    }
+
+    func updateUIView(_ v: UIView, context: Context) { probe.anchor = v }
+}
+#endif
 
 #if os(macOS)
 /// 여러 줄 글 칸(일간 COMMENT)을 쓰는 동안, 그 칸이 있는 창의 Return 을 필드 편집기보다 먼저 받는다 (MultilineReturn 규칙).

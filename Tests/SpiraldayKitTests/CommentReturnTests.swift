@@ -96,6 +96,26 @@ final class CommentReturnTests: XCTestCase {
         XCTAssertTrue(DailyForm.commentFits(try XCTUnwrap(MultilineReturn.refusingTypedNewline(from: full, to: full + "한\n"))))
     }
 
+    /// iOS: 글상자가 넣어 버린 넘치는 Return 을 되돌릴 때 남길 글과 커서 (자동 수정 · 조합 확정은 남기고, 커서는 줄 바꿈 자리로)
+    func testRefuseVectors() throws {
+        let f = try XCTUnwrap(load()["refuse"] as? [String: Any])
+        let rows = try XCTUnwrap(f["rows"] as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(rows.count, 7)
+        for r in rows {
+            let name = "\(r["name"] ?? r)"
+            let edit = try XCTUnwrap(MultilineReturn.returnEdit(from: try XCTUnwrap(r["old"] as? String), to: try XCTUnwrap(r["new"] as? String),
+                                                                caret: r["caret"] as? Int), name)
+            let sel = try XCTUnwrap(r["selection"] as? [Int])
+            XCTAssertEqual(edit.refused, r["refused"] as? String, name)
+            XCTAssertEqual(edit.refused, MultilineReturn.refusingTypedNewline(from: r["old"] as! String, to: r["new"] as! String), "같은 글 — \(name)")
+            XCTAssertEqual(edit.selection, NSRange(location: sel[0], length: sel[1]), name)
+        }
+        // Return 이 아닌 편집은 되돌리지 않는다
+        XCTAssertNil(MultilineReturn.returnEdit(from: "가", to: "가나"))
+        XCTAssertNil(MultilineReturn.returnEdit(from: "가", to: "가\n나\n다"))
+        XCTAssertNil(MultilineReturn.returnEdit(from: "가\n나", to: "가나"))
+    }
+
     /// 끝의 줄 바꿈 뒤 빈 줄(Return 을 막 친 줄)도 센다 — 그래야 커서가 있는 줄까지 상자 안에 보이게 글씨를 줄인다
     func testTrailingNewlineCountsAsALine() {
         let w = DailyForm.commentWrapWidth

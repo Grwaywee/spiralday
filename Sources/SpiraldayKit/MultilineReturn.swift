@@ -12,6 +12,8 @@ import Foundation
 //   입력기에 먼저 넘기고, 입력기가 쓰지 않을 때만 줄을 바꾼다 (Mac — Components.swift ReturnNewlineMonitorView)
 // · 확정한 글자와 줄 바꿈이 한 번에 들어와 상자를 넘치면 줄 바꿈만 뺀다 (refusingTypedNewline — 확정한 글자는 남는다)
 // · 할 일 · MEMO 는 이 규칙을 쓰지 않는다 (Return = 아랫줄로, 1.0.5)
+// · iOS 글상자는 Return 을 글에 바로 넣는다: 넘치는 Return 은 그 줄 바꿈 하나만 빼고(같은 차례에 온 자동 수정 · 조합 확정은 남기고)
+//   커서를 그 자리에 돌려놓는다 (returnEdit — 다섯 줄에서 글 가운데 Return 을 눌러도 다음 글자가 커서 자리에)
 // ─────────────────────────────────────────────────────────────────────────────
 
 public enum MultilineReturn {
@@ -80,5 +82,49 @@ public enum MultilineReturn {
         let typed = inserted.dropLast()
         guard !typed.isEmpty, !typed.contains(where: \.isNewline) else { return nil }
         return String(b[..<p]) + String(typed) + String(b[(b.count - s)...])
+    }
+
+    /// iOS: 넘치는 Return 을 받지 않을 때 남길 글과 커서 (refused = refusingTypedNewline 과 같은 글)
+    public struct ReturnEdit: Equatable, Sendable {
+        /// 그 Return 의 줄 바꿈만 뺀 글 (같은 차례에 확정 · 자동 수정된 글은 남고, Return 이 바꾼 선택은 되살아난다)
+        public let refused: String
+        /// 받지 않은 뒤의 커서 · 선택 (refused 안, NSString 단위)
+        public let selection: NSRange
+
+        public init(refused: String, selection: NSRange) {
+            self.refused = refused
+            self.selection = selection
+        }
+    }
+
+    /// iOS 글상자는 Return 을 글에 바로 넣는다 — 상자를 넘치는 Return 은 SwiftUI 바인딩에서 되돌리는데, 글을 바꾸면 글상자가
+    /// 커서를 글 끝으로 옮겨 다음 글자가 엉뚱한 곳(글 끝)에 붙는다. 그래서 되돌린 글과 함께 커서를 돌려놓을 자리를 준다:
+    /// · 줄 바꿈이 들어가려던 자리 (다섯 줄 글 가운데에서 Return 을 눌렀으면 그 자리 — 다음 글자가 커서 자리에)
+    /// · Return 이 선택한 글을 바꾼 것이면 그 글을 다시 골라 둔다
+    /// · 확정 · 자동 수정된 글과 함께 왔으면 그 글 끝
+    /// caret: new 에서 글상자의 지금 커서 (NSString 단위, 알면). 줄 바꿈이 이어진 곳('…4|\n5' 에서 Return → '…4\n\n5')은
+    /// 글만 보고는 어느 줄 바꿈이 새것인지 모르므로, 커서 바로 앞의 줄 바꿈을 빼서 같은 글이 되면 그 자리를 쓴다.
+    /// Return 으로 생긴 편집이 아니면 (refusingTypedNewline 이 nil) nil
+    public static func returnEdit(from old: String, to new: String, caret: Int? = nil) -> ReturnEdit? {
+        guard let refused = refusingTypedNewline(from: old, to: new) else { return nil }
+        if let caret {
+            let ns = new as NSString
+            if caret > 0, caret <= ns.length, [10, 13].contains(ns.character(at: caret - 1)),
+               ns.replacingCharacters(in: NSRange(location: caret - 1, length: 1), with: "") == refused {
+                return ReturnEdit(refused: refused, selection: NSRange(location: caret - 1, length: 0))
+            }
+        }
+        let a = Array(old), b = Array(new)
+        var p = 0
+        while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
+        var s = 0
+        while s < a.count - p, s < b.count - p, a[a.count - 1 - s] == b[b.count - 1 - s] { s += 1 }
+        let start = (String(a[..<p]) as NSString).length
+        if refused == old {
+            // 줄 바꿈만 넣었다: 바꾼 선택이 있으면 그것을 다시 고른다 (없으면 그 자리에 커서)
+            return ReturnEdit(refused: old, selection: NSRange(location: start, length: (String(a[p..<(a.count - s)]) as NSString).length))
+        }
+        let typed = String(b[p..<(b.count - s)].dropLast())
+        return ReturnEdit(refused: refused, selection: NSRange(location: start + (typed as NSString).length, length: 0))
     }
 }
