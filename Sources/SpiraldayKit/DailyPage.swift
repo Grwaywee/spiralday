@@ -122,7 +122,7 @@ public struct DailyPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { editingDDay = true }
-        .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor(date: date).environmentObject(store) }
+        .popover(isPresented: $editingDDay, arrowEdge: DDayPopover.arrowEdge) { DDayEditor(date: date).environmentObject(store) }
         .help("이 날의 D-day — 저장한 D-day 를 고르거나 새로 만들어 붙여요 (최대 \(Prefs.maxDDays)개)")
     }
 
@@ -619,6 +619,23 @@ private struct CategoryTag: View {
             .minimumScaleFactor(0.6)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
+    }
+}
+
+// MARK: - D-DAY 칸의 편집 팝오버
+
+/// D-DAY 칸(일간 · 홈)의 편집 팝오버가 칸 아래로 뜨게 하는 화살표 자리.
+/// macOS 의 `arrowEdge` 는 "앵커의 어느 가장자리 쪽에 띄우나" — .bottom = 칸 아래.
+/// iOS(iPadOS 18.1+)는 "팝오버의 어느 가장자리에 화살표가 있나" — 같은 .bottom 이면 팝오버가 칸 위로 가서, 종이 맨 위의
+/// D-DAY 칸에서는 화면 밖으로 밀려 '새로 만들기'가 보이지도 눌리지도 않았다 (iPad, 2026-10-09). iOS 는 .top = 화살표가 팝오버 위 = 칸 아래.
+/// (iPad 앱의 PadPopoverEdge 와 같은 규칙)
+enum DDayPopover {
+    static var arrowEdge: Edge {
+        #if os(macOS)
+        .bottom
+        #else
+        .top
+        #endif
     }
 }
 

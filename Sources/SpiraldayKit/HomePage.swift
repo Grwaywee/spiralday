@@ -140,7 +140,7 @@ public struct HomePage: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { editingDDay = true }
-                .popover(isPresented: $editingDDay, arrowEdge: .bottom) { DDayEditor(date: today).environmentObject(store) }
+                .popover(isPresented: $editingDDay, arrowEdge: DDayPopover.arrowEdge) { DDayEditor(date: today).environmentObject(store) }
                 .help("오늘의 D-day — 저장한 D-day 를 고르거나 새로 만들어 붙여요 (최대 \(Prefs.maxDDays)개)")
                 .place(HM.ddayBox, u)
 
