@@ -125,6 +125,43 @@ final class DDayDraftTests: XCTestCase {
         XCTAssertEqual(tf.stringValue, text)
     }
 
+    /// 이름 칸에 글을 적되 마지막 음절은 입력기가 아직 조합 중 (두벌식에서 스페이스 · Return 을 누르기 전)
+    private func compose(_ text: String, marked: String, in pop: NSPopover) async throws -> NSTextView {
+        let tf = try field(pop)
+        let w = try XCTUnwrap(tf.window)
+        w.makeFirstResponder(tf)
+        await spin(0.1)
+        let editor = try XCTUnwrap(w.firstResponder as? NSTextView, "이름 칸이 쓰는 중")
+        editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+        editor.setMarkedText(marked, selectedRange: NSRange(location: (marked as NSString).length, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+        await spin(0.2)
+        XCTAssertTrue(editor.hasMarkedText(), "틀 확인: 마지막 음절은 조합 중")
+        XCTAssertEqual(editor.string, text + marked, "틀 확인: 이름 칸에는 다 보인다")
+        return editor
+    }
+
+    /// [붙이기]를 마우스로 누른다. SwiftUI 가 그린 단추라 AppKit 단추가 없어서 자리로 누른다: ‘목록에도 저장’ 체크 상자
+    /// (편집기의 하나뿐인 AppKit 단추)와 같은 줄, 편집기(폭 340 · 안쪽 여백 16)의 오른쪽 끝 단추
+    private func pressAttach(_ pop: NSPopover) throws {
+        let root = try XCTUnwrap(pop.contentViewController?.view)
+        let w = try XCTUnwrap(root.window)
+        func checkbox(_ v: NSView) -> NSButton? {
+            if let b = v as? NSButton { return b }
+            for s in v.subviews { if let f = checkbox(s) { return f } }
+            return nil
+        }
+        let box = try XCTUnwrap(checkbox(w.contentView?.superview ?? root), "‘목록에도 저장’ 체크 상자")
+        let r = box.convert(box.bounds, to: nil)
+        let p = NSPoint(x: r.minX - 16 + 340 - 16 - 20, y: r.midY)
+        for (type, pressure) in [(NSEvent.EventType.leftMouseDown, Float(1)), (.leftMouseUp, Float(0))] {
+            eventNumber += 1
+            w.sendEvent(NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: w.windowNumber, context: nil, eventNumber: eventNumber, clickCount: 1,
+                                           pressure: pressure)!)
+        }
+    }
+
     /// 팝오버 바깥(종이의 다른 곳) 클릭으로 닫힌다: 그 클릭이 앱의 지금 이벤트인 채로 팝오버가 닫힌다
     /// (일시 팝오버가 바깥 클릭에 스스로 닫히는 것은 활성 앱에서만 일어나서, 닫기는 NSPopover 가 하듯 performClose 로)
     private func clickOutside(_ r: Rig, _ pop: NSPopover) async {
@@ -277,6 +314,73 @@ final class DDayDraftTests: XCTestCase {
         XCTAssertEqual(titles(r), [typed], "이번 닫기는 Esc 가 아니다: 적은 것이 붙는다")
     }
 
+    // MARK: 한글 조합 중 (입력기가 마지막 음절을 아직 들고 있을 때)
+
+    /// 두벌식은 스페이스 · Return 을 누르기 전까지 마지막 음절을 조합 중(밑줄 친 표시 글자)으로 둔다. 이름 칸에는 보이지만
+    /// SwiftUI 의 글(바인딩)에는 아직 없어서, 그대로 바깥을 누르면 마지막 글자가 빠진 '시험공'이 붙고 목록에도 그렇게 들어갔다
+    /// (회의적 검토 2026-10-10). 닫기 전에 조합을 마쳐 보이는 이름 그대로 한 번만 붙는다.
+    func testClickingOutsideWhileComposingAttachesTheWholeName() async throws {
+        let r = await rig()
+        let pop = try await open(r)
+        let editor = try await compose("시험공", marked: "부", in: pop)
+        await clickOutside(r, pop)
+        XCTAssertTrue(closed(pop))
+        XCTAssertEqual(titles(r), [typed], "조합 중이던 마지막 글자까지 붙어야 한다")
+        XCTAssertEqual(r.store.ddayLibrary.map(\.title), [typed], "목록에도 온전한 이름으로")
+        // 입력기가 창이 바뀐 뒤에야 조합을 마쳐도 늦게 붙거나 두 번 붙지 않는다
+        if editor.hasMarkedText() { editor.unmarkText() }
+        await spin(0.3)
+        let again = try await open(r)
+        XCTAssertEqual(try field(again).stringValue, "")
+        await clickOutside(r, again)
+        XCTAssertEqual(titles(r), [typed])
+        XCTAssertEqual(r.store.ddayLibrary.count, 1)
+    }
+
+    /// [붙이기]도 조합 중에 누르면 마지막 글자가 빠졌다 (원래 있던 문제 — 같은 원인). 붙인 뒤 이름 칸은 비고 닫아도 한 번
+    func testAttachButtonWhileComposingAttachesTheWholeName() async throws {
+        let r = await rig()
+        let pop = try await open(r)
+        _ = try await compose("시험공", marked: "부", in: pop)
+        try pressAttach(pop)
+        await spin(0.3)
+        XCTAssertFalse(closed(pop), "[붙이기]는 편집기를 닫지 않는다")
+        XCTAssertEqual(titles(r), [typed], "[붙이기]도 조합 중이던 글자까지 붙여야 한다")
+        let tf = try field(pop)
+        XCTAssertEqual(tf.stringValue, "", "붙인 뒤 이름 칸은 빈다")
+        XCTAssertTrue((tf.window?.firstResponder as? NSTextView)?.delegate === tf, "이름 칸은 계속 쓰는 중 (조합하지 않을 때의 [붙이기]처럼)")
+        await clickOutside(r, pop)
+        XCTAssertEqual(titles(r), [typed], "닫아도 또 붙지 않는다")
+        XCTAssertEqual(r.store.ddayLibrary.map(\.title), [typed])
+    }
+
+    /// 조합하지 않을 때 [붙이기] (대조: 단추를 누르는 틀이 맞는지, 그리고 조합을 마치는 일이 보통 [붙이기]를 바꾸지 않는지)
+    func testAttachButtonAttaches() async throws {
+        let r = await rig()
+        let pop = try await open(r)
+        try await type(typed, in: pop)
+        try pressAttach(pop)
+        await spin(0.3)
+        XCTAssertEqual(titles(r), [typed])
+        let tf = try field(pop)
+        XCTAssertEqual(tf.stringValue, "")
+        XCTAssertTrue((tf.window?.firstResponder as? NSTextView)?.delegate === tf, "[붙이기] 뒤에도 이름 칸은 쓰는 중")
+        await clickOutside(r, pop)
+        XCTAssertEqual(titles(r), [typed])
+    }
+
+    /// 조합 중이어도 Esc 는 취소: 아무것도 붙지 않는다
+    func testEscapeWhileComposingDiscards() async throws {
+        let r = await rig()
+        let pop = try await open(r)
+        _ = try await compose("시험공", marked: "부", in: pop)
+        try await escape(pop)
+        if !closed(pop) { pop.performClose(nil) }
+        await spin(0.2)
+        XCTAssertTrue(titles(r).isEmpty, "Esc 는 조합 중이어도 취소")
+        XCTAssertTrue(r.store.ddayLibrary.isEmpty)
+    }
+
     // MARK: 팝오버가 아닌 곳 (iPhone 시트처럼 편집기가 사라질 때)
 
     /// 편집기가 화면에서 사라지면(시트의 [완료] · 아래로 쓸기) 적은 것이 붙는다
@@ -308,7 +412,9 @@ final class DDayDraftTests: XCTestCase {
     }
 }
 
-/// 뜬 팝오버 · 닫기 시작한 팝오버 (알림은 메인 스레드에서 바로 온다)
+/// 뜨기 시작한 팝오버 · 닫기 시작한 팝오버 (알림은 메인 스레드에서 바로 온다).
+/// 뜰 때는 didShow 가 아니라 willShow 를 듣는다: 화면이 잠겼거나 꺼져 있으면 여는 애니메이션이 끝나지 않아 didShow 가
+/// 오지 않는다 (팝오버 창은 떠 있는데) — 그런 컴퓨터에서 시험이 모두 열기에서 멈추지 않게 (회의적 검토 2026-10-10)
 private final class PopoverLog: NSObject {
     private(set) var shown: [NSPopover] = []
     private(set) var closing: [ObjectIdentifier] = []
@@ -316,7 +422,7 @@ private final class PopoverLog: NSObject {
     func start() {
         shown = []
         closing = []
-        NotificationCenter.default.addObserver(self, selector: #selector(didShow(_:)), name: NSPopover.didShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willShow(_:)), name: NSPopover.willShowNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(willClose(_:)), name: NSPopover.willCloseNotification, object: nil)
     }
 
@@ -327,7 +433,7 @@ private final class PopoverLog: NSObject {
         closing = []
     }
 
-    @objc private func didShow(_ n: Notification) { if let p = n.object as? NSPopover { shown.append(p) } }
+    @objc private func willShow(_ n: Notification) { if let p = n.object as? NSPopover { shown.append(p) } }
     @objc private func willClose(_ n: Notification) { if let p = n.object as? NSPopover { closing.append(ObjectIdentifier(p)) } }
 }
 
