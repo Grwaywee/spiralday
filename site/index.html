@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Spiralday — 10분 종이 플래너 · Mac · Windows 무료 (모바일 곧)</title>
-<meta name="description" content="Mac · Windows(베타) 에서 지금 무료로 쓰는 10분 단위 종이 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄. iPhone · iPad · Android 앱도 곧 나와요. 기록은 내 기기에만.">
+<title>Spiralday — 10분 종이 플래너 · Mac · Windows · iPhone · iPad 무료</title>
+<meta name="description" content="Mac · Windows(베타) · iPhone · iPad 에서 지금 무료로 쓰는 10분 단위 종이 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄. Android 앱도 곧 나와요. 기록은 내 기기에만.">
 <link rel="canonical" href="https://spiralday.com/">
 <meta name="theme-color" content="#FCFBF7">
 <meta name="color-scheme" content="light">
@@ -16,18 +16,18 @@
 <meta property="og:locale" content="ko_KR">
 <meta property="og:url" content="https://spiralday.com/">
 <meta property="og:title" content="Spiralday — 화면 하나가 종이 한 장인 10분 플래너">
-<meta property="og:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) 는 지금 무료, iPhone · iPad · Android 는 곧 나와요.">
-<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261005">
+<meta property="og:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) · iPhone · iPad 는 지금 무료, Android 는 곧 나와요.">
+<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261009">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone 에 함께 떠 있는 모습. iPad 는 바닷가 책상, iPhone 두 대는 학교 책상의 낮과 저녁">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Spiralday — 화면 하나가 종이 한 장인 10분 플래너">
-<meta name="twitter:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) 는 지금 무료, iPhone · iPad · Android 는 곧 나와요.">
-<meta name="twitter:image" content="https://spiralday.com/assets/og.jpg?v=20261005">
+<meta name="twitter:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) · iPhone · iPad 는 지금 무료, Android 는 곧 나와요.">
+<meta name="twitter:image" content="https://spiralday.com/assets/og.jpg?v=20261009">
 <meta name="twitter:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone 에 함께 떠 있는 모습. iPad 는 바닷가 책상, iPhone 두 대는 학교 책상의 낮과 저녁">
-<!-- 검색 엔진용 앱 정보. 스토어에 나오면 operatingSystem · downloadUrl 을 함께 늘려 주세요 (아래 스크립트 맨 위의 출시 체크리스트) -->
+<!-- 검색 엔진용 앱 정보. Google Play 에 나오면 operatingSystem · downloadUrl 에 Android 를 더해 주세요 (아래 스크립트 맨 위의 출시 체크리스트) -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -36,10 +36,11 @@
   "description": "10분 단위 종이 플래너를 그대로 옮긴 플래너 앱. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄.",
   "url": "https://spiralday.com/",
   "applicationCategory": "BusinessApplication",
-  "operatingSystem": "macOS 14+, Windows 10, Windows 11",
+  "operatingSystem": "macOS 14+, Windows 10, Windows 11, iOS, iPadOS",
   "downloadUrl": [
     "https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg",
-    "https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe"
+    "https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe",
+    "https://apps.apple.com/kr/app/spiralday/idAPPSTORE_ID_TBD"
   ],
   "image": "https://spiralday.com/assets/og.jpg",
   "screenshot": "https://spiralday.com/assets/hero-daily.webp",
@@ -60,7 +61,7 @@
   /*
    * 기기별 출시 상태 — 여기 한 곳만 바꾸면 배지 · 버튼 · 안내 글 · 대문 소개 · 마지막 줄이 따라 바뀌어요.
    * status: 'available'(지금) · 'beta'(베타) · 'soon'(곧). 스토어에 나오면 예를 들어
-   *   ios: { status: 'available', url: 'https://apps.apple.com/app/id…' },
+   *   android: { status: 'available', url: 'https://play.google.com/store/apps/details?id=…' },
    * 처럼 한 줄만 바꾸면 돼요.
    *
    * 출시 체크리스트 — 스크립트가 닿지 않는 곳이라 손으로 맞춰 주세요 (검색 결과 · 링크 미리 보기 · 스크립트 없이 보는 사람용):
@@ -68,13 +69,13 @@
    *   2. JSON-LD 의 operatingSystem · downloadUrl
    *   3. assets/og.jpg 의 글자 (다시 뽑으면 og:image 의 ?v= 값도 올리기)
    *   4. HTML 기본 글자: 배지(data-badge), data-text 세 곳(대문 소개 · 기기 설명 · 마지막 줄), 대문 상태 줄(data-avail),
-   *      대문 meta 의 사양 줄, 대문 그림(폰 · 태블릿은 아직 '미리 보기' 화면)
+   *      대문 meta 의 사양 줄, 대문 그림(폰 · 태블릿 그림은 iPhone · iPad 화면)
    *   5. privacy.html (새 앱 · 동기화가 처리하는 정보)
    */
   var PLATFORMS = {
     mac:     { status: 'available', url: 'https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg' },
     windows: { status: 'beta',      url: 'https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe' },
-    ios:     { status: 'soon',      url: null },
+    ios:     { status: 'available', url: 'https://apps.apple.com/kr/app/spiralday/idAPPSTORE_ID_TBD' },
     android: { status: 'soon',      url: null },
     sync:    { status: 'available' }
   };
@@ -312,6 +313,8 @@
   html.m-soon[data-visitor="ios"] #p-ios [data-get],
   html.m-soon[data-visitor="android"] #p-android [data-get] { background: var(--plum); color: #fff; box-shadow: 0 10px 24px -8px rgba(60,51,87,.55); }
   html.is-mobile .cta [data-os="mac"], html.is-mobile .cta [data-os="windows"] { display: none; }
+  /* 폰 · 태블릿: 다른 모바일 OS 의 스토어 버튼은 숨긴다 (Android 에서 App Store, iPhone · iPad 에서 Google Play) */
+  html[data-visitor="android"] .cta [data-os="ios"], html[data-visitor="ios"] .cta [data-os="android"] { display: none; }
   html.is-mobile .hero .avail, html.is-mobile .hero .meta .spec { display: none; }
   html.m-soon .hero .lead [data-text] { display: none; }
 
@@ -577,7 +580,7 @@
     <div class="hero-text">
       <p class="label">Daily paper planner</p>
       <h1>화면 하나가<br><span class="hl" style="--c: #F7C3CD">종이 한 장.</span></h1>
-      <p class="lead">10분 단위 종이 플래너를 그대로 옮긴 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.<span data-text="lead"> Mac · Windows 에서 지금 무료로 쓸 수 있고, iPhone&nbsp;·&nbsp;iPad · Android 앱도 곧 나와요.</span></p>
+      <p class="lead">10분 단위 종이 플래너를 그대로 옮긴 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.<span data-text="lead"> Mac · Windows · iPhone&nbsp;·&nbsp;iPad 에서 지금 무료로 쓸 수 있고, Android 앱도 곧 나와요.</span></p>
     </div>
 
     <div class="hero-shot">
@@ -591,9 +594,9 @@
     </div>
 
     <div class="hero-act">
-      <!-- iPhone · iPad · Android 로 들어오면 스크립트가 보여 준다 -->
+      <!-- 앱이 아직 없는 폰 · 태블릿(지금은 Android)으로 들어오면 스크립트가 보여 준다 -->
       <div class="soon-note" id="mobile-note">
-        <p class="soon-title"><span class="hl" style="--c: #CDB6EF" data-for="ios">iPhone · iPad 앱은 App Store 에 곧 나와요.</span><span class="hl" style="--c: #CDB6EF" data-for="android">Android 앱은 Google Play 에 곧 나와요.</span></p>
+        <p class="soon-title"><span class="hl" style="--c: #CDB6EF" data-for="android">Android 앱은 Google Play 에 곧 나와요.</span></p>
         <p>지금은 Mac · Windows 에서 먼저 써 보세요. 나오는 날 Threads 에서 가장 먼저 알려 드릴게요.</p>
         <div class="row">
           <a class="btn primary" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
@@ -617,11 +620,11 @@
       </div>
       <script>(function () { var o = document.documentElement.getAttribute('data-visitor'), c = document.currentScript.previousElementSibling, m = o && c.querySelector('[data-os="' + o + '"]'); if (m && c.firstElementChild !== m) c.insertBefore(m, c.firstElementChild); })();</script>
       <p class="avail" data-avail>
-        <span class="grp"><span class="badge is-available">지금 무료</span><span><a href="#p-mac">Mac</a> · <a href="#p-windows">Windows</a>&nbsp;(베타)</span></span>
-        <span class="grp"><span class="badge is-soon">곧 나와요</span><span><a href="#p-ios">iPhone&nbsp;·&nbsp;iPad</a> · <a href="#p-android">Android</a></span></span>
+        <span class="grp"><span class="badge is-available">지금 무료</span><span><a href="#p-mac">Mac</a> · <a href="#p-windows">Windows</a>&nbsp;(베타) · <a href="#p-ios">iPhone&nbsp;·&nbsp;iPad</a></span></span>
+        <span class="grp"><span class="badge is-soon">곧 나와요</span><span><a href="#p-android">Android</a></span></span>
       </p>
       <p class="other-note" id="other-note">Linux · ChromeOS 용 앱은 아직 없어요. 필요하면 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads DM<span class="sr"> (새 창)</span></a> 으로 알려 주세요.</p>
-      <p class="meta">무료 · 계정 없이 · 기록은 내 기기에만<span class="spec"><br>macOS 14 이상 (Apple Silicon &amp; Intel) · Windows&nbsp;10&nbsp;·&nbsp;11 64비트&nbsp;(베타)</span></p>
+      <p class="meta">무료 · 계정 없이 · 기록은 내 기기에만<span class="spec"><br>macOS 14 이상 (Apple Silicon &amp; Intel) · Windows&nbsp;10&nbsp;·&nbsp;11 64비트&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad</span></p>
       <p class="ask-line">요청 · 버그는 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads DM<span class="sr"> (새 창)</span></a> 이나 <a href="mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EC%9A%94%EC%B2%AD%20%C2%B7%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0">메일</a>로 보내 주세요.</p>
     </div>
   </div>
@@ -630,7 +633,7 @@
   <section id="platforms" aria-labelledby="platforms-h">
     <p class="label">Platforms</p>
     <h2 id="platforms-h">어느 기기에서든 <span class="hl" style="--c: #A9CFF3">같은 종이</span>.</h2>
-    <p class="desc" data-text="desc">Mac · Windows&nbsp;(베타) 는 지금 바로 무료로 받을 수 있어요. iPhone&nbsp;·&nbsp;iPad · Android 앱은 준비하고 있어요.</p>
+    <p class="desc" data-text="desc">Mac · Windows&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad 는 지금 바로 무료로 받을 수 있어요. Android 앱은 준비하고 있어요.</p>
     <div class="plats" data-reorder>
       <article class="plat" id="p-mac" data-platform="mac" aria-labelledby="p-mac-h">
         <div class="plat-head">
@@ -676,9 +679,8 @@
         <div class="plat-head">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="13" height="18" rx="2"/><rect x="13.5" y="8.5" width="8" height="13" rx="1.8" fill="#fff"/><path d="M8 18h2M16.8 19h1.4"/></svg>
           <h3 id="p-ios-h">iPhone · iPad</h3>
-          <span class="badge is-soon" data-badge="ios">곧 나와요</span>
+          <span class="badge is-available" data-badge="ios">지금 무료</span>
         </div>
-        <p class="where" data-show="ios:soon">App Store 에 곧 나와요</p>
         <ul class="spec">
           <li>iPad 는 [어제 | 오늘] 이 펼쳐진 책상</li>
           <li>Apple Pencil — 손바닥이 닿아도 괜찮고, 스크리블로 손글씨를 글자로 바꿔요</li>
@@ -687,7 +689,10 @@
           <li>홈 화면 · 잠금 화면 위젯</li>
         </ul>
         <div class="act">
-          <a class="btn soft" data-get="ios" data-state="notify" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
+          <a class="btn primary" data-get="ios" data-state="get" href="https://apps.apple.com/kr/app/spiralday/idAPPSTORE_ID_TBD">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            App Store 에서 받기
+          </a>
         </div>
       </article>
 
@@ -713,7 +718,7 @@
 
   <!-- 일간 -->
   <section id="features" aria-labelledby="features-h">
-    <p class="basis"><span class="badge is-available">지금 받을 수 있는 앱</span> <span>아래 기능은 Mac · Windows 앱 기준이에요. 폰 · 태블릿 앱은 <a href="#devices">미리 보기</a>에서 볼 수 있어요.</span></p>
+    <p class="basis"><span class="badge is-available">지금 받을 수 있는 앱</span> <span>아래 기능은 Mac · Windows 앱 기준이에요. iPhone · iPad 앱 화면은 <a href="#devices">iPad · iPhone</a> 에서 볼 수 있어요.</span></p>
     <p class="label">Daily</p>
     <div class="split">
       <div>
@@ -824,12 +829,11 @@
     </div>
   </section>
 
-  <!-- iPad · iPhone · Android 미리 보기 -->
+  <!-- iPad · iPhone -->
   <section id="devices" aria-labelledby="devices-h">
     <p class="label keep">iPad · iPhone</p>
     <h2 id="devices-h">iPad 에선 <span class="hl" style="--c: #F3DB78">펼친 노트</span>,<br>폰에선 <span class="hl">손바닥 수첩</span>.</h2>
     <p class="desc">iPad 는 어제와 오늘이 나란히 펼쳐진 책상이에요. Apple Pencil 로 쓰고, 손바닥이 화면에 닿아도 괜찮아요. 폰에서는 ‘쓰기’ · ‘시간’ 을 누르면 그 칸으로 카메라처럼 다가가서, 크게 쓰고 칠해요.</p>
-    <p class="preview-note" data-show="ios:soon"><span class="badge is-soon">미리 보기</span> 출시를 준비 중인 앱의 실제 화면이에요.</p>
 
     <figure class="device tablet ipad-wrap">
       <div class="frame">
@@ -880,7 +884,7 @@
     <p class="label">Desk</p>
     <h2 id="desk-h">종이 밑에 깔 <span class="hl" style="--c: #F8B38A">책상</span>도 골라요.</h2>
     <p class="desc">바닷가의 파라솔 그늘, 블라인드 사이로 드는 교실 햇살. 종이는 그대로 두고 그 밑의 책상과 빛만 바뀌어요. 해 질 무렵이면 스탠드나 랜턴 같은 저녁 조명으로 천천히 넘어가고, 도구 막대도 그 빛을 따라가요.</p>
-    <p class="preview-note"><span class="badge is-soon" data-show="ios:soon">미리 보기</span> <span>iPhone · iPad 앱의 설정 › 이 기기 › 책상에서 골라요.</span></p>
+    <p class="preview-note"><span>iPhone · iPad 앱의 설정 › 이 기기 › 책상에서 골라요.</span></p>
     <div class="desks">
       <figure class="device iphone lead">
         <div class="frame"><img src="assets/desk-beach-day.webp" srcset="assets/desk-beach-day-260.webp 260w, assets/desk-beach-day.webp 520w" sizes="(max-width: 600px) 46vw, (max-width: 900px) 30vw, 246px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 일간 페이지를 바닷가 책상에 놓은 화면. 고운 모래 위로 파라솔 그늘이 비스듬히 드리워 있어요"></div>
@@ -909,13 +913,13 @@
     </div>
   </section>
 
-  <!-- 동기화 (곧) -->
+  <!-- 동기화 -->
   <section id="sync" aria-labelledby="sync-h">
     <div class="sync">
       <div>
         <p class="label">Spiralday Sync</p>
         <h2 id="sync-h">내 기기끼리,<br><span class="hl" style="--c: #8EDCD2">나만 읽을 수 있게</span>.</h2>
-        <p class="intro"><span class="badge is-available" data-badge="sync">지금 쓸 수 있어요</span> <span>켜고 싶은 사람만 켜는 동기화예요. 지금은 Mac · Windows 끼리 맞춰요.</span></p>
+        <p class="intro"><span class="badge is-available" data-badge="sync">지금 쓸 수 있어요</span> <span>켜고 싶은 사람만 켜는 동기화예요. 지금은 Mac · Windows · iPhone · iPad 끼리 맞춰요.</span></p>
         <ul class="marks">
           <li><span class="m" aria-hidden="true">○</span><div><b>종단간 암호화</b> — 플래너는 내 기기에서 잠근 뒤에 보내요. 서버에는 알아볼 수 없는 암호문으로만 남아서, 만든 저희도 읽을 수 없어요.</div></li>
           <li><span class="m" aria-hidden="true">○</span><div><b>계정 없이</b> — 이메일도 비밀번호도 없어요. QR 코드를 찍거나 8자리 코드를 넣으면 연결돼요. 기기를 바꾸거나 잃어버려도 25자리 복구 코드로 다시 이어요. 복구 코드는 저희도 모르니 꼭 따로 적어 두세요.</div></li>
@@ -925,7 +929,7 @@
       </div>
       <figure class="device iphone">
         <div class="frame"><img src="assets/sync-iphone.webp" srcset="assets/sync-iphone-260.webp 260w, assets/sync-iphone.webp 520w" sizes="(max-width: 900px) 226px, 253px" width="520" height="1130" loading="lazy" decoding="async" alt="iPhone 의 동기화 설정 화면. 동기화됨, 이 기기는 종단간 암호화, 연결된 기기 4대 — iPhone, MacBook, 회사 PC, iPad"></div>
-        <figcaption><span data-show="ios:soon">준비 중인 iPhone 앱의 동기화 화면</span><span data-show="ios:out" hidden>동기화 화면 (iPhone)</span></figcaption>
+        <figcaption>동기화 화면 (iPhone)</figcaption>
       </figure>
     </div>
   </section>
@@ -951,10 +955,9 @@
           <li><b>끝</b> — 설치되고 바로 열려요. 새 버전은 앱이 알아서 받아요.</li>
         </ol>
       </div>
-      <div class="inst later" data-platform="ios">
-        <h3>iPhone · iPad <span class="badge is-soon" data-badge="ios">곧 나와요</span></h3>
-        <p data-show="ios:soon">App Store 에 나오면 받기만 하면 돼요. 나오는 날 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads<span class="sr"> (새 창)</span></a> 에서 바로 알려 드릴게요.</p>
-        <p data-show="ios:out" hidden><a data-get="ios" data-state="get" href="#p-ios">App Store</a> 에서 Spiralday 를 받으면 끝이에요.</p>
+      <div class="inst" data-platform="ios">
+        <h3>iPhone · iPad <span class="badge is-available" data-badge="ios">지금 무료</span></h3>
+        <p><a data-get="ios" data-state="get" href="https://apps.apple.com/kr/app/spiralday/idAPPSTORE_ID_TBD">App Store</a> 에서 Spiralday 를 받으면 끝이에요.</p>
       </div>
       <div class="inst later" data-platform="android">
         <h3>Android <span class="badge is-soon" data-badge="android">곧 나와요</span></h3>
@@ -1010,7 +1013,7 @@
   <section class="final" id="download" aria-labelledby="download-h">
     <img class="icon" src="assets/icon-240.webp" alt="" width="120" height="120" loading="lazy" decoding="async">
     <h2 id="download-h">오늘 한 장, 넘겨 볼까요?</h2>
-    <p class="hand sub" data-text="final">무료 · Mac&nbsp;(macOS&nbsp;14&nbsp;이상) · Windows&nbsp;10&nbsp;·&nbsp;11&nbsp;(베타)<br>iPhone&nbsp;·&nbsp;iPad · Android 는 곧 나와요</p>
+    <p class="hand sub" data-text="final">무료 · Mac&nbsp;(macOS&nbsp;14&nbsp;이상) · Windows&nbsp;10&nbsp;·&nbsp;11&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad<br>Android 는 곧 나와요</p>
     <!-- 폰 · 태블릿으로 들어왔고 그 기기 앱이 아직이면 이 줄이 먼저 보인다 -->
     <div class="cta cta-mobile">
       <a class="btn primary" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
@@ -1031,7 +1034,7 @@
     </div>
     <script>(function () { var o = document.documentElement.getAttribute('data-visitor'), c = document.currentScript.previousElementSibling, m = o && c.querySelector('[data-os="' + o + '"]'); if (m && c.firstElementChild !== m) c.insertBefore(m, c.firstElementChild); })();</script>
     <p class="desk-link"><a href="#platforms">Mac · Windows(베타) 용은 컴퓨터에서 받아요 →</a></p>
-    <p class="meta"><a href="https://github.com/Grwaywee/spiralday/releases">지난 버전 모두 보기</a><span data-show="ios:soon android:soon"> · <a href="#platforms">iPhone&nbsp;·&nbsp;iPad&nbsp;·&nbsp;Android&nbsp;소식</a></span></p>
+    <p class="meta"><a href="https://github.com/Grwaywee/spiralday/releases">지난 버전 모두 보기</a><span data-show="android:soon"> · <a href="#p-android">Android&nbsp;소식</a></span></p>
   </section>
   </main>
 </div>
@@ -1062,7 +1065,7 @@
         <a href="https://leanagilehungry.com" target="_blank" rel="noopener">회사 소개<span class="sr"> (새 창)</span></a>
       </nav>
     </div>
-    <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday™ 는 LeanAgileHungry Inc. 의 상표예요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/TRADEMARKS.md">상표 정책</a>) · Mac 앱 소스 코드는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> 으로 비영리 목적에 공개돼 있어요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE-HISTORY.md">라이선스를 바꾸기 전에 MIT 로 공개된 버전은 MIT 그대로</a>) · 손글씨 폰트: Poor Story © YoonDesign Inc. (SIL OFL 1.1)</p>
+    <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday™ 는 LeanAgileHungry Inc. 의 상표예요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/TRADEMARKS.md">상표 정책</a>) · Mac 앱 소스 코드는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> 으로 비영리 목적에 공개돼 있어요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE-HISTORY.md">라이선스를 바꾸기 전에 MIT 로 공개된 버전은 MIT 그대로</a>) · 손글씨 폰트: Poor Story © YoonDesign Inc. (SIL OFL 1.1) · Apple, iPhone, iPad, Mac 은 미국과 그 밖의 나라에 등록된 Apple Inc. 의 상표이고, App&nbsp;Store 는 Apple Inc. 의 서비스 마크예요</p>
   </div>
 </footer>
 <script>
