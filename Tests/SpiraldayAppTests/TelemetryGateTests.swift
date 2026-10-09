@@ -136,4 +136,38 @@ final class TelemetryGateTests: XCTestCase {
         XCTAssertTrue(s.developerID, "팀 \(TelemetryGate.releaseTeamID) 의 Developer ID 요구 조건을 만족해야 한다")
         XCTAssertTrue(TelemetryGate.isRelease(s))
     }
+
+    /// 다른 팀의 진짜 Developer ID 앱 (포크가 자기 인증서로 서명한 것과 같다) — Developer ID 이지만 보내지 않는다.
+    /// 이 Mac 에 깔린 앱의 서명만 읽는다 (실행하지 않는다).
+    func testAnotherTeamsDeveloperIDAppIsNotARelease() throws {
+        let candidates = ["Google Chrome", "Docker", "Slack", "Figma", "zoom.us", "Obsidian", "Microsoft Edge", "Firefox", "Visual Studio Code"]
+        let found = candidates.lazy
+            .map { URL(fileURLWithPath: "/Applications/\($0).app") }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .map { ($0, TelemetrySigning.read(at: $0)) }
+            .first { $0.1.developerID && $0.1.teamID != nil && $0.1.teamID != TelemetryGate.releaseTeamID }
+        guard let (app, s) = found else { throw XCTSkip("다른 팀의 Developer ID 앱이 /Applications 에 없음") }
+        XCTAssertFalse(TelemetryGate.isRelease(s), app.path)
+        XCTAssertEqual(TelemetryGate.decide(signing: s, override: nil), .skip(.notReleaseBuild), app.path)
+        // 요구 조건 자체도 우리 팀만 받는다
+        var code: SecStaticCode?
+        var req: SecRequirement?
+        XCTAssertEqual(SecStaticCodeCreateWithPath(app as CFURL, SecCSFlags(), &code), errSecSuccess)
+        XCTAssertEqual(SecRequirementCreateWithString(
+            TelemetrySigning.developerIDRequirement(team: TelemetryGate.releaseTeamID) as CFString, SecCSFlags(), &req), errSecSuccess)
+        let flags = SecCSFlags(rawValue: kSecCSDoNotValidateExecutable | kSecCSDoNotValidateResources)
+        XCTAssertNotEqual(SecStaticCodeCheckValidity(try XCTUnwrap(code), flags, try XCTUnwrap(req)), errSecSuccess, app.path)
+    }
+
+    /// Mac App Store 서명 (팀 id 는 있지만 Developer ID 가 아니다) — Apple Development 처럼 Developer ID 로 알아보지 않는다
+    func testAMacAppStoreSignatureIsNotDeveloperID() throws {
+        let candidates = ["KakaoTalk", "Numbers", "Keynote", "Pages", "Final Cut Pro", "Logic Pro", "Motion", "TestFlight"]
+        let found = candidates.lazy
+            .map { URL(fileURLWithPath: "/Applications/\($0).app") }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .map { ($0, TelemetrySigning.read(at: $0)) }
+            .first { $0.1.teamID != nil && !$0.1.developerID }
+        guard let (app, s) = found else { throw XCTSkip("팀 id 가 있는 Mac App Store 앱이 /Applications 에 없음") }
+        XCTAssertFalse(TelemetryGate.isRelease(s), app.path)
+    }
 }

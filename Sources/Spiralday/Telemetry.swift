@@ -276,11 +276,12 @@ enum TelemetrySigning {
     }
 
     /// 서명 정보(SecCodeCopySigningInformation)의 팀 id, 그리고 그 팀의 Developer ID 요구 조건을 만족하는지.
-    /// 요구 조건은 서명 · 인증서 체인 · 실행 파일만 확인하고 번들의 다른 파일(글꼴 · 그림)은 해시하지 않는다 (가볍게).
+    /// 요구 조건은 서명(코드 디렉터리) · 인증서 체인만 확인하고, 실행 파일의 페이지와 번들의 다른 파일(글꼴 · 그림)은
+    /// 해시하지 않는다 — 실행 중인 프로세스의 페이지는 커널이 이미 서명과 맞춰 본다 (출시 앱에서 1ms 안팎, 실행 파일까지 해시하면 20ms).
     private static func signing(of staticCode: SecStaticCode) -> TelemetryGate.Signing {
         guard let team = teamID(of: staticCode) else { return .unsigned }
         guard let req = requirement(team: team) else { return .init(teamID: team, developerID: false) }
-        let flags = SecCSFlags(rawValue: kSecCSDoNotValidateResources)
+        let flags = SecCSFlags(rawValue: kSecCSDoNotValidateExecutable | kSecCSDoNotValidateResources)
         return .init(teamID: team, developerID: SecStaticCodeCheckValidity(staticCode, flags, req) == errSecSuccess)
     }
 
