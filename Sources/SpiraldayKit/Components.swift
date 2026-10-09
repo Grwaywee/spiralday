@@ -1074,6 +1074,8 @@ public struct DDayEditor: View {
     @State private var host = EditorWindow()
     #else
     @Environment(\.dismiss) private var dismiss
+    /// 이 편집기를 ‘지금 떠 있는 편집기’로 적어 두는 표 (DDayEditorEscape)
+    @State private var escapeToken = UUID()
     #endif
 
     public init(date: Date) {
@@ -1206,16 +1208,28 @@ public struct DDayEditor: View {
         // macOS 팝오버는 닫혀도 내용의 onDisappear 가 오지 않는다 (다음에 열 때 새 내용을 만든다) — 팝오버의 닫힘을 듣는다
         .background(PopoverCloseWatcher(host: host) { cancelled in draftClosed(cancelled: cancelled) })
         #else
-        // 하드웨어 키보드의 Esc = 취소: 적은 것은 버리고 닫는다
+        // 하드웨어 키보드의 Esc = 취소: 적은 것은 버리고 닫는다 (이름 칸에 쓰는 중 — 편집기 안에 초점이 있을 때)
         .onKeyPress(.escape) {
-            draftClosed(cancelled: true)
-            dismiss()
+            cancelAndClose()
             return .handled
         }
+        // 편집기 안에 초점이 없으면(열고 아직 칸을 누르지 않음 · Return 으로 붙인 뒤) Esc 는 앱의 키 받개로 간다 —
+        // 앱이 DDayEditorEscape.cancel() 로 넘겨주면 여기서 취소하고 닫는다
+        .onAppear { DDayEditorEscape.opened(escapeToken) { cancelAndClose() } }
+        .onDisappear { DDayEditorEscape.closed(escapeToken) }
         #endif
     }
 
-    /// 편집기가 닫혔다 (Mac: 팝오버 바깥 클릭 · iPhone: 시트의 [완료] · 아래로 쓸기 · iPad: 바깥 톡 …).
+    #if !os(macOS)
+    /// Esc: 적은 것은 버리고 닫는다 (사장님 약속: 키보드의 Esc 는 취소)
+    private func cancelAndClose() {
+        draftClosed(cancelled: true)
+        dismiss()
+    }
+    #endif
+
+    /// 편집기가 닫혔다 (Mac: 팝오버 바깥 클릭 · iPhone: 시트의 [완료] · 아래로 쓸기 · iPad: 바깥 톡, 기기를 돌려 종이 배치가 바뀌며
+    /// 팝오버가 닫힐 때도 — 사용자가 닫지 않았어도 Esc 가 아니면 붙인다 …).
     /// ‘새로 만들기’에 이름을 적어 두었으면 [붙이기]와 똑같이 붙인다 (날짜 · ‘목록에도 저장’ 그대로) — 직원 시험 5-1 (2026-10-08):
     /// 적고 [완료]로 닫으면 말없이 사라졌다. 이름이 비었거나(날짜만 바꿈) 2개가 찬 날은 붙이지 않는다.
     /// cancelled: Esc · ⌘. 로 닫았다 — 취소라 버린다 (사장님 약속: 키보드의 Esc 는 취소). 어느 쪽이든 적은 것은 비운다 — 닫힘 알림과
@@ -1334,6 +1348,29 @@ public struct DDayEditor: View {
         if picking == "new" { picking = nil }
     }
 }
+
+#if !os(macOS)
+/// 떠 있는 D-day 편집기의 ‘취소’ (iPhone · iPad). 하드웨어 키보드의 Esc 는 편집기 안에 초점이 있을 때(이름 칸에 쓰는 중)만
+/// 편집기의 .onKeyPress 가 받고, 그렇지 않으면 — 편집기를 열고 아직 칸을 누르지 않았거나, Return 으로 붙여 칸에서 나온 뒤 —
+/// 앱의 키 받개(종이 단축키)로 가서 편집기가 열린 채 남았다 (iPadOS 26 시뮬레이터에서 재현, 회의적 검토 2026-10-10).
+/// 앱이 그 Esc 를 cancel() 로 넘기면 떠 있는 편집기가 적은 것을 버리고 닫는다 (사장님 약속: 키보드의 Esc 는 취소).
+@MainActor
+public enum DDayEditorEscape {
+    private static var current: (token: UUID, cancel: () -> Void)?
+
+    static func opened(_ token: UUID, cancel: @escaping () -> Void) { current = (token, cancel) }
+    static func closed(_ token: UUID) { if current?.token == token { current = nil } }
+
+    /// D-day 편집기가 떠 있으면 Esc 처럼 취소하고 닫는다 (적은 것은 버린다). 떠 있지 않으면 false
+    @discardableResult
+    public static func cancel() -> Bool {
+        guard let c = current else { return false }
+        current = nil
+        c.cancel()
+        return true
+    }
+}
+#endif
 
 #if os(macOS)
 /// 이 뷰가 든 팝오버가 닫히기 시작할 때 알린다 (NSPopover.willCloseNotification — 바깥 클릭 · Esc · 코드로 닫기 모두).
