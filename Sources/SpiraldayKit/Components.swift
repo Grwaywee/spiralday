@@ -893,14 +893,36 @@ public struct SlotPainter: View {
     }
 
     /// 밥시간 아이콘: 오른쪽 클릭으로 지우기
+    @ViewBuilder
     private func mealHandle(_ n: TimeNote) -> some View {
         let c = cellCenter(min(n.start, n.end))
-        return Color.clear
+        #if os(macOS)
+        // 왼쪽 누름 · 끌기는 다른 칸과 똑같이 칠하기 · 지우개 · 글씨 · 밥 (iPhone TimePaintView 처럼 — 직원 시험 2026-10-08:
+        // "밑줄 중에는 밥 동그라미가 선택을 가져가지 않게"). 예전에는 동그라미가 칠하기 층 위에서 왼쪽 누름을 받고 버렸다.
+        // 오른쪽 클릭 · ⌃클릭만 동그라미의 몫 ('밥시간 지우기'). SwiftUI 의 끌기 제스처는 창의 오른쪽 클릭까지 받아서
+        // 동그라미를 그 층 안에 두면 메뉴가 뜨지 않고 칸이 칠해진다 — 그래서 동그라미는 AppKit 뷰가 단추별로 나눠 받는다.
+        // 넘김 스냅샷 · PDF(ImageRenderer)에는 넣지 않는다: AppKit 뷰는 노란 '그릴 수 없음' 자리표로 찍힌다 (동그라미 그림은 Canvas 몫).
+        let origin = CGPoint(x: c.x - iconSize / 2, y: c.y - iconSize / 2)
+        if !isSnapshot {
+            MealCircleHandle(
+                cursor: state.tool == AppState.textTool ? .iBeam : .crosshair,
+                stroke: { p, ended in
+                    let at = CGPoint(x: origin.x + p.x, y: origin.y + p.y)
+                    if ended { dragEnded(at) } else { drag(at, store.day(date).slots) }
+                },
+                remove: { store.removeNote(date, n.id) }
+            )
+            .frame(width: iconSize, height: iconSize)
+            .position(x: c.x, y: c.y)
+        }
+        #else
+        Color.clear
             .frame(width: iconSize, height: iconSize)
             .contentShape(Circle())
             .contextMenu { Button("밥시간 지우기", role: .destructive) { store.removeNote(date, n.id) } }
             .help("밥시간 — 오른쪽 클릭으로 지우기")
             .offset(x: c.x - iconSize / 2, y: c.y - iconSize / 2)
+        #endif
     }
 
     // MARK: input
@@ -954,6 +976,83 @@ public struct SlotPainter: View {
         }
     }
 }
+
+#if os(macOS)
+/// 타임테이블의 🍴 동그라미 (macOS). 동그라미 안에서만 마우스를 받는다:
+/// - 왼쪽 누름 · 끌기 → stroke (칠하기 층의 끌기와 같은 함수로 — 동그라미에서 시작해도 칠하기 · 지우개 · 글씨 · 밥)
+/// - 오른쪽 클릭 · ⌃클릭 → '밥시간 지우기' 메뉴 (칸은 칠하지 않는다)
+struct MealCircleHandle: NSViewRepresentable {
+    var cursor: NSCursor
+    /// 동그라미 왼쪽 위에서 잰 점, 끝났는지
+    var stroke: (CGPoint, Bool) -> Void
+    var remove: () -> Void
+
+    func makeNSView(context: Context) -> CircleView { CircleView() }
+
+    func updateNSView(_ v: CircleView, context: Context) {
+        v.handle = self
+        v.toolTip = "밥시간 — 오른쪽 클릭으로 지우기"
+        v.window?.invalidateCursorRects(for: v)
+    }
+
+    final class CircleView: NSView {
+        var handle: MealCircleHandle?
+        /// 왼쪽 누름을 받아 끄는 중 (뗄 때 한 번 끝낸다)
+        private var stroking = false
+
+        override var isFlipped: Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let superview else { return nil }
+            let p = convert(point, from: superview)
+            let r = min(bounds.width, bounds.height) / 2
+            return hypot(p.x - bounds.midX, p.y - bounds.midY) <= r ? self : nil
+        }
+
+        /// 종이처럼: 다른 창을 보다 처음 누른 것을 종이(호스팅 뷰)가 받는지 그대로 따른다
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            window?.contentView?.acceptsFirstMouse(for: event) ?? false
+        }
+
+        private func point(_ e: NSEvent) -> CGPoint { convert(e.locationInWindow, from: nil) }
+
+        override func mouseDown(with e: NSEvent) {
+            if e.modifierFlags.contains(.control) {
+                // ⌃클릭 = 오른쪽 클릭 (창이 먼저 메뉴로 돌리지 않았을 때)
+                if let m = menu(for: e) { NSMenu.popUpContextMenu(m, with: e, for: self) }
+                return
+            }
+            stroking = true
+            handle?.stroke(point(e), false)
+        }
+
+        override func mouseDragged(with e: NSEvent) {
+            guard stroking else { return }
+            handle?.stroke(point(e), false)
+        }
+
+        override func mouseUp(with e: NSEvent) {
+            guard stroking else { return }
+            stroking = false
+            handle?.stroke(point(e), true)
+        }
+
+        override func menu(for event: NSEvent) -> NSMenu? {
+            let m = NSMenu()
+            let item = NSMenuItem(title: "밥시간 지우기", action: #selector(removeMeal), keyEquivalent: "")
+            item.target = self
+            m.addItem(item)
+            return m
+        }
+
+        @objc private func removeMeal() { handle?.remove() }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: handle?.cursor ?? .crosshair)
+        }
+    }
+}
+#endif
 
 // MARK: - D-day editor (이 날의 D-day: 일간 D-DAY 칸, 홈 D-DAY 칸, 팔레트 버튼에서 같이 쓴다)
 
