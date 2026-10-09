@@ -1069,7 +1069,10 @@ public struct DDayEditor: View {
     /// 달력을 펼친 줄: 붙인 D-day 의 id 또는 "new"
     @State private var picking: String? = nil
     @State private var showPast = false
-    #if !os(macOS)
+    #if os(macOS)
+    /// 이 편집기가 든 창 (PopoverCloseWatcher 가 알려 준다) — [붙이기] 전에 조합 중인 글자를 마치게 할 곳
+    @State private var host = EditorWindow()
+    #else
     @Environment(\.dismiss) private var dismiss
     #endif
 
@@ -1201,7 +1204,7 @@ public struct DDayEditor: View {
         .onDisappear { draftClosed(cancelled: false) }
         #if os(macOS)
         // macOS 팝오버는 닫혀도 내용의 onDisappear 가 오지 않는다 (다음에 열 때 새 내용을 만든다) — 팝오버의 닫힘을 듣는다
-        .background(PopoverCloseWatcher { cancelled in draftClosed(cancelled: cancelled) })
+        .background(PopoverCloseWatcher(host: host) { cancelled in draftClosed(cancelled: cancelled) })
         #else
         // 하드웨어 키보드의 Esc = 취소: 적은 것은 버리고 닫는다
         .onKeyPress(.escape) {
@@ -1321,6 +1324,10 @@ public struct DDayEditor: View {
     }
 
     private func attachNew() {
+        #if os(macOS)
+        // 입력기가 조합 중인 마지막 음절은 아직 newTitle 에 없다 — 먼저 마쳐서 이름 칸에 보이는 그대로 붙인다 (이름 칸은 계속 쓰는 중)
+        ComposingText.finish(in: host.window, refocus: true)
+        #endif
         let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard store.addDDay(title: title, date: newDate, to: date, save: saveToLibrary) != nil else { return }
         newTitle = ""
@@ -1333,11 +1340,18 @@ public struct DDayEditor: View {
 /// macOS 의 SwiftUI 팝오버는 닫혀도 내용의 onDisappear 를 부르지 않아서 (다음에 열 때 새 내용을 만들고 예전 것은 그대로 둔다)
 /// 내용이 닫힘을 알 길이 이것뿐이다. 다른 팝오버(팔레트의 펜 · 다른 칸)의 닫힘은 내용이 이 뷰를 품었는지로 거른다.
 /// cancelled: 팝오버가 Esc · ⌘. 를 받는 그 자리에서 닫혔다 (그때 앱의 지금 이벤트가 이 팝오버 창이나 종이 창에 온 그 키).
+/// 취소가 아니면 알리기 전에 입력기가 조합 중인 글자를 마친다 (ComposingText) — 바깥 클릭으로 닫아도 보이는 글 그대로 읽게.
+/// host: 이 뷰가 든 창을 적어 둘 곳 (편집기가 닫히기 전에도 그 창에서 조합을 마칠 수 있게)
 struct PopoverCloseWatcher: NSViewRepresentable {
+    var host: EditorWindow? = nil
     let onClose: (_ cancelled: Bool) -> Void
 
     func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ v: Probe, context: Context) { v.onClose = onClose }
+    func updateNSView(_ v: Probe, context: Context) {
+        v.onClose = onClose
+        v.host = host
+        host?.window = v.window
+    }
 
     /// 팝오버 창 w 를 닫게 한 이벤트가 취소 키인지: w 나 w 가 매달린 창(종이)에 온 Esc, ⌘.
     /// (앱의 지금 이벤트는 다음 이벤트까지 남아 있어서, 예전에 다른 창 · 다른 팝오버에 온 Esc 를 이번 닫기로 여기지 않게 창도 본다)
@@ -1352,9 +1366,11 @@ struct PopoverCloseWatcher: NSViewRepresentable {
 
     final class Probe: NSView {
         var onClose: ((Bool) -> Void)?
+        var host: EditorWindow?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            host?.window = window
             NotificationCenter.default.removeObserver(self, name: NSPopover.willCloseNotification, object: nil)
             guard window != nil else { return }
             NotificationCenter.default.addObserver(self, selector: #selector(popoverWillClose(_:)),
@@ -1363,10 +1379,37 @@ struct PopoverCloseWatcher: NSViewRepresentable {
 
         @objc private func popoverWillClose(_ n: Notification) {
             guard let content = (n.object as? NSPopover)?.contentViewController?.view, isDescendant(of: content) else { return }
-            onClose?(PopoverCloseWatcher.isCancel(NSApp.currentEvent, in: window))
+            let cancelled = PopoverCloseWatcher.isCancel(NSApp.currentEvent, in: window)
+            // 닫힘 알림은 입력기가 조합을 마치기 전에 온다: 두벌식이 들고 있는 마지막 음절('시험공부'의 '부')은 이름 칸에는 보여도
+            // 글(바인딩)에는 아직 없어 '시험공'이 붙었다 (회의적 검토 2026-10-10). 먼저 마친다 — 취소면 어차피 버리니 그대로
+            if !cancelled { ComposingText.finish(in: window) }
+            onClose?(cancelled)
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
+/// 편집기가 든 창 (약하게 든다) — 뷰 상태에 두고 PopoverCloseWatcher 가 채운다
+final class EditorWindow {
+    weak var window: NSWindow?
+}
+
+/// 입력기가 조합 중인 글자: 두벌식이 스페이스 · Return 전까지 들고 있는 마지막 음절, 일본어의 변환 전 글자 …
+/// 글상자에는 보여도 SwiftUI 의 글(바인딩)에는 아직 없어서, 그 채로 글을 읽으면 마지막 글자가 빠진다.
+enum ComposingText {
+    /// 창 w 의 첫 응답자가 조합 중인 글상자면 조합한 글자를 확정하고(입력기에도 버리라고 알려 같은 글자가 다시 들어가지 않게 —
+    /// 일간 COMMENT 의 Return(ReturnNewlineMonitorView)과 같은 방법) 쓰기를 끝내 글상자의 글을 바인딩으로 보낸다. 조합 중이 아니면 아무것도 하지 않는다.
+    /// refocus: 끝낸 뒤 같은 글상자로 돌아가 이어 쓸 수 있게 (편집기가 열린 채일 때 — [붙이기])
+    @MainActor @discardableResult
+    static func finish(in w: NSWindow?, refocus: Bool = false) -> Bool {
+        guard let w, let tv = w.firstResponder as? NSTextView, tv.hasMarkedText() else { return false }
+        let field = tv.isFieldEditor ? tv.delegate as? NSView : nil
+        tv.unmarkText()
+        tv.inputContext?.discardMarkedText()
+        guard w.makeFirstResponder(nil) else { return true }
+        if refocus, let field, field.window === w { w.makeFirstResponder(field) }
+        return true
     }
 }
 #endif
