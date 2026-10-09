@@ -69,7 +69,8 @@
    *   2. JSON-LD 의 operatingSystem · downloadUrl
    *   3. assets/og.jpg 의 글자 (다시 뽑으면 og:image 의 ?v= 값도 올리기)
    *   4. HTML 기본 글자: 배지(data-badge), data-text 세 곳(대문 소개 · 기기 설명 · 마지막 줄), 대문 상태 줄(data-avail),
-   *      대문 meta 의 사양 줄, 대문 그림(폰 · 태블릿 그림은 iPhone · iPad 화면)
+   *      대문 meta 의 사양 줄, 대문 그림(폰 · 태블릿 그림은 iPhone · iPad 화면),
+   *      대문 · 마지막 줄 .cta 의 스토어 버튼(data-os — 지금은 App Store. 첫 그림부터 자리를 잡게 HTML 에 두고, 보이는 기기는 CSS 가 정한다)
    *   5. privacy.html (새 앱 · 동기화가 처리하는 정보)
    */
   var PLATFORMS = {
@@ -298,15 +299,20 @@
   html[data-visitor="ios"] .soon-title [data-for="ios"], html[data-visitor="android"] .soon-title [data-for="android"] { display: inline; }
   html.m-soon header nav a.dl .dl-get { display: none; }
   html.m-soon header nav a.dl .dl-soon { display: inline; }
-  /* 컴퓨터: 내 기기 버튼만 진하게, 다른 OS 버튼은 한 단계 낮춘다 (스크립트가 없으면 둘 다 진하게) */
+  /* 컴퓨터: 내 기기 버튼만 진하게, 다른 OS 버튼은 한 단계 낮춘다 (스크립트가 없으면 둘 다 진하게)
+     폰 · 태블릿: 기기 카드의 dmg · exe 버튼과 다른 모바일 OS 의 스토어 버튼을 낮춘다 — 진한 버튼은 내 기기 것 하나만 */
   html[data-visitor="mac"] .cta [data-os="windows"],
   html[data-visitor="windows"] .cta [data-os="mac"],
-  html.m-soon .plat [data-get="mac"],
-  html.m-soon .plat [data-get="windows"] { background: rgba(0,0,0,.05); color: var(--ink); box-shadow: none; }
+  html.is-mobile .plat [data-get="mac"],
+  html.is-mobile .plat [data-get="windows"],
+  html[data-visitor="android"] .plat [data-get="ios"],
+  html[data-visitor="ios"] .plat [data-get="android"] { background: rgba(0,0,0,.05); color: var(--ink); box-shadow: none; }
   html[data-visitor="mac"] .cta [data-os="windows"]:hover,
   html[data-visitor="windows"] .cta [data-os="mac"]:hover,
-  html.m-soon .plat [data-get="mac"]:hover,
-  html.m-soon .plat [data-get="windows"]:hover { background: rgba(0,0,0,.08); box-shadow: none; transform: none; }
+  html.is-mobile .plat [data-get="mac"]:hover,
+  html.is-mobile .plat [data-get="windows"]:hover,
+  html[data-visitor="android"] .plat [data-get="ios"]:hover,
+  html[data-visitor="ios"] .plat [data-get="android"]:hover { background: rgba(0,0,0,.08); box-shadow: none; transform: none; }
   html[data-visitor="mac"] .cta [data-os="windows"] .beta { background: rgba(0,0,0,.07); }
   html[data-visitor="windows"] .cta [data-os="windows"] { background: var(--plum); box-shadow: 0 10px 24px -8px rgba(60,51,87,.55); }
   /* 폰 · 태블릿: 내 기기 카드의 '출시 소식 받기' 를 진하게 */
@@ -315,6 +321,9 @@
   html.is-mobile .cta [data-os="mac"], html.is-mobile .cta [data-os="windows"] { display: none; }
   /* 폰 · 태블릿: 다른 모바일 OS 의 스토어 버튼은 숨긴다 (Android 에서 App Store, iPhone · iPad 에서 Google Play) */
   html[data-visitor="android"] .cta [data-os="ios"], html[data-visitor="ios"] .cta [data-os="android"] { display: none; }
+  /* 대문의 App Store 버튼은 iPhone · iPad 로 들어온 사람에게만. HTML 에 미리 두어 첫 그림부터 자리를 잡는다 (컴퓨터 · 스크립트 없이는 Mac · Windows 만) */
+  .hero .cta [data-os="ios"] { display: none; }
+  html[data-visitor="ios"]:not(.m-soon) .hero .cta [data-os="ios"] { display: inline-flex; }
   html.is-mobile .hero .avail, html.is-mobile .hero .meta .spec { display: none; }
   html.m-soon .hero .lead [data-text] { display: none; }
 
@@ -614,6 +623,10 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
           Windows용 무료 다운로드 <span class="beta">베타</span>
         </a>
+        <a class="btn primary" data-os="ios" href="https://apps.apple.com/kr/app/spiralday/idAPPSTORE_ID_TBD">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          App Store 에서 받기
+        </a>
         <a class="btn ghost star" href="https://github.com/Grwaywee/spiralday" aria-label="GitHub에서 별 주기 — Spiralday">
           <span aria-hidden="true">⭐</span><span>GitHub에서 별 주기<span class="count" data-stars aria-hidden="true"></span></span>
         </a>
@@ -718,7 +731,7 @@
 
   <!-- 일간 -->
   <section id="features" aria-labelledby="features-h">
-    <p class="basis"><span class="badge is-available">지금 받을 수 있는 앱</span> <span>아래 기능은 Mac · Windows 앱 기준이에요. iPhone · iPad 앱 화면은 <a href="#devices">iPad · iPhone</a> 에서 볼 수 있어요.</span></p>
+    <p class="basis"><span>아래 기능은 Mac · Windows 앱 기준이에요. iPhone · iPad 앱은 <a href="#devices">iPad · iPhone 소개</a>에서 따로 볼 수 있어요.</span></p>
     <p class="label">Daily</p>
     <div class="split">
       <div>
@@ -1028,6 +1041,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
         Windows용 무료 다운로드 <span class="beta">베타</span>
       </a>
+      <a class="btn ghost" data-os="ios" href="https://apps.apple.com/kr/app/spiralday/idAPPSTORE_ID_TBD">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+        App Store 에서 받기
+      </a>
       <a class="btn ghost star" href="https://github.com/Grwaywee/spiralday" aria-label="GitHub에서 별 주기 — Spiralday">
         <span aria-hidden="true">⭐</span><span>GitHub에서 별 주기<span class="count" data-stars aria-hidden="true"></span></span>
       </a>
@@ -1138,11 +1155,14 @@
         (now.length ? '<span class="grp"><span class="badge is-available">지금 무료</span><span>' + now.map(function (k) { return link(k) + beta(k); }).join(' · ') + '</span></span>' : '') +
         (soon.length ? ' <span class="grp"><span class="badge is-soon">곧 나와요</span><span>' + soon.map(link).join(' · ') + '</span></span>' : '');
     }
-    // 마지막 줄: 스토어에 나온 기기는 받기 버튼을 더한다
+    // 마지막 줄: 스토어에 나온 기기는 받기 버튼을 둔다 (HTML 에 이미 있으면 주소만 맞추고, 아직이면 뺀다)
     var finalCta = document.querySelector('.final .cta:not(.cta-mobile)');
     ['ios', 'android'].forEach(function (k) {
-      if (!out(k) || !finalCta) return;
-      var a = document.createElement('a');
+      if (!finalCta) return;
+      var a = finalCta.querySelector('[data-os="' + k + '"]');
+      if (!out(k)) { if (a) a.parentNode.removeChild(a); return; }
+      if (a) { a.href = PLATFORMS[k].url; return; }
+      a = document.createElement('a');
       a.className = 'btn ghost'; a.href = PLATFORMS[k].url; a.setAttribute('data-os', k);
       a.innerHTML = DL + ' ' + GET[k];
       finalCta.insertBefore(a, finalCta.querySelector('.star'));
@@ -1181,7 +1201,7 @@
     if (out(os)) {
       each('.cta:not(.cta-mobile)', function (c) {
         var mine = c.querySelector('[data-os="' + os + '"]');
-        if (mine) { mine.className = 'btn primary'; return; }
+        if (mine) { mine.className = 'btn primary'; mine.href = PLATFORMS[os].url; return; }
         var a = document.createElement('a');
         a.className = 'btn primary'; a.href = PLATFORMS[os].url; a.setAttribute('data-os', os);
         a.innerHTML = DL + ' ' + GET[os];

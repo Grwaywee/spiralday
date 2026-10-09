@@ -64,7 +64,8 @@ LICENSE 가 요구하는 고지(LICENSE 사본이나 URL, `Required Notice:` 줄
   - 자동 업데이트는 Sparkle 이 EdDSA 서명을 앱에 들어 있는 공개 키(`SUPublicEDKey`)로 확인한 뒤에만 설치합니다
 - **Windows (베타)**: [GitHub Releases](https://github.com/Grwaywee/spiralday/releases) 의 `Spiralday-Setup.exe` (`win-latest` — 웹사이트의 Windows 다운로드 버튼이 거는 파일) · `Spiralday-Setup-<버전>.exe`, 그리고 앱 안의 자동 업데이트
   - 파일 속성 → 디지털 서명에서 서명자가 ‘LeanAgileHungry . INC’ 인지, PowerShell `Get-AuthenticodeSignature .\Spiralday-Setup.exe` (또는 `Spiralday-Setup-<버전>.exe`) 의 `Status` 가 `Valid` 인지
-- **iPhone · iPad · Android**: 스토어에 나오면 spiralday.com 에 링크를 올립니다. spiralday.com 에 걸린 스토어 링크만 공식입니다.
+- **iPhone · iPad**: App Store — spiralday.com 에 걸린 App Store 링크로 들어가는 앱이 공식입니다.
+- **Android**: Google Play 에 나오면 spiralday.com 에 링크를 올립니다. spiralday.com 에 걸린 스토어 링크만 공식입니다.
 
 ## 문의
 
@@ -88,9 +89,10 @@ LICENSE 가 요구하는 고지(LICENSE 사본이나 URL, `Required Notice:` 줄
 
 **Please don't:** suggest, through names, icons or descriptions, that your app is official or made, endorsed or sponsored by LeanAgileHungry Inc.; publish an app or website under the Spiralday name or icon, or use them in app, domain or account names; modify or imitate the logo or icon.
 
-**Official downloads and how to verify:** only <https://spiralday.com> and [GitHub Releases](https://github.com/Grwaywee/spiralday/releases) of this repository, plus the in-app updaters.
+**Official downloads and how to verify:** only <https://spiralday.com> and [GitHub Releases](https://github.com/Grwaywee/spiralday/releases) of this repository, plus the in-app updaters and the store links posted on spiralday.com.
 - Mac: compare `shasum -a 256` with the release’s `SHA256SUMS.txt`; `spctl -a -t open --context context:primary-signature -vv Spiralday-<version>.dmg` should report `accepted`, `source=Notarized Developer ID`, `origin=Developer ID Application: LeanAgileHungry Inc. (SCQ7JJP5MN)`; `codesign -dv --verbose=4 /Applications/Spiralday.app` should show `TeamIdentifier=SCQ7JJP5MN`. Sparkle installs an update only after checking its EdDSA signature against the public key (`SUPublicEDKey`) inside the app.
 - Windows (beta): `Spiralday-Setup.exe` from the `win-latest` release (the file the website’s Windows download button links to) or `Spiralday-Setup-<version>.exe`; the installer’s digital signature should name ‘LeanAgileHungry . INC’, and `Get-AuthenticodeSignature` should report `Status: Valid`.
-- iPhone, iPad, Android: when they are in the stores, the store links will be posted on spiralday.com; only those links are official.
+- iPhone, iPad: the App Store — the app that the App Store link on spiralday.com opens is the official one.
+- Android: when it is on Google Play, the store link will be posted on spiralday.com; only store links posted there are official.
 
 **Contact** (trademark permission, commercial licensing, reporting impersonation): **contact@leanagilehungry.com**. This policy may change; changes will be recorded in this file.
