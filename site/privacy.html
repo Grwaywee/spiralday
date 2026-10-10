@@ -157,14 +157,14 @@
     <p class="label">Privacy</p>
     <h1>개인정보 <span class="hl" style="--c: #F7C3CD">처리방침</span></h1>
     <p class="lead">주식회사 린에자일헝그리(이하 ‘회사’)는 Spiralday 를 만들고 운영해요. Spiralday 앱(Mac · Windows · Android · iPhone · iPad)과 동기화 기능 Spiralday Sync 가 어떤 정보를 왜 처리하는지 여기에 적어 둡니다.</p>
-    <p class="date">시행일: 2026년 9월 29일 · 개정: 2026년 10월 2일 (Windows 앱 추가), 2026년 10월 4일 (Threads DM 문의 추가), 2026년 10월 6일 (Android · iPhone · iPad 앱, Spiralday Sync, Android 의 QR 카메라와 Google ML Kit 추가), 2026년 10월 8일 (Spiralday Sync 의 실시간 쓰기, Android 에서 통계를 끄는 곳과 Google Play 시험 기기, ML Kit 가 보내는 항목과 때, 처리를 맡긴 곳 추가), 2026년 10월 10일 (Android 의 Google ML Kit 가 보내는 항목 보충, Android System WebView 의 자동 완성 질의 추가)</p>
+    <p class="date">시행일: 2026년 9월 29일 · 개정: 2026년 10월 2일 (Windows 앱 추가), 2026년 10월 4일 (Threads DM 문의 추가), 2026년 10월 6일 (Android · iPhone · iPad 앱, Spiralday Sync, Android 의 QR 카메라와 Google ML Kit 추가), 2026년 10월 8일 (Spiralday Sync 의 실시간 쓰기, Android 에서 통계를 끄는 곳과 Google Play 시험 기기, ML Kit 가 보내는 항목과 때, 처리를 맡긴 곳 추가), 2026년 10월 10일 (Android 의 Google ML Kit 가 보내는 항목과 때 보충, Android System WebView 의 자동 완성 질의 추가)</p>
 
     <div class="summary">
       <ul>
         <li><b>플래너 기록은 내 기기에만</b> — 회사로 보내지 않아요</li>
         <li><b>Spiralday Sync 는 켤 때만</b> — 내 기기끼리 종단간 암호화로 오가요. 서버에는 암호문만 남고, 회사는 읽을 수 없어요</li>
         <li><b>익명 사용 통계</b> — 하루 한 번 앱 버전 · 기기 종류 · 운영체제 버전 · 칩 종류 · 언어 · 무작위 설치 번호만. 설정에서 끌 수 있어요</li>
-        <li><b>Android 에서 QR 코드를 찍을 때</b> — 코드를 기기 안에서 읽는 Google ML Kit 가 자체 진단 정보를 Google 로 보내요. 8자리 코드로 연결하면 보내지 않아요</li>
+        <li><b>Android 에서 QR 코드를 찍을 때</b> — 코드를 기기 안에서 읽는 Google ML Kit 가 자체 진단 정보를 Google 로 보내요. 8자리 코드로 연결하면 이 진단 정보는 보내지 않아요</li>
         <li><b>계정 · 광고 없음</b> — 로그인도, 광고도 없어요</li>
       </ul>
     </div>
@@ -244,7 +244,7 @@
       <h2><span class="n">3.</span>제3자 제공</h2>
       <p>회사는 이 정보를 제3자에게 제공하지 않아요. Spiralday Sync 서버를 돌리는 Cloudflare 와 익명 사용 통계 서버가 있는 Amazon Web Services(AWS)는 회사가 처리를 맡긴 곳이에요(아래 4).</p>
       <p>다만 Android 앱에서 동기화 연결 QR 코드를 찍으면, 앱에 들어 있는 Google ML Kit 가 자기 동작에 관한 진단 정보(기기 · 앱 정보, 설치별 식별자, 언어 · 국가 · 시간대, 통신사 · 네트워크 종류, 이벤트 코드 등)를 Google LLC 로 직접 보내요. 회사는 이 정보를 받지 않고, Google 이 자기 정책에 따라 처리해요. 미국으로 가는 정보라 보내는 항목을 모두 아래 4 의 국외 이전 ② 에 적었어요. QR 코드 대신 8자리 코드로 연결하면 이 진단 정보는 보내지 않아요.</p>
-      <p>그리고 Android 에서는 글을 쓰는 칸이 화면에 나타날 때마다, 앱 화면을 그리는 Android 시스템 구성요소(Android System WebView)가 자동 완성을 위해 WebView 버전과 그 칸의 구조를 나타내는 값(해시)을 Google 로 보내 물어봐요 — 쓴 글은 들어 있지 않고 회사는 받지 않으며, 앱이 아니라 Android 시스템이 하는 일이라 앱에서 끌 수 없어요.</p>
+      <p>그리고 Android 에서는 글을 쓰는 칸이 화면에 나타날 때마다, 앱 화면을 그리는 Android 시스템 구성요소(Android System WebView)가 자동 완성을 위해 Google 에 물어봐요. 이때 보내는 것은 WebView 버전과 그 칸의 구조를 나타내는 값(해시)이에요. 쓴 글은 들어 있지 않고, 회사는 이 값을 받지 않아요. 앱이 아니라 WebView 가 하는 일이라 앱 안에는 이것을 끄는 설정이 없어요.</p>
     </section>
 
     <section id="where">
@@ -253,7 +253,7 @@
         <li>익명 사용 통계는 회사가 운영하는 서버에 저장돼요. 서버는 Amazon Web Services(AWS) 서울 리전(<code>ap-northeast-2</code>)에 있어요.</li>
         <li>Spiralday Sync 서버(<code>sync.spiralday.com</code>)는 Cloudflare, Inc. 의 Workers · Durable Objects 에서 돌아요 (아래 국외 이전).</li>
         <li>앱을 받고 업데이트하는 곳: Mac · Windows 앱은 GitHub(GitHub Releases · GitHub Pages)에서 받고, 앱이 하루 한 번 새 버전이 있는지 확인해요(<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub 개인정보 처리방침</a>). Android 앱은 Google Play, iPhone · iPad 앱은 App Store 에서 받고 업데이트해요 — 이때는 Google · Apple 의 개인정보 처리방침이 적용돼요.</li>
-        <li>Android 앱이 QR 코드를 읽을 때는 Google 의 ML Kit(기기 안에서 도는 바코드 인식)를 써요. 카메라 화면은 기기 밖으로 나가지 않지만, ML Kit 는 자기 동작에 관한 진단 · 사용 통계(기기 · 앱 정보, 설치별 식별자, 성능, API 설정, 이벤트 · 오류 코드)를 Google 로 보내요(HTTPS). 설치별 식별자는 앱을 설치할 때마다 새로 정해지는 번호로, 기기나 사용자를 가리키지 않아요. 앱의 ‘익명 사용 통계 보내기’와는 따로라서, 통계를 꺼도 QR 코드를 찍으면 보내요. 이 정보는 Google 이 <a href="https://developers.google.com/ml-kit/android-data-disclosure" rel="noopener">ML Kit 데이터 공개</a>와 <a href="https://policies.google.com/privacy" rel="noopener">Google 개인정보처리방침</a>에 따라 처리하고, 회사는 받지 않아요.</li>
+        <li>Android 앱이 QR 코드를 읽을 때는 Google 의 ML Kit(기기 안에서 도는 바코드 인식)를 써요. 카메라 화면은 기기 밖으로 나가지 않지만, ML Kit 는 자기 동작에 관한 진단 · 사용 통계(기기 · 앱 정보, 설치별 식별자, 언어 · 국가 · 시간대, 통신사 · 네트워크 종류, 성능, API 설정, 이벤트 · 오류 코드 등)를 Google 로 보내요(HTTPS). 보내는 항목 전체는 아래 국외 이전 ② 에 적었어요. 설치별 식별자는 앱을 설치할 때마다 새로 정해지는 번호로, 기기나 사용자를 가리키지 않아요. 앱의 ‘익명 사용 통계 보내기’와는 따로라서, 통계를 꺼도 QR 코드를 찍으면 보내요. 이 정보는 Google 이 <a href="https://developers.google.com/ml-kit/android-data-disclosure" rel="noopener">ML Kit 데이터 공개</a>와 <a href="https://policies.google.com/privacy" rel="noopener">Google 개인정보처리방침</a>에 따라 처리하고, 회사는 받지 않아요.</li>
         <li>이 웹사이트(spiralday.com)도 GitHub Pages 에서 열리고, 손글씨 글꼴은 Google Fonts 에서, GitHub 별 개수는 GitHub API 에서 불러와요.</li>
       </ul>
       <h3>처리를 맡긴 곳</h3>
@@ -282,7 +282,7 @@
           <tr><td>이전받는 자</td><td>Google LLC (미국) · 연락처는 <a href="https://policies.google.com/privacy#contactus" rel="noopener">Google 개인정보처리방침의 ‘문의’</a></td></tr>
           <tr><td>이전 국가</td><td>미국과 Google 데이터센터가 있는 나라</td></tr>
           <tr><td>이전 항목</td><td>ML Kit 진단 정보: 기기 정보(제조사 · 모델 · Android 버전 · Android 빌드 지문 · 쓸 수 있는 ML 가속 하드웨어), 앱 정보(패키지 이름 · 앱 빌드 번호 · ML Kit 버전), 설치별 식별자(설치할 때마다 새로 정해지는 무작위 번호), 기기 설정(언어 · 국가 · 시간대), 통신사의 국가 · 망 번호(MCC/MNC)와 네트워크 종류(Wi-Fi · 모바일 등), 이벤트 종류 · 코드, API 설정(이미지 형식 · 카메라 화면 크기), 성능(처리 시간 등) · 입출력 크기 · 기능 버전 · 오류 코드. 카메라 화면과 QR 코드의 내용은 보내지 않아요.</td></tr>
-          <tr><td>이전 일시 · 방법</td><td>설정 → 동기화 → 다른 기기에 합류하기에서 ‘QR 코드 찍기’로 카메라를 쓰면, 그때 생긴 진단 정보를 ML Kit 가 바로 또는 조금 뒤에 모아서 암호화된 연결(HTTPS)로 보내요.</td></tr>
+          <tr><td>이전 일시 · 방법</td><td>설정 → 동기화 → 다른 기기에 합류하기에서 ‘QR 코드 찍기’로 카메라를 쓰면, 그때 생긴 진단 정보를 ML Kit 가 모아 두었다가 보통 몇 분 안에 암호화된 연결(HTTPS)로 보내요. 네트워크가 없으면 연결된 뒤에 보내요.</td></tr>
           <tr><td>이용 목적</td><td>Google 의 ML Kit 동작 확인과 개선 (<a href="https://developers.google.com/ml-kit/android-data-disclosure" rel="noopener">ML Kit 데이터 공개</a>)</td></tr>
           <tr><td>보유 기간</td><td><a href="https://policies.google.com/privacy" rel="noopener">Google 개인정보처리방침</a>에 따라요.</td></tr>
           <tr><td>거부 방법</td><td>QR 코드 대신 8자리 코드로 연결하면 돼요. 카메라를 쓰지 않아도 똑같이 연결돼요. 앱의 ‘익명 사용 통계 보내기’를 끄는 것으로는 멈추지 않아요.</td></tr>
