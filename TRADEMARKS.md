@@ -65,7 +65,7 @@ LICENSE 가 요구하는 고지(LICENSE 사본이나 URL, `Required Notice:` 줄
 - **Windows (베타)**: [GitHub Releases](https://github.com/Grwaywee/spiralday/releases) 의 `Spiralday-Setup.exe` (`win-latest` — 웹사이트의 Windows 다운로드 버튼이 거는 파일) · `Spiralday-Setup-<버전>.exe`, 그리고 앱 안의 자동 업데이트
   - 파일 속성 → 디지털 서명에서 서명자가 ‘LeanAgileHungry . INC’ 인지, PowerShell `Get-AuthenticodeSignature .\Spiralday-Setup.exe` (또는 `Spiralday-Setup-<버전>.exe`) 의 `Status` 가 `Valid` 인지
 - **iPhone · iPad**: App Store — spiralday.com 에 걸린 App Store 링크로 들어가는 앱이 공식입니다.
-- **Android**: Google Play 에 나오면 spiralday.com 에 링크를 올립니다. spiralday.com 에 걸린 스토어 링크만 공식입니다.
+- **Android**: Google Play — spiralday.com 에 걸린 Google Play 링크로 들어가는 앱(패키지 이름 `com.spiralday.app`)이 공식입니다.
 
 ## 문의
 
@@ -93,6 +93,6 @@ LICENSE 가 요구하는 고지(LICENSE 사본이나 URL, `Required Notice:` 줄
 - Mac: compare `shasum -a 256` with the release’s `SHA256SUMS.txt`; `spctl -a -t open --context context:primary-signature -vv Spiralday-<version>.dmg` should report `accepted`, `source=Notarized Developer ID`, `origin=Developer ID Application: LeanAgileHungry Inc. (SCQ7JJP5MN)`; `codesign -dv --verbose=4 /Applications/Spiralday.app` should show `TeamIdentifier=SCQ7JJP5MN`. Sparkle installs an update only after checking its EdDSA signature against the public key (`SUPublicEDKey`) inside the app.
 - Windows (beta): `Spiralday-Setup.exe` from the `win-latest` release (the file the website’s Windows download button links to) or `Spiralday-Setup-<version>.exe`; the installer’s digital signature should name ‘LeanAgileHungry . INC’, and `Get-AuthenticodeSignature` should report `Status: Valid`.
 - iPhone, iPad: the App Store — the app that the App Store link on spiralday.com opens is the official one.
-- Android: when it is on Google Play, the store link will be posted on spiralday.com; only store links posted there are official.
+- Android: Google Play — the app that the Google Play link on spiralday.com opens (package name `com.spiralday.app`) is the official one.
 
 **Contact** (trademark permission, commercial licensing, reporting impersonation): **contact@leanagilehungry.com**. This policy may change; changes will be recorded in this file.
