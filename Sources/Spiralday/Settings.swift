@@ -1154,12 +1154,29 @@ private struct SettingsPensPane: View {
         ScrollViewReader { proxy in
             Form {
                 Section {
-                    ForEach(Array(cats.enumerated()), id: \.element.id) { i, c in
-                        SettingsPenRow(pen: c, index: i, count: cats.count, focused: $focused,
-                                       move: { move(c.id, by: $0) }, delete: { pendingDelete = c })
-                            .id(c.id)
+                    // 펜 줄은 진짜 표(List) 안에 둔다. Mac 의 grouped Form 은 표(NSTableView)가 아니라 SwiftUI 가 직접 놓는 칸이라
+                    // 그 안의 ForEach.onMove 는 붙을 곳이 없어 줄을 끌어도 아무 일이 없었다 (2829ba7 부터). 표는 스크롤하지 않고
+                    // 펜 수만큼의 높이로 묶음 안에 그대로 놓아서, 머리말 · 꼬리말 · 둥근 묶음 모양은 다른 설정 칸과 같다.
+                    List {
+                        ForEach(Array(cats.enumerated()), id: \.element.id) { i, c in
+                            SettingsPenRow(pen: c, index: i, count: cats.count, focused: $focused,
+                                           move: { move(c.id, by: $0) }, delete: { pendingDelete = c })
+                                .frame(height: SettingsPenList.rowHeight)
+                                .listRowInsets(SettingsPenList.rowInsets)
+                                // 줄 사이 선은 예전처럼 ≡ 부터 끝까지
+                                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                                .id(c.id)
+                        }
+                        .onMove { from, to in
+                            withAnimation(.snappy(duration: 0.25)) { store.moveCategories(from: from, to: to) }
+                        }
                     }
-                    .onMove { store.moveCategories(from: $0, to: $1) }
+                    .listStyle(.plain)
+                    .environment(\.defaultMinListRowHeight, SettingsPenList.rowHeight)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
+                    .frame(height: SettingsPenList.height(cats.count))
+                    .id(SettingsPenList.id)
                 } header: {
                     VStack(alignment: .leading, spacing: 18) {
                         SettingsPaneHeader(pane: .pens)
@@ -1172,7 +1189,7 @@ private struct SettingsPensPane: View {
                         }
                     }
                 } footer: {
-                    SettingsFootnote(text: "줄을 끌어서 순서를 바꿔요. 숫자 키 1–7 은 위에서부터 일곱 개의 펜을, E 는 지우개를 골라요 (타임테이블 칠하기). "
+                    SettingsFootnote(text: "줄을 끌어서 순서를 바꿔요 (줄을 오른쪽 클릭해 ‘위로 옮기기 · 아래로 옮기기’ 도 돼요). 숫자 키 1–7 은 위에서부터 일곱 개의 펜을, E 는 지우개를 골라요 (타임테이블 칠하기). "
                                      + "할 일의 분류는 펜을 고르지 않아도 돼요 — 다 쓴 뒤 할 일 왼쪽 칸(주간은 왼쪽 색 막대)을 눌러 고르고, 끝낸(○) 일에 그 색 형광펜이 그어져요. "
                                      + "TOTAL TIME 에 포함하지 않은 펜(개인, 휴식 같은)은 하루 합계에서 빠져요.")
                 }
@@ -1193,18 +1210,14 @@ private struct SettingsPensPane: View {
         guard let id = store.addCategory(name: SettingsPenColors.newName(cats.map(\.name)),
                                          hex: SettingsPenColors.suggest(avoiding: cats.map(\.hex))) else { return }
         DispatchQueue.main.async {
-            withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            // 새 펜은 표의 맨 아래 줄 — 바깥 칸(Form)을 표의 아래 끝까지 내린다 (펜 줄은 스크롤하지 않는 안쪽 표에 있다)
+            withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo(SettingsPenList.id, anchor: .bottom) }
             focused = id
         }
     }
 
     private func move(_ id: Int, by delta: Int) {
-        guard let i = store.categories.firstIndex(where: { $0.id == id }) else { return }
-        let j = i + delta
-        guard store.categories.indices.contains(j) else { return }
-        withAnimation(.snappy(duration: 0.25)) {
-            store.moveCategories(from: IndexSet(integer: i), to: delta > 0 ? j + 1 : j)
-        }
+        withAnimation(.snappy(duration: 0.25)) { _ = SettingsPenList.move(store, id, by: delta) }
     }
 
     private func deleteMessage(_ c: Category) -> String {
@@ -1220,6 +1233,30 @@ private struct SettingsPensPane: View {
     private func delete(_ id: Int) {
         withAnimation(.snappy(duration: 0.25)) { SettingsPenUsage.delete(store, id) }
         if state.tool == id { state.tool = store.categories.first?.id ?? -1 }
+    }
+}
+
+/// 설정 › 형광펜 의 펜 표 (줄 높이 · 옮기기). 줄을 끌어 놓기 · 오른쪽 클릭 · 손쉬운 사용 동작이 모두 PlannerStore.moveCategories 로 간다
+@MainActor
+enum SettingsPenList {
+    /// 펜 줄 한 줄의 높이 (pt). 예전 grouped Form 의 줄 간격(49)과 같게
+    static let rowHeight: CGFloat = 49
+    /// 표가 Form 의 줄 안쪽 여백 안에 놓이므로 좌우는 조금만 — ≡ 와 휴지통이 예전 Form 줄과 같은 자리에 온다
+    static let rowInsets = EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4)
+    /// 바깥 칸(Form)이 펜 표를 찾아 스크롤하는 id
+    static let id = "settings-pen-list"
+
+    /// 펜 n 개를 스크롤 없이 다 보이는 표 높이
+    static func height(_ count: Int) -> CGFloat { CGFloat(max(count, 1)) * rowHeight }
+
+    /// 그 펜을 delta 칸 옮긴다 (-1 위로, +1 아래로). 맨 위에서 위로 · 맨 아래에서 아래로는 하지 않는다 (false)
+    @discardableResult
+    static func move(_ store: PlannerStore, _ id: Int, by delta: Int) -> Bool {
+        guard delta != 0, let i = store.categories.firstIndex(where: { $0.id == id }) else { return false }
+        let j = i + delta
+        guard store.categories.indices.contains(j) else { return false }
+        store.moveCategories(from: IndexSet(integer: i), to: delta > 0 ? j + 1 : j)
+        return true
     }
 }
 
@@ -1296,6 +1333,11 @@ private struct SettingsPenRow: View {
             Button("아래로 옮기기") { move(1) }.disabled(index == count - 1)
             Divider()
             Button("지우기…", role: .destructive, action: delete).disabled(count <= 1)
+        }
+        // 끌지 않고 옮기는 길 (VoiceOver · 키보드 손쉬운 사용): 오른쪽 클릭 메뉴와 같은 동작
+        .accessibilityActions {
+            if index > 0 { Button("위로 옮기기") { move(-1) } }
+            if index < count - 1 { Button("아래로 옮기기") { move(1) } }
         }
     }
 
@@ -1744,6 +1786,8 @@ private struct SettingsShortcutsPane: View {
                 SettingsShortcutRow(keys: ["E"], title: "지우개",
                                     detail: "팔레트가 접혀 있으면 잠깐 펼쳐 무엇을 골랐는지 보여 줘요")
                 SettingsShortcutRow(keys: ["esc"], title: "글쓰기 마치기")
+                SettingsShortcutRow(keys: ["↩"], title: "COMMENT 줄 바꿈",
+                                    detail: "다섯 줄까지 써요 (길어지면 글씨가 작아져요). 마칠 때는 ⌘↩ · esc · 종이 빈 곳 클릭")
             } header: {
                 SettingsSectionTitle(title: "도구")
             }

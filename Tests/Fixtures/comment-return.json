@@ -1,0 +1,132 @@
+{
+  "about": "Daily COMMENT is a multi-line box: Return makes a new line, like the iPhone. Which Return does what, and how many lines fit — the same vectors for the Mac (SpiraldayKit MultilineReturn · DailyForm.commentFits, Tests/SpiraldayKitTests/CommentReturnTests.swift), iOS (same Kit) and Windows · Android (web). Owner report 2026-10-08: on the Mac, Return in COMMENT ended writing instead of breaking the line. Tasks and MEMO keep Return = next row (1.0.5).",
+  "version": 1,
+  "conventions": {
+    "mods": "shift · alt (Mac ⌥) · ctrl (Mac ⌃) · meta (Mac ⌘, Windows Win). Return, Shift+Return and the keypad Enter behave the same.",
+    "expect": "newline = put a line break at the caret (replacing the selection) and keep writing; refuse = no line break, keep writing (Mac beep, iOS · Android haptic); end = finish writing",
+    "fits": "whether the text with the line break added still fits the box at the smallest letters (see box)",
+    "composing": "The input method sees Return first. Composing Hangul: the IME commits the syllable once and the Return it passes on follows the same rule. Picking a Hanja candidate or confirming a Japanese conversion: the IME keeps the Return (no line break). On the Mac, Option+Return is the Korean IME's Hanja key, so it goes to the IME first and breaks the line only when the IME passes it on (the 'alt' rows are that case). Windows lets the IME commit and acts on the Enter it sends again",
+    "typedNewline": "when a Return would overflow the box, the text goes back to typedNewline.kept: a bare line break (even one that replaced a selection) is undone; a syllable committed (or a word autocorrected / replaced by the iOS keyboard) together with the line break stays and only the line break goes; pastes, text from another device and plain typing are left alone (kept = null)"
+  },
+  "box": {
+    "about": "design units. Letters shrink to fit (fitScale) down to minScale; at the smallest size maxLines lines fit. A text ending in a line break counts the empty line after it (the caret's line).",
+    "font": 50,
+    "minScale": 0.4,
+    "wrapWidth": 690.5,
+    "fitHeight": 115.35,
+    "maxLines": 5
+  },
+  "keys": [
+    { "name": "Return", "mods": [], "fits": true, "expect": "newline" },
+    { "name": "Return, box full", "mods": [], "fits": false, "expect": "refuse" },
+    { "name": "Shift+Return", "mods": ["shift"], "fits": true, "expect": "newline" },
+    { "name": "Shift+Return, box full", "mods": ["shift"], "fits": false, "expect": "refuse" },
+    { "name": "Alt / Option+Return", "mods": ["alt"], "fits": true, "expect": "newline" },
+    { "name": "Alt / Option+Return, box full", "mods": ["alt"], "fits": false, "expect": "refuse" },
+    { "name": "Cmd+Return (Mac) / Meta+Enter", "mods": ["meta"], "fits": true, "expect": "end" },
+    { "name": "Cmd+Return, box full", "mods": ["meta"], "fits": false, "expect": "end" },
+    { "name": "Ctrl+Enter (Windows) / Control+Return (Mac)", "mods": ["ctrl"], "fits": true, "expect": "end" },
+    { "name": "Shift+Cmd+Return", "mods": ["shift", "meta"], "fits": true, "expect": "end" }
+  ],
+  "capacity": [
+    {
+      "name": "empty box",
+      "text": "",
+      "selection": [0, 0],
+      "after": "\n",
+      "fits": true
+    },
+    {
+      "name": "caret in the middle",
+      "text": "오늘은맑음",
+      "selection": [3, 0],
+      "after": "오늘은\n맑음",
+      "fits": true
+    },
+    {
+      "name": "3 lines → 4",
+      "text": "가\n나\n다",
+      "selection": [5, 0],
+      "after": "가\n나\n다\n",
+      "fits": true
+    },
+    {
+      "name": "4 lines → 5 (the last that fits)",
+      "text": "가\n나\n다\n라",
+      "selection": [7, 0],
+      "after": "가\n나\n다\n라\n",
+      "fits": true
+    },
+    {
+      "name": "5 lines → 6",
+      "text": "가\n나\n다\n라\n마",
+      "selection": [9, 0],
+      "after": "가\n나\n다\n라\n마\n",
+      "fits": false
+    },
+    {
+      "name": "5 lines ending in a line break → 6",
+      "text": "가\n나\n다\n라\n",
+      "selection": [8, 0],
+      "after": "가\n나\n다\n라\n\n",
+      "fits": false
+    },
+    {
+      "name": "a selection replaced by the line break",
+      "text": "가\n나\n다\n라\n마",
+      "selection": [7, 2],
+      "after": "가\n나\n다\n라\n",
+      "fits": true
+    },
+    {
+      "name": "a long line wraps to 2 lines at the smallest letters: 2 + 2 → 5",
+      "text": "오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 \n가\n나",
+      "selection": [94, 0],
+      "after": "오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 \n가\n나\n",
+      "fits": true
+    },
+    {
+      "name": "a long line wraps to 2 lines: 2 + 3 → 6",
+      "text": "오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 \n가\n나\n다",
+      "selection": [96, 0],
+      "after": "오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 오늘은 정말 바쁜 하루였다 \n가\n나\n다\n",
+      "fits": false
+    }
+  ],
+  "insertion": [
+    { "name": "Return at the end", "old": "가", "new": "가\n", "isNewline": true },
+    { "name": "Return in the middle", "old": "가나", "new": "가\n나", "isNewline": true },
+    { "name": "Return after a line break", "old": "가\n", "new": "가\n\n", "isNewline": true },
+    { "name": "Return replacing a selection", "old": "가나다", "new": "가\n다", "isNewline": true },
+    { "name": "typing a letter", "old": "가", "new": "가나", "isNewline": false },
+    { "name": "pasting lines", "old": "가", "new": "가\n나\n다", "isNewline": false },
+    { "name": "deleting a line break", "old": "가\n나", "new": "가나", "isNewline": false },
+    { "name": "text from another device", "old": "가", "new": "오늘\n맑음", "isNewline": false }
+  ],
+  "typedNewline": [
+    { "name": "Return at the end", "old": "가\n나\n다\n라\n마", "new": "가\n나\n다\n라\n마\n", "kept": "가\n나\n다\n라\n마" },
+    { "name": "Return replacing a selection keeps the selected text", "old": "가나다", "new": "가\n다", "kept": "가나다" },
+    { "name": "syllable committed by Return (not in the text before)", "old": "가\n나\n다\n라\n오늘", "new": "가\n나\n다\n라\n오늘한\n", "kept": "가\n나\n다\n라\n오늘한" },
+    { "name": "syllable committed by Return in the middle", "old": "가\n나\n다\n라\n마바", "new": "가\n나\n다\n라\n마한\n바", "kept": "가\n나\n다\n라\n마한바" },
+    { "name": "composing jamo replaced by the committed syllable", "old": "오늘하", "new": "오늘한\n", "kept": "오늘한" },
+    { "name": "typing a letter", "old": "가", "new": "가나", "kept": null },
+    { "name": "pasting lines", "old": "가", "new": "가\n나\n다", "kept": null },
+    { "name": "two line breaks at once (only line breaks — treated like Return)", "old": "가", "new": "가\n\n", "kept": "가" },
+    { "name": "deleting a line break", "old": "가\n나", "new": "가나", "kept": null },
+    { "name": "text from another device", "old": "가", "new": "오늘\n맑음", "kept": null },
+    { "name": "a word autocorrected in the same turn as Return (iOS: teh → the)", "old": "1\n2\n3\n4\nteh", "new": "1\n2\n3\n4\nthe\n", "kept": "1\n2\n3\n4\nthe" },
+    { "name": "a text replacement in the same turn as Return (iOS: omw → On my way!)", "old": "1\n2\n3\n4\nomw", "new": "1\n2\n3\n4\nOn my way!\n", "kept": "1\n2\n3\n4\nOn my way!" }
+  ],
+  "refuse": {
+    "about": "iOS (SpiraldayKit MultilineReturn.returnEdit): the text box puts a Return into the text itself, so a Return the box cannot hold is taken back afterwards. Only that one line break goes; what the keyboard changed in the same turn (autocorrect, a committed syllable) stays, and a selection the Return replaced comes back. The caret goes back to where the line break went in (selection = [location, length] in UTF-16 units), so the next letter lands at the caret, not at the end. caret = the box's caret after the Return (null: unknown — then the first place the texts differ).",
+    "rows": [
+      { "name": "Return at the end of 5 lines", "old": "1\n2\n3\n4\n5", "new": "1\n2\n3\n4\n5\n", "caret": 10, "refused": "1\n2\n3\n4\n5", "selection": [9, 0] },
+      { "name": "Return in the middle of 5 lines: the caret stays after 4", "old": "1\n2\n3\n4\n5", "new": "1\n2\n3\n4\n\n5", "caret": 8, "refused": "1\n2\n3\n4\n5", "selection": [7, 0] },
+      { "name": "…the same without knowing the caret: next to the line break", "old": "1\n2\n3\n4\n5", "new": "1\n2\n3\n4\n\n5", "caret": null, "refused": "1\n2\n3\n4\n5", "selection": [8, 0] },
+      { "name": "Return in the middle of a line", "old": "1\n2\n3\n4\n오늘은", "new": "1\n2\n3\n4\n오늘\n은", "caret": 11, "refused": "1\n2\n3\n4\n오늘은", "selection": [10, 0] },
+      { "name": "autocorrect stays, the line break goes", "old": "1\n2\n3\n4\nteh", "new": "1\n2\n3\n4\nthe\n", "caret": 12, "refused": "1\n2\n3\n4\nthe", "selection": [11, 0] },
+      { "name": "a committed syllable stays once, the line break goes", "old": "1\n2\n3\n4\n오늘", "new": "1\n2\n3\n4\n오늘한\n", "caret": 12, "refused": "1\n2\n3\n4\n오늘한", "selection": [11, 0] },
+      { "name": "a selection the Return replaced comes back, selected", "old": "1\n2\n3\n4\n가나다", "new": "1\n2\n3\n4\n가\n다", "caret": 10, "refused": "1\n2\n3\n4\n가나다", "selection": [9, 1] }
+    ]
+  }
+}

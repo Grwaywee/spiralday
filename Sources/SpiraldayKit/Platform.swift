@@ -42,6 +42,10 @@ public enum PlatformServices {
     nonisolated(unsafe) public static var openURL: ((URL) -> Void)?
     /// 편집을 끝낼 때 키보드(첫 응답자)를 내린다 (iOS 앱이 넣는다. 보통은 편집 칸이 사라지면서 저절로 내려간다).
     nonisolated(unsafe) public static var endTextEditing: (() -> Void)?
+    /// 하드웨어 키보드에서 지금 ⌘ 나 ⌃ 를 누르고 있는지 (iOS 앱이 넣는다 — GameController 의 GCKeyboard). nil 이면 누르지 않은 것으로 본다.
+    /// SwiftUI 여러 줄 글상자의 하드웨어 Return '제출' 에는 어느 수식키였는지가 오지 않아서, COMMENT 에서 ⌘↩ · ⌃↩(쓰기 끝)와
+    /// ↩(줄 바꿈)을 이것으로 가른다 (InlineField)
+    nonisolated(unsafe) public static var commandOrControlHeld: (() -> Bool)?
 }
 
 // MARK: - Links
