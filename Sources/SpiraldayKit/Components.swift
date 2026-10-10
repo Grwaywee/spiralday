@@ -1078,14 +1078,36 @@ public struct SlotPainter: View {
     }
 
     /// 밥시간 아이콘: 오른쪽 클릭으로 지우기
+    @ViewBuilder
     private func mealHandle(_ n: TimeNote) -> some View {
         let c = cellCenter(min(n.start, n.end))
-        return Color.clear
+        #if os(macOS)
+        // 왼쪽 누름 · 끌기는 다른 칸과 똑같이 칠하기 · 지우개 · 글씨 · 밥 (iPhone TimePaintView 처럼 — 직원 시험 2026-10-08:
+        // "밑줄 중에는 밥 동그라미가 선택을 가져가지 않게"). 예전에는 동그라미가 칠하기 층 위에서 왼쪽 누름을 받고 버렸다.
+        // 오른쪽 클릭 · ⌃클릭만 동그라미의 몫 ('밥시간 지우기'). SwiftUI 의 끌기 제스처는 창의 오른쪽 클릭까지 받아서
+        // 동그라미를 그 층 안에 두면 메뉴가 뜨지 않고 칸이 칠해진다 — 그래서 동그라미는 AppKit 뷰가 단추별로 나눠 받는다.
+        // 넘김 스냅샷 · PDF(ImageRenderer)에는 넣지 않는다: AppKit 뷰는 노란 '그릴 수 없음' 자리표로 찍힌다 (동그라미 그림은 Canvas 몫).
+        let origin = CGPoint(x: c.x - iconSize / 2, y: c.y - iconSize / 2)
+        if !isSnapshot {
+            MealCircleHandle(
+                cursor: state.tool == AppState.textTool ? .iBeam : .crosshair,
+                stroke: { p, ended in
+                    let at = CGPoint(x: origin.x + p.x, y: origin.y + p.y)
+                    if ended { dragEnded(at) } else { drag(at, store.day(date).slots) }
+                },
+                remove: { store.removeNote(date, n.id) }
+            )
+            .frame(width: iconSize, height: iconSize)
+            .position(x: c.x, y: c.y)
+        }
+        #else
+        Color.clear
             .frame(width: iconSize, height: iconSize)
             .contentShape(Circle())
             .contextMenu { Button("밥시간 지우기", role: .destructive) { store.removeNote(date, n.id) } }
             .help("밥시간 — 오른쪽 클릭으로 지우기")
             .offset(x: c.x - iconSize / 2, y: c.y - iconSize / 2)
+        #endif
     }
 
     // MARK: input
@@ -1140,10 +1162,88 @@ public struct SlotPainter: View {
     }
 }
 
+#if os(macOS)
+/// 타임테이블의 🍴 동그라미 (macOS). 동그라미 안에서만 마우스를 받는다:
+/// - 왼쪽 누름 · 끌기 → stroke (칠하기 층의 끌기와 같은 함수로 — 동그라미에서 시작해도 칠하기 · 지우개 · 글씨 · 밥)
+/// - 오른쪽 클릭 · ⌃클릭 → '밥시간 지우기' 메뉴 (칸은 칠하지 않는다)
+struct MealCircleHandle: NSViewRepresentable {
+    var cursor: NSCursor
+    /// 동그라미 왼쪽 위에서 잰 점, 끝났는지
+    var stroke: (CGPoint, Bool) -> Void
+    var remove: () -> Void
+
+    func makeNSView(context: Context) -> CircleView { CircleView() }
+
+    func updateNSView(_ v: CircleView, context: Context) {
+        v.handle = self
+        v.toolTip = "밥시간 — 오른쪽 클릭으로 지우기"
+        v.window?.invalidateCursorRects(for: v)
+    }
+
+    final class CircleView: NSView {
+        var handle: MealCircleHandle?
+        /// 왼쪽 누름을 받아 끄는 중 (뗄 때 한 번 끝낸다)
+        private var stroking = false
+
+        override var isFlipped: Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let superview else { return nil }
+            let p = convert(point, from: superview)
+            let r = min(bounds.width, bounds.height) / 2
+            return hypot(p.x - bounds.midX, p.y - bounds.midY) <= r ? self : nil
+        }
+
+        /// 종이처럼: 다른 창을 보다 처음 누른 것을 종이(호스팅 뷰)가 받는지 그대로 따른다
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            window?.contentView?.acceptsFirstMouse(for: event) ?? false
+        }
+
+        private func point(_ e: NSEvent) -> CGPoint { convert(e.locationInWindow, from: nil) }
+
+        override func mouseDown(with e: NSEvent) {
+            if e.modifierFlags.contains(.control) {
+                // ⌃클릭 = 오른쪽 클릭 (창이 먼저 메뉴로 돌리지 않았을 때)
+                if let m = menu(for: e) { NSMenu.popUpContextMenu(m, with: e, for: self) }
+                return
+            }
+            stroking = true
+            handle?.stroke(point(e), false)
+        }
+
+        override func mouseDragged(with e: NSEvent) {
+            guard stroking else { return }
+            handle?.stroke(point(e), false)
+        }
+
+        override func mouseUp(with e: NSEvent) {
+            guard stroking else { return }
+            stroking = false
+            handle?.stroke(point(e), true)
+        }
+
+        override func menu(for event: NSEvent) -> NSMenu? {
+            let m = NSMenu()
+            let item = NSMenuItem(title: "밥시간 지우기", action: #selector(removeMeal), keyEquivalent: "")
+            item.target = self
+            m.addItem(item)
+            return m
+        }
+
+        @objc private func removeMeal() { handle?.remove() }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: handle?.cursor ?? .crosshair)
+        }
+    }
+}
+#endif
+
 // MARK: - D-day editor (이 날의 D-day: 일간 D-DAY 칸, 홈 D-DAY 칸, 팔레트 버튼에서 같이 쓴다)
 
 /// 한 날에 붙일 D-day 를 고른다. 저장한 D-day 에서 고르거나 새로 만들어 붙이고,
 /// 여기서 붙이고 떼고 고친 것은 이 날에만 남는다 (다른 날, 저장한 목록은 그대로).
+/// ‘새로 만들기’에 이름을 적은 채 편집기를 닫으면 [붙이기]처럼 붙는다 — Esc(⌘.)로 닫을 때만 버린다 (draftClosed).
 public struct DDayEditor: View {
     public let date: Date
 
@@ -1154,6 +1254,12 @@ public struct DDayEditor: View {
     /// 달력을 펼친 줄: 붙인 D-day 의 id 또는 "new"
     @State private var picking: String? = nil
     @State private var showPast = false
+    #if os(macOS)
+    /// 이 편집기가 든 창 (PopoverCloseWatcher 가 알려 준다) — [붙이기] 전에 조합 중인 글자를 마치게 할 곳
+    @State private var host = EditorWindow()
+    #else
+    @Environment(\.dismiss) private var dismiss
+    #endif
 
     public init(date: Date) {
         self.date = Dates.day(date)
@@ -1279,6 +1385,32 @@ public struct DDayEditor: View {
         .frame(width: 340)
         .animation(.snappy(duration: 0.2), value: mine)
         .animation(.snappy(duration: 0.2), value: picking)
+        // 닫힐 때 적어 둔 ‘새로 만들기’ (iPhone 시트의 [완료] · 아래로 쓸기, iPad 팝오버 바깥 톡: 내용이 사라진다)
+        .onDisappear { draftClosed(cancelled: false) }
+        #if os(macOS)
+        // macOS 팝오버는 닫혀도 내용의 onDisappear 가 오지 않는다 (다음에 열 때 새 내용을 만든다) — 팝오버의 닫힘을 듣는다
+        .background(PopoverCloseWatcher(host: host) { cancelled in draftClosed(cancelled: cancelled) })
+        #else
+        // 하드웨어 키보드의 Esc = 취소: 적은 것은 버리고 닫는다
+        .onKeyPress(.escape) {
+            draftClosed(cancelled: true)
+            dismiss()
+            return .handled
+        }
+        #endif
+    }
+
+    /// 편집기가 닫혔다 (Mac: 팝오버 바깥 클릭 · iPhone: 시트의 [완료] · 아래로 쓸기 · iPad: 바깥 톡 …).
+    /// ‘새로 만들기’에 이름을 적어 두었으면 [붙이기]와 똑같이 붙인다 (날짜 · ‘목록에도 저장’ 그대로) — 직원 시험 5-1 (2026-10-08):
+    /// 적고 [완료]로 닫으면 말없이 사라졌다. 이름이 비었거나(날짜만 바꿈) 2개가 찬 날은 붙이지 않는다.
+    /// cancelled: Esc · ⌘. 로 닫았다 — 취소라 버린다 (사장님 약속: 키보드의 Esc 는 취소). 어느 쪽이든 적은 것은 비운다 — 닫힘 알림과
+    /// 사라짐이 둘 다 와도 한 번만, 그리고 나중에 (자리가 생긴 뒤) 예전에 적었던 것이 뒤늦게 붙지 않게.
+    private func draftClosed(cancelled: Bool) {
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        newTitle = ""
+        if picking == "new" { picking = nil }
+        guard !cancelled, !title.isEmpty, store.ddays(date).count < Prefs.maxDDays else { return }
+        store.addDDay(title: title, date: newDate, to: date, save: saveToLibrary)
     }
 
     // MARK: rows
@@ -1377,12 +1509,95 @@ public struct DDayEditor: View {
     }
 
     private func attachNew() {
+        #if os(macOS)
+        // 입력기가 조합 중인 마지막 음절은 아직 newTitle 에 없다 — 먼저 마쳐서 이름 칸에 보이는 그대로 붙인다 (이름 칸은 계속 쓰는 중)
+        ComposingText.finish(in: host.window, refocus: true)
+        #endif
         let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard store.addDDay(title: title, date: newDate, to: date, save: saveToLibrary) != nil else { return }
         newTitle = ""
         if picking == "new" { picking = nil }
     }
 }
+
+#if os(macOS)
+/// 이 뷰가 든 팝오버가 닫히기 시작할 때 알린다 (NSPopover.willCloseNotification — 바깥 클릭 · Esc · 코드로 닫기 모두).
+/// macOS 의 SwiftUI 팝오버는 닫혀도 내용의 onDisappear 를 부르지 않아서 (다음에 열 때 새 내용을 만들고 예전 것은 그대로 둔다)
+/// 내용이 닫힘을 알 길이 이것뿐이다. 다른 팝오버(팔레트의 펜 · 다른 칸)의 닫힘은 내용이 이 뷰를 품었는지로 거른다.
+/// cancelled: 팝오버가 Esc · ⌘. 를 받는 그 자리에서 닫혔다 (그때 앱의 지금 이벤트가 이 팝오버 창이나 종이 창에 온 그 키).
+/// 취소가 아니면 알리기 전에 입력기가 조합 중인 글자를 마친다 (ComposingText) — 바깥 클릭으로 닫아도 보이는 글 그대로 읽게.
+/// host: 이 뷰가 든 창을 적어 둘 곳 (편집기가 닫히기 전에도 그 창에서 조합을 마칠 수 있게)
+struct PopoverCloseWatcher: NSViewRepresentable {
+    var host: EditorWindow? = nil
+    let onClose: (_ cancelled: Bool) -> Void
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ v: Probe, context: Context) {
+        v.onClose = onClose
+        v.host = host
+        host?.window = v.window
+    }
+
+    /// 팝오버 창 w 를 닫게 한 이벤트가 취소 키인지: w 나 w 가 매달린 창(종이)에 온 Esc, ⌘.
+    /// (앱의 지금 이벤트는 다음 이벤트까지 남아 있어서, 예전에 다른 창 · 다른 팝오버에 온 Esc 를 이번 닫기로 여기지 않게 창도 본다)
+    static func isCancel(_ e: NSEvent?, in w: NSWindow?) -> Bool {
+        guard let e, e.type == .keyDown, let target = e.window else { return false }
+        var ancestor = w
+        while let a = ancestor, a !== target { ancestor = a.parent }
+        guard ancestor != nil else { return false }
+        if e.keyCode == 53 { return true }
+        return e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command && e.charactersIgnoringModifiers == "."
+    }
+
+    final class Probe: NSView {
+        var onClose: ((Bool) -> Void)?
+        var host: EditorWindow?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            host?.window = window
+            NotificationCenter.default.removeObserver(self, name: NSPopover.willCloseNotification, object: nil)
+            guard window != nil else { return }
+            NotificationCenter.default.addObserver(self, selector: #selector(popoverWillClose(_:)),
+                                                   name: NSPopover.willCloseNotification, object: nil)
+        }
+
+        @objc private func popoverWillClose(_ n: Notification) {
+            guard let content = (n.object as? NSPopover)?.contentViewController?.view, isDescendant(of: content) else { return }
+            let cancelled = PopoverCloseWatcher.isCancel(NSApp.currentEvent, in: window)
+            // 닫힘 알림은 입력기가 조합을 마치기 전에 온다: 두벌식이 들고 있는 마지막 음절('시험공부'의 '부')은 이름 칸에는 보여도
+            // 글(바인딩)에는 아직 없어 '시험공'이 붙었다 (회의적 검토 2026-10-10). 먼저 마친다 — 취소면 어차피 버리니 그대로
+            if !cancelled { ComposingText.finish(in: window) }
+            onClose?(cancelled)
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
+/// 편집기가 든 창 (약하게 든다) — 뷰 상태에 두고 PopoverCloseWatcher 가 채운다
+final class EditorWindow {
+    weak var window: NSWindow?
+}
+
+/// 입력기가 조합 중인 글자: 두벌식이 스페이스 · Return 전까지 들고 있는 마지막 음절, 일본어의 변환 전 글자 …
+/// 글상자에는 보여도 SwiftUI 의 글(바인딩)에는 아직 없어서, 그 채로 글을 읽으면 마지막 글자가 빠진다.
+enum ComposingText {
+    /// 창 w 의 첫 응답자가 조합 중인 글상자면 조합한 글자를 확정하고(입력기에도 버리라고 알려 같은 글자가 다시 들어가지 않게 —
+    /// 일간 COMMENT 의 Return(ReturnNewlineMonitorView)과 같은 방법) 쓰기를 끝내 글상자의 글을 바인딩으로 보낸다. 조합 중이 아니면 아무것도 하지 않는다.
+    /// refocus: 끝낸 뒤 같은 글상자로 돌아가 이어 쓸 수 있게 (편집기가 열린 채일 때 — [붙이기])
+    @MainActor @discardableResult
+    static func finish(in w: NSWindow?, refocus: Bool = false) -> Bool {
+        guard let w, let tv = w.firstResponder as? NSTextView, tv.hasMarkedText() else { return false }
+        let field = tv.isFieldEditor ? tv.delegate as? NSView : nil
+        tv.unmarkText()
+        tv.inputContext?.discardMarkedText()
+        guard w.makeFirstResponder(nil) else { return true }
+        if refocus, let field, field.window === w { w.makeFirstResponder(field) }
+        return true
+    }
+}
+#endif
 
 /// 편집기 안의 작은 제목 + 내용
 private struct DDayEditorSection<Content: View>: View {

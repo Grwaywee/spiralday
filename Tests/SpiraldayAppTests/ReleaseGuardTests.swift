@@ -23,7 +23,9 @@ final class ReleaseGuardTests: XCTestCase {
         let fixes = try requiredFixes()
         // 형광펜 사고(A) 두 커밋 · 팔레트 책(E) · 넘김 위 고리(B) · 입력 · 팔레트(G H J E D) · 기본값(S) · 처음 안내 합류(I P O)
         // · 그 검토 반영 (실패한 합류의 빈 책 · 받는 중 30초, 고리 굽기)
-        for c in ["3f074d4", "63d21fc", "63ab4fb", "478e1de", "d43ba6c", "0331099", "cacdff6", "9a1bd73", "2a08fbe"] {
+        // 1.1.1: 펜 순서 · 분류 칸 메뉴 · COMMENT 의 Return (+ 검토) · 밥 동그라미 · D-day 닫으면 붙이기 (+ 한글 조합 검토)
+        for c in ["3f074d4", "63d21fc", "63ab4fb", "478e1de", "d43ba6c", "0331099", "cacdff6", "9a1bd73", "2a08fbe",
+                  "199f998", "c22ee73", "04a1227", "39c393a", "1e4f219", "0634091", "8cf30a2"] {
             XCTAssertTrue(fixes.contains(c), "build.sh 의 출시 지킴이에서 \(c) 가 빠졌다")
         }
         let script = try String(contentsOf: Self.root.appendingPathComponent("build.sh"), encoding: .utf8)
