@@ -1396,6 +1396,7 @@ struct MealCircleHandle: NSViewRepresentable {
 /// 한 날에 붙일 D-day 를 고른다. 저장한 D-day 에서 고르거나 새로 만들어 붙이고,
 /// 여기서 붙이고 떼고 고친 것은 이 날에만 남는다 (다른 날, 저장한 목록은 그대로).
 /// ‘새로 만들기’에 이름을 적은 채 편집기를 닫으면 [붙이기]처럼 붙는다 — Esc(⌘.)로 닫을 때만 버린다 (draftClosed).
+/// Mac 에서 다른 앱으로 넘어가 팝오버가 닫히면 붙이지 않고 적던 것을 두었다가 다시 열 때 돌려준다 (draftSetAside).
 public struct DDayEditor: View {
     public let date: Date
 
@@ -1541,7 +1542,20 @@ public struct DDayEditor: View {
         .onDisappear { draftClosed(cancelled: false) }
         #if os(macOS)
         // macOS 팝오버는 닫혀도 내용의 onDisappear 가 오지 않는다 (다음에 열 때 새 내용을 만든다) — 팝오버의 닫힘을 듣는다
-        .background(PopoverCloseWatcher(host: host) { cancelled in draftClosed(cancelled: cancelled) })
+        .background(PopoverCloseWatcher(host: host) { how in
+            switch how {
+            case .done: draftClosed(cancelled: false)
+            case .cancelled: draftClosed(cancelled: true)
+            case .appLeft: draftSetAside()
+            }
+        })
+        // 다른 앱으로 넘어가며 닫혔던 이 날의 ‘새로 만들기’를 돌려준다
+        .onAppear {
+            guard let d = DDayDraftShelf.take(date) else { return }
+            newTitle = d.title
+            newDate = d.date
+            saveToLibrary = d.save
+        }
         #else
         // 하드웨어 키보드의 Esc = 취소: 적은 것은 버리고 닫는다
         .onKeyPress(.escape) {
@@ -1564,6 +1578,19 @@ public struct DDayEditor: View {
         guard !cancelled, !title.isEmpty, store.ddays(date).count < Prefs.maxDDays else { return }
         store.addDDay(title: title, date: newDate, to: date, save: saveToLibrary)
     }
+
+    #if os(macOS)
+    /// 다른 앱으로 넘어가서(⌘Tab · 다른 앱 클릭) 팝오버가 닫혔다: 붙이지도 버리지도 않고 적던 것(이름 · 날짜 · ‘목록에도 저장’)을
+    /// 두었다가 이 날의 편집기를 다시 열면 그대로 돌려준다. iPhone 은 앱을 바꿔도 시트가 열린 채라 붙지 않는다 (기준) —
+    /// 예전에는 잠깐 다른 앱을 보는 것만으로 쓰던 이름이 처음 날짜(30일 뒤)로 붙고 목록에도 들어갔다 (회의적 검토 2026-10-10)
+    private func draftSetAside() {
+        let title = newTitle
+        newTitle = ""
+        if picking == "new" { picking = nil }
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        DDayDraftShelf.put(date, DDayDraftShelf.Draft(title: title, date: newDate, save: saveToLibrary))
+    }
+    #endif
 
     // MARK: rows
 
@@ -1676,12 +1703,19 @@ public struct DDayEditor: View {
 /// 이 뷰가 든 팝오버가 닫히기 시작할 때 알린다 (NSPopover.willCloseNotification — 바깥 클릭 · Esc · 코드로 닫기 모두).
 /// macOS 의 SwiftUI 팝오버는 닫혀도 내용의 onDisappear 를 부르지 않아서 (다음에 열 때 새 내용을 만들고 예전 것은 그대로 둔다)
 /// 내용이 닫힘을 알 길이 이것뿐이다. 다른 팝오버(팔레트의 펜 · 다른 칸)의 닫힘은 내용이 이 뷰를 품었는지로 거른다.
-/// cancelled: 팝오버가 Esc · ⌘. 를 받는 그 자리에서 닫혔다 (그때 앱의 지금 이벤트가 이 팝오버 창이나 종이 창에 온 그 키).
+/// 어떻게 닫혔는지 (PopoverClose):
+/// - cancelled: 팝오버가 Esc · ⌘. 를 받는 그 자리에서 닫혔다 (그때 앱의 지금 이벤트가 이 팝오버 창이나 종이 창에 온 그 키).
+/// - appLeft: 앱이 비활성으로 바뀌며 닫혔다 (⌘Tab · 다른 앱 클릭 — 일시 팝오버는 앱이 물러나면 스스로 닫힌다).
+/// - done: 그 밖 (바깥 클릭 · 코드로 닫기).
 /// 취소가 아니면 알리기 전에 입력기가 조합 중인 글자를 마친다 (ComposingText) — 바깥 클릭으로 닫아도 보이는 글 그대로 읽게.
 /// host: 이 뷰가 든 창을 적어 둘 곳 (편집기가 닫히기 전에도 그 창에서 조합을 마칠 수 있게)
 struct PopoverCloseWatcher: NSViewRepresentable {
+    enum PopoverClose: Equatable {
+        case done, cancelled, appLeft
+    }
+
     var host: EditorWindow? = nil
-    let onClose: (_ cancelled: Bool) -> Void
+    let onClose: (_ how: PopoverClose) -> Void
 
     func makeNSView(context: Context) -> Probe { Probe() }
     func updateNSView(_ v: Probe, context: Context) {
@@ -1701,26 +1735,42 @@ struct PopoverCloseWatcher: NSViewRepresentable {
         return e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command && e.charactersIgnoringModifiers == "."
     }
 
+    /// 앱이 물러나게 한 이벤트인지 (창 서버가 보내는 ‘앱 비활성’ — ⌘Tab · 다른 앱 클릭을 처리하는 동안 앱의 지금 이벤트)
+    static func isAppDeactivation(_ e: NSEvent?) -> Bool {
+        guard let e, e.type == .appKitDefined else { return false }
+        return e.subtype == .applicationDeactivated
+    }
+
     final class Probe: NSView {
-        var onClose: ((Bool) -> Void)?
+        var onClose: ((PopoverClose) -> Void)?
         var host: EditorWindow?
+        /// 앱이 물러나는 중 (willResignActive 를 받았고 아직 다시 앞으로 오지 않았다) — 팝오버는 didResignActive 에 닫힌다
+        private var appLeaving = false
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             host?.window = window
-            NotificationCenter.default.removeObserver(self, name: NSPopover.willCloseNotification, object: nil)
+            let center = NotificationCenter.default
+            center.removeObserver(self, name: NSPopover.willCloseNotification, object: nil)
+            center.removeObserver(self, name: NSApplication.willResignActiveNotification, object: nil)
+            center.removeObserver(self, name: NSApplication.didBecomeActiveNotification, object: nil)
             guard window != nil else { return }
-            NotificationCenter.default.addObserver(self, selector: #selector(popoverWillClose(_:)),
-                                                   name: NSPopover.willCloseNotification, object: nil)
+            center.addObserver(self, selector: #selector(popoverWillClose(_:)), name: NSPopover.willCloseNotification, object: nil)
+            center.addObserver(self, selector: #selector(appWillResign(_:)), name: NSApplication.willResignActiveNotification, object: nil)
+            center.addObserver(self, selector: #selector(appDidBecomeActive(_:)), name: NSApplication.didBecomeActiveNotification, object: nil)
         }
+
+        @objc private func appWillResign(_ n: Notification) { appLeaving = true }
+        @objc private func appDidBecomeActive(_ n: Notification) { appLeaving = false }
 
         @objc private func popoverWillClose(_ n: Notification) {
             guard let content = (n.object as? NSPopover)?.contentViewController?.view, isDescendant(of: content) else { return }
-            let cancelled = PopoverCloseWatcher.isCancel(NSApp.currentEvent, in: window)
+            let how: PopoverClose = PopoverCloseWatcher.isCancel(NSApp.currentEvent, in: window) ? .cancelled
+                : (appLeaving || PopoverCloseWatcher.isAppDeactivation(NSApp.currentEvent)) ? .appLeft : .done
             // 닫힘 알림은 입력기가 조합을 마치기 전에 온다: 두벌식이 들고 있는 마지막 음절('시험공부'의 '부')은 이름 칸에는 보여도
             // 글(바인딩)에는 아직 없어 '시험공'이 붙었다 (회의적 검토 2026-10-10). 먼저 마친다 — 취소면 어차피 버리니 그대로
-            if !cancelled { ComposingText.finish(in: window) }
-            onClose?(cancelled)
+            if how != .cancelled { ComposingText.finish(in: window) }
+            onClose?(how)
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -1730,6 +1780,22 @@ struct PopoverCloseWatcher: NSViewRepresentable {
 /// 편집기가 든 창 (약하게 든다) — 뷰 상태에 두고 PopoverCloseWatcher 가 채운다
 final class EditorWindow {
     weak var window: NSWindow?
+}
+
+/// 다른 앱으로 넘어가며 닫힌 D-day ‘새로 만들기’ (날짜별, 앱을 끄면 사라진다). 그 날의 편집기를 다시 열면 한 번 돌려주고 비운다
+@MainActor
+enum DDayDraftShelf {
+    struct Draft: Equatable {
+        let title: String
+        let date: Date
+        let save: Bool
+    }
+
+    private static var drafts: [String: Draft] = [:]
+
+    static func put(_ day: Date, _ d: Draft) { drafts[Dates.key(day)] = d }
+
+    static func take(_ day: Date) -> Draft? { drafts.removeValue(forKey: Dates.key(day)) }
 }
 
 /// 입력기가 조합 중인 글자: 두벌식이 스페이스 · Return 전까지 들고 있는 마지막 음절, 일본어의 변환 전 글자 …

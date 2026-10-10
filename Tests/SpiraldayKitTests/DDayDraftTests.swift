@@ -381,6 +381,64 @@ final class DDayDraftTests: XCTestCase {
         XCTAssertTrue(r.store.ddayLibrary.isEmpty)
     }
 
+    // MARK: 다른 앱으로 넘어가며 닫힘 (⌘Tab · 다른 앱 클릭)
+
+    /// 앱이 물러날 때 AppKit 이 보내는 순서 그대로 (일시 팝오버는 didResignActive 에 스스로 닫힌다)
+    private func switchToAnotherApp(_ pop: NSPopover) async {
+        NotificationCenter.default.post(name: NSApplication.willResignActiveNotification, object: NSApp)
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        await spin(0.5)
+        XCTAssertTrue(closed(pop), "틀 확인: 앱이 물러나면 일시 팝오버는 스스로 닫힌다")
+    }
+
+    private func comeBack() async {
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+        await spin(0.2)
+    }
+
+    /// 잠깐 다른 앱을 보려고 ⌘Tab 하면 팝오버가 닫히는데, 그것만으로 쓰던 이름이 처음 날짜(30일 뒤)로 붙고 목록에도 들어갔다
+    /// (회의적 검토 2026-10-10 — iPhone 은 앱을 바꿔도 시트가 열린 채라 붙지 않는다). 이제 붙이지 않고 두었다가, 다시 열면 그대로 —
+    /// 그때 닫으면 붙고, Esc 면 버린다
+    func testSwitchingToAnotherAppKeepsTheDraftForNextTime() async throws {
+        let r = await rig()
+        let pop = try await open(r)
+        try await type(typed, in: pop)
+        await switchToAnotherApp(pop)
+        XCTAssertTrue(titles(r).isEmpty, "다른 앱으로 넘어가 닫힌 것은 붙이지 않는다 (iPhone 처럼)")
+        XCTAssertTrue(r.store.ddayLibrary.isEmpty, "목록에도 넣지 않는다")
+        await comeBack()
+        let again = try await open(r)
+        XCTAssertEqual(try field(again).stringValue, typed, "다시 열면 적던 이름이 그대로")
+        await clickOutside(r, again)
+        XCTAssertEqual(titles(r), [typed], "그때 바깥을 눌러 닫으면 붙는다")
+        XCTAssertEqual(r.store.ddayLibrary.map(\.title), [typed])
+        // 한 번 돌려준 것은 다시 나오지 않는다
+        let third = try await open(r)
+        XCTAssertEqual(try field(third).stringValue, "")
+        await clickOutside(r, third)
+        XCTAssertEqual(titles(r), [typed])
+    }
+
+    /// 조합 중에 앱을 바꿔도 마지막 음절까지 두었다가 돌려준다. 돌려받은 뒤 Esc 면 버린다
+    func testSwitchingAppsWhileComposingKeepsTheWholeNameAndEscStillCancels() async throws {
+        let r = await rig()
+        let pop = try await open(r)
+        _ = try await compose("시험공", marked: "부", in: pop)
+        await switchToAnotherApp(pop)
+        XCTAssertTrue(titles(r).isEmpty)
+        await comeBack()
+        let again = try await open(r)
+        XCTAssertEqual(try field(again).stringValue, typed, "조합 중이던 마지막 글자까지 그대로")
+        try await escape(again)
+        if !closed(again) { again.performClose(nil) }
+        await spin(0.2)
+        XCTAssertTrue(titles(r).isEmpty, "돌려받은 것도 Esc 는 취소")
+        let third = try await open(r)
+        XCTAssertEqual(try field(third).stringValue, "", "Esc 로 버린 것은 다시 나오지 않는다")
+        await clickOutside(r, third)
+        XCTAssertTrue(titles(r).isEmpty)
+    }
+
     // MARK: 팝오버가 아닌 곳 (iPhone 시트처럼 편집기가 사라질 때)
 
     /// 편집기가 화면에서 사라지면(시트의 [완료] · 아래로 쓸기) 적은 것이 붙는다
