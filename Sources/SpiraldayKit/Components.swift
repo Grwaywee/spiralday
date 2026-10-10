@@ -914,6 +914,8 @@ public struct SlotPainter: View {
     #if os(macOS)
     /// 이 종이가 든 창의 되돌리기 기록 (편집 메뉴의 ⌘Z 가 종이에서 닿는 곳)
     @Environment(\.undoManager) private var undoManager
+    /// 지금 붓질을 시작한 점 (칠하기 층 좌표). 다른 점에서 시작한 누름이 오면 앞 붓질은 뗌을 받지 못하고 남은 것이다
+    @State private var strokeStart: CGPoint? = nil
     #endif
     @State private var snapshot: [Int]? = nil
     /// 지난 걸음에 칠한 범위 (이번 범위 밖으로 줄어든 칸만 붓질 전 값으로 되돌린다)
@@ -950,7 +952,7 @@ public struct SlotPainter: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     // 지금 저장소의 칸 위에 (그린 뒤 밖에서 들어온 칸을 붓질 전 값으로 덮지 않게)
-                    .onChanged { v in drag(v.location, store.day(date).slots) }
+                    .onChanged { v in drag(v.location, from: v.startLocation, store.day(date).slots) }
                     .onEnded { v in dragEnded(v.location) }
             )
             .pointerCursor(state.tool == AppState.textTool ? .iBeam : .crosshair)
@@ -1096,9 +1098,13 @@ public struct SlotPainter: View {
         if !isSnapshot {
             MealCircleHandle(
                 cursor: state.tool == AppState.textTool ? .iBeam : .crosshair,
-                stroke: { p, ended in
+                stroke: { p, start, ended in
                     let at = CGPoint(x: origin.x + p.x, y: origin.y + p.y)
-                    if ended { dragEnded(at) } else { drag(at, store.day(date).slots) }
+                    if ended { dragEnded(at) } else { drag(at, from: CGPoint(x: origin.x + start.x, y: origin.y + start.y), store.day(date).slots) }
+                },
+                interrupted: { p, start in
+                    strokeInterrupted(at: CGPoint(x: origin.x + p.x, y: origin.y + p.y),
+                                      from: CGPoint(x: origin.x + start.x, y: origin.y + start.y))
                 },
                 remove: { store.removeNote(date, n.id) }
             )
@@ -1125,7 +1131,18 @@ public struct SlotPainter: View {
 
     private var annotating: Bool { state.tool == AppState.textTool || state.tool == AppState.mealTool }
 
-    private func drag(_ p: CGPoint, _ current: [Int]) {
+    /// start: 이 붓질을 누른 점 (끌기 제스처의 startLocation · 동그라미에서 누른 점)
+    private func drag(_ p: CGPoint, from start: CGPoint, _ current: [Int]) {
+        #if os(macOS)
+        // 앞 붓질이 뗌을 받지 못하고 남았다 (붓질을 받던 밥 동그라미가 도중에 사라짐 · 끌기 제스처가 끝 없이 취소됨 …):
+        // 그 시작점 · 붓질 전 칸을 버리고 이번 누름부터 새로 — 남겨 두면 다음 붓질이 예전 시작점부터 칠했다 (회의적 검토 2026-10-10)
+        if strokeStart != start {
+            snapshot = nil
+            painted = nil
+            pending = nil
+            strokeStart = start
+        }
+        #endif
         let s = slot(at: p)
         if annotating {
             if pending == nil { state.endEditing(); anchor = s }
@@ -1148,7 +1165,13 @@ public struct SlotPainter: View {
     }
 
     private func dragEnded(_ p: CGPoint) {
+        #if os(macOS)
+        defer { snapshot = nil; painted = nil; pending = nil; strokeStart = nil }
+        // 끝낼 붓질이 없다 (이미 끝났거나 버렸다) — 예전 시작점으로 메모를 만들거나 지우지 않는다
+        guard snapshot != nil || pending != nil else { return }
+        #else
         defer { snapshot = nil; painted = nil; pending = nil }
+        #endif
         let s = slot(at: p)
         let range = min(anchor, s)...max(anchor, s)
         switch state.tool {
@@ -1172,6 +1195,23 @@ public struct SlotPainter: View {
     }
 
     #if os(macOS)
+    /// 붓질이 뗌 없이 끊겼다: 붓질을 받던 밥 동그라미가 창에서 빠졌다 (다른 기기에서 지운 밥이 실시간 동기화로 들어옴 · 장 넘김 …).
+    /// 그 뒤의 끌기 · 뗌은 아무 뷰에도 오지 않아서, 예전에는 붓질이 끝나지 않고 남아 다음 붓질이 예전 시작점부터 칠했다
+    /// (11:20 에서 시작한 붓질 뒤 21:00 두 칸만 칠했는데 10시간이 칠해짐 — 회의적 검토 2026-10-10).
+    /// 칠하기 · 지우개는 지금까지 칠한 데서 뗀 것처럼 마치고 (지우는 붓질이면 겹친 메모 · 밥도, ⌘Z 기록도), 글씨 · 밥 도구의 범위는 버린다.
+    /// start: 끊긴 붓질의 시작점 — 그 사이 새 붓질이 시작됐으면 건드리지 않는다
+    private func strokeInterrupted(at p: CGPoint, from start: CGPoint) {
+        guard strokeStart == start else { return }
+        if annotating {
+            snapshot = nil
+            painted = nil
+            pending = nil
+            strokeStart = nil
+        } else {
+            dragEnded(p)
+        }
+    }
+
     /// 이 붓질을 창의 되돌리기 기록에 남긴다 — 붓질이 바꾼 칸(붓질 전 → 뒤)과 함께 지운 메모 · 밥.
     /// 같은 색으로 다시 칠하거나 한 번 누르기만 해도 손글씨 메모가 지워지는데 Mac 에는 되돌릴 길이 없었다 (회의적 검토 2026-10-10:
     /// iPhone 은 같은 붓질 뒤에 ‘…지웠어요’ 알림과 [되돌리기]가 뜬다). 바꾼 것이 없는 붓질은 남기지 않는다
@@ -1262,8 +1302,10 @@ struct PaintStrokeUndo {
 /// - 오른쪽 클릭 · ⌃클릭 → '밥시간 지우기' 메뉴 (칸은 칠하지 않는다)
 struct MealCircleHandle: NSViewRepresentable {
     var cursor: NSCursor
-    /// 동그라미 왼쪽 위에서 잰 점, 끝났는지
-    var stroke: (CGPoint, Bool) -> Void
+    /// 동그라미 왼쪽 위에서 잰 점, 그 붓질을 누른 점, 끝났는지
+    var stroke: (CGPoint, CGPoint, Bool) -> Void
+    /// 붓질 도중에 동그라미가 창에서 빠졌다 (마지막 점, 누른 점) — 뗌이 이 뷰에 오지 않는다
+    var interrupted: (CGPoint, CGPoint) -> Void
     var remove: () -> Void
 
     func makeNSView(context: Context) -> CircleView { CircleView() }
@@ -1278,6 +1320,9 @@ struct MealCircleHandle: NSViewRepresentable {
         var handle: MealCircleHandle?
         /// 왼쪽 누름을 받아 끄는 중 (뗄 때 한 번 끝낸다)
         private var stroking = false
+        /// 이 붓질을 누른 점 · 마지막 점 (동그라미 좌표)
+        private var downPoint = CGPoint.zero
+        private var lastPoint = CGPoint.zero
 
         override var isFlipped: Bool { true }
 
@@ -1302,18 +1347,31 @@ struct MealCircleHandle: NSViewRepresentable {
                 return
             }
             stroking = true
-            handle?.stroke(point(e), false)
+            downPoint = point(e)
+            lastPoint = downPoint
+            handle?.stroke(downPoint, downPoint, false)
         }
 
         override func mouseDragged(with e: NSEvent) {
             guard stroking else { return }
-            handle?.stroke(point(e), false)
+            lastPoint = point(e)
+            handle?.stroke(lastPoint, downPoint, false)
         }
 
         override func mouseUp(with e: NSEvent) {
             guard stroking else { return }
             stroking = false
-            handle?.stroke(point(e), true)
+            handle?.stroke(point(e), downPoint, true)
+        }
+
+        /// 끄는 도중에 창에서 빠진다 (밥이 지워짐 · 장 넘김): 남은 끌기 · 뗌은 이 뷰에 오지 않으니 여기서 붓질을 마치게 한다.
+        /// SwiftUI 가 뷰를 걷는 중이라 저장소는 다음 차례에 고친다
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            super.viewWillMove(toWindow: newWindow)
+            guard newWindow == nil, stroking else { return }
+            stroking = false
+            let h = handle, last = lastPoint, start = downPoint
+            DispatchQueue.main.async { h?.interrupted(last, start) }
         }
 
         override func menu(for event: NSEvent) -> NSMenu? {

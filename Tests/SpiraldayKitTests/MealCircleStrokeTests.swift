@@ -264,6 +264,76 @@ final class MealCircleStrokeTests: XCTestCase {
     func testDailyMealCircleMenuClickDoesNotPaint() async throws { try await checkMenuClickDoesNotPaint(.daily) }
     func testWeeklyMealCircleMenuClickDoesNotPaint() async throws { try await checkMenuClickDoesNotPaint(.weekly) }
 
+    // MARK: 붓질 도중에 그 밥이 사라져도 붓질이 남지 않는다
+
+    /// 동그라미에서 시작한 붓질 도중에 그 밥이 지워지면 (다른 기기에서 지운 것이 실시간 동기화로 들어올 때 — 같은 저장소 호출)
+    /// 동그라미 뷰가 창에서 빠져 뗌을 받지 못했고, 붓질이 끝나지 않고 남아 다음 붓질이 예전 시작점부터 칠했다
+    /// (32 에서 시작한 붓질 뒤 90–91 만 칠했는데 32…91, 60칸이 칠해짐 — 회의적 검토 2026-10-10).
+    /// 이제 그 붓질은 동그라미가 빠진 자리에서 끝나고, 다음 붓질은 제 칸만 칠한다.
+    private func checkMealRemovedMidStroke(_ kind: PageKind) async throws {
+        let r = await rig(kind)
+        let meal = await addMeal(r)
+        r.state.tool = pen(r)
+        let a = point(r, cellCenter(r, mealStart)), b = point(r, cellCenter(r, mealStart + 2))
+        let mid = NSPoint(x: (a.x + b.x) / 2, y: a.y)
+        send(r, .mouseMoved, a)
+        await spin(0.05)
+        send(r, .leftMouseDown, a)
+        await spin(0.05)
+        send(r, .leftMouseDragged, mid)
+        await spin(0.05)
+        XCTAssertEqual(slots(r)[mealStart], pen(r), "\(kind): 동그라미에서 시작한 붓질이 칠하는 중 (틀)")
+        r.store.removeNote(r.date, meal)
+        await spin(0.3)
+        // 동그라미가 없어진 뒤의 끌기 · 뗌 (아무 뷰도 받지 않는다)
+        send(r, .leftMouseDragged, b)
+        await spin(0.05)
+        send(r, .leftMouseUp, b)
+        await spin(0.3)
+        XCTAssertEqual(r.state.editingKey, nil)
+        // 다른 줄의 붓질 (21:00 의 두 칸)
+        await stroke(r, from: 90, to: 91)
+        let s = slots(r)
+        let painted = s.indices.filter { s[$0] != empty }
+        XCTAssertEqual(Array(s[90...91]), [pen(r), pen(r)], "\(kind): 다음 붓질은 제 칸을 칠한다")
+        XCTAssertTrue(painted.allSatisfy { (mealStart...(mealStart + 2)).contains($0) || (90...91).contains($0) },
+                      "\(kind): 다음 붓질이 끊긴 붓질의 시작점부터 칠하면 안 된다 — 칠해진 칸 \(painted)")
+        XCTAssertTrue(painted.contains(mealStart), "\(kind): 끊긴 붓질이 칠한 칸은 그대로")
+    }
+
+    func testDailyMealRemovedMidStrokeLeavesNoStroke() async throws { try await checkMealRemovedMidStroke(.daily) }
+    func testWeeklyMealRemovedMidStrokeLeavesNoStroke() async throws { try await checkMealRemovedMidStroke(.weekly) }
+
+    /// 지우는 붓질이 끊겨도 뗀 것처럼 끝난다: 지운 칸과 겹친 손글씨도 함께 지우고, ⌘Z 한 번으로 되돌린다
+    func testInterruptedErasingStrokeFinishesLikeARelease() async throws {
+        let r = await rig(.daily)
+        let p = pen(r)
+        r.store.editDay(r.date) { d in for s in self.mealStart...(self.mealStart + 3) { d.slots[s] = p } }
+        let meal = await addMeal(r)
+        let text = r.store.addNote(r.date, TimeNote(kind: .text, start: mealStart + 1, end: mealStart + 1, text: "점심 약속"))
+        await spin(0.15)
+        r.state.tool = p
+        let a = point(r, cellCenter(r, mealStart)), b = point(r, cellCenter(r, mealStart + 1))
+        send(r, .mouseMoved, a)
+        await spin(0.05)
+        send(r, .leftMouseDown, a)
+        await spin(0.05)
+        send(r, .leftMouseDragged, b)
+        await spin(0.05)
+        r.store.removeNote(r.date, meal)
+        await spin(0.3)
+        send(r, .leftMouseUp, b)
+        await spin(0.3)
+        XCTAssertEqual(Array(slots(r)[mealStart...(mealStart + 3)]), [empty, empty, p, p], "지금까지 지운 칸에서 끝난다")
+        XCTAssertFalse(r.store.day(r.date).notes.contains { $0.id == text }, "같은 색으로 지운 칸의 손글씨도 함께 (뗀 것처럼)")
+        let fr: NSResponder = r.win.firstResponder ?? r.win
+        XCTAssertTrue(fr.tryToPerform(Selector(("undo:")), with: nil))
+        await spin(0.2)
+        XCTAssertEqual(Array(slots(r)[mealStart...(mealStart + 3)]), [p, p, p, p], "⌘Z 로 칸이 돌아온다")
+        XCTAssertTrue(r.store.day(r.date).notes.contains { $0.id == text }, "⌘Z 로 손글씨가 돌아온다")
+        r.win.undoManager?.removeAllActions()
+    }
+
     // MARK: 넘김 스냅샷 · PDF 에는 동그라미 그림만
 
     /// 넘김 스냅샷(PDF 도 같은 ImageRenderer · isSnapshot)에 동그라미의 AppKit 뷰가 찍히지 않는다 —
