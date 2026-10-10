@@ -898,6 +898,7 @@ public struct Stars: View {
 /// - 글씨 도구: 칸을 누르거나 끌어서 그 자리에 손글씨 메모
 /// - 밥 도구: 시작 칸에 🍴 아이콘, 끝나는 칸까지 화살표 (클릭만 하면 1시간)
 /// - 지우개: 칠한 칸과 겹치는 메모/밥시간을 함께 지운다 (Mac 은 같은 색으로 다시 칠해 지울 때도 — iPhone 처럼, erasesNotes)
+/// - Mac: 칠하기 · 지우기 붓질 하나는 ⌘Z 한 번으로 되돌린다 (iPhone 의 붓질 뒤 [되돌리기]처럼 — PaintStrokeUndo)
 /// 격자 자체(선, 숫자)는 각 페이지가 그린다.
 public struct SlotPainter: View {
     public let date: Date
@@ -910,6 +911,10 @@ public struct SlotPainter: View {
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
+    #if os(macOS)
+    /// 이 종이가 든 창의 되돌리기 기록 (편집 메뉴의 ⌘Z 가 종이에서 닿는 곳)
+    @Environment(\.undoManager) private var undoManager
+    #endif
     @State private var snapshot: [Int]? = nil
     /// 지난 걸음에 칠한 범위 (이번 범위 밖으로 줄어든 칸만 붓질 전 값으로 되돌린다)
     @State private var painted: ClosedRange<Int>? = nil
@@ -1155,9 +1160,34 @@ public struct SlotPainter: View {
             let end = range.count == 1 ? min(range.lowerBound + 5, 143) : range.upperBound
             store.addNote(date, TimeNote(kind: .meal, start: range.lowerBound, end: end))
         default:
+            #if os(macOS)
+            // 지우는 붓질이 함께 지운 글씨 메모 · 밥시간 (⌘Z 로 되살린다)
+            let removed = erasesNotes ? store.day(date).notes.filter { range.overlaps($0.span) } : []
             if erasesNotes { store.removeNotes(date, overlapping: range) }
+            if let before = snapshot { recordUndo(range: range, before: before, removed: removed) }
+            #else
+            if erasesNotes { store.removeNotes(date, overlapping: range) }
+            #endif
         }
     }
+
+    #if os(macOS)
+    /// 이 붓질을 창의 되돌리기 기록에 남긴다 — 붓질이 바꾼 칸(붓질 전 → 뒤)과 함께 지운 메모 · 밥.
+    /// 같은 색으로 다시 칠하거나 한 번 누르기만 해도 손글씨 메모가 지워지는데 Mac 에는 되돌릴 길이 없었다 (회의적 검토 2026-10-10:
+    /// iPhone 은 같은 붓질 뒤에 ‘…지웠어요’ 알림과 [되돌리기]가 뜬다). 바꾼 것이 없는 붓질은 남기지 않는다
+    private func recordUndo(range: ClosedRange<Int>, before: [Int], removed: [TimeNote]) {
+        guard let um = undoManager ?? state.plannerWindow?.undoManager else { return }
+        let rec = store.day(date)
+        let cells = range.compactMap { s -> PaintStrokeUndo.Cell? in
+            guard s < before.count, s < rec.slots.count, before[s] != rec.slots[s] else { return nil }
+            return PaintStrokeUndo.Cell(slot: s, before: before[s], after: rec.slots[s])
+        }
+        let gone = removed.filter { n in !rec.notes.contains { $0.id == n.id } }
+        guard !cells.isEmpty || !gone.isEmpty else { return }
+        PaintStrokeUndo(date: date, cells: cells, notes: gone, name: paint == -1 ? "지우기" : "칠하기")
+            .register(on: um, store: store, undoing: true)
+    }
+    #endif
 
     /// 이번 붓질이 칠한 칸과 겹친 글씨 메모 · 밥시간도 지우는지 (dragEnded 에서, snapshot 을 비우기 전에 본다).
     /// - Mac: 지우는 붓질이면 늘 — 지우개든, 칠한 칸을 같은 색 형광펜으로 다시 칠해 지우든 (paint == -1).
@@ -1175,6 +1205,58 @@ public struct SlotPainter: View {
 }
 
 #if os(macOS)
+/// 타임테이블 붓질 하나의 되돌리기(⌘Z) · 다시 하기(⇧⌘Z).
+/// 붓질이 바꾼 것만 되돌린다: 칸은 지금 값이 붓질 뒤 값일 때만 붓질 전 값으로 (그 사이 다른 기기 · 다른 붓질이 바꾼 칸은 그대로),
+/// 지운 메모 · 밥은 없을 때만 되살린다 — 그 날 기록을 통째로 덮지 않아서 ⌘Z 가 다른 기기의 편집을 지우지 않는다.
+/// 되돌리기 기록은 창(종이)의 것 — 글 칸을 쓰는 동안의 ⌘Z 는 예전처럼 글 칸의 것.
+struct PaintStrokeUndo {
+    struct Cell {
+        let slot: Int
+        let before: Int
+        let after: Int
+    }
+
+    let date: Date
+    let cells: [Cell]
+    let notes: [TimeNote]
+    /// 편집 메뉴에 보이는 이름 ('칠하기' · '지우기')
+    let name: String
+
+    /// undoing: 이 기록을 실행하면 붓질 전으로 (⌘Z). 실행하면서 반대쪽(다시 하기)을 남긴다
+    func register(on um: UndoManager, store: PlannerStore, undoing: Bool) {
+        um.registerUndo(withTarget: store) { store in
+            MainActor.assumeIsolated {
+                apply(to: store, undoing: undoing)
+                register(on: um, store: store, undoing: !undoing)
+            }
+        }
+        um.setActionName(name)
+    }
+
+    @MainActor
+    func apply(to store: PlannerStore, undoing: Bool) {
+        let ids = Set(notes.map(\.id))
+        let rec = store.day(date)
+        let cellsMove = cells.contains { c in
+            c.slot < rec.slots.count && rec.slots[c.slot] == (undoing ? c.after : c.before)
+        }
+        let notesMove = undoing ? notes.contains { n in !rec.notes.contains { $0.id == n.id } }
+                                : rec.notes.contains { ids.contains($0.id) }
+        guard cellsMove || notesMove else { return }
+        store.editDay(date) { d in
+            for c in cells where c.slot < d.slots.count {
+                let (from, to) = undoing ? (c.after, c.before) : (c.before, c.after)
+                if d.slots[c.slot] == from { d.slots[c.slot] = to }
+            }
+            if undoing {
+                for n in notes where !d.notes.contains(where: { $0.id == n.id }) { d.notes.append(n) }
+            } else {
+                d.notes.removeAll { ids.contains($0.id) }
+            }
+        }
+    }
+}
+
 /// 타임테이블의 🍴 동그라미 (macOS). 동그라미 안에서만 마우스를 받는다:
 /// - 왼쪽 누름 · 끌기 → stroke (칠하기 층의 끌기와 같은 함수로 — 동그라미에서 시작해도 칠하기 · 지우개 · 글씨 · 밥)
 /// - 오른쪽 클릭 · ⌃클릭 → '밥시간 지우기' 메뉴 (칸은 칠하지 않는다)
