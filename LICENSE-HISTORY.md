@@ -12,11 +12,11 @@
 |---|---|---|
 | `main` — 첫 커밋 ~ LICENSE 추가 직전 (6개) | `e8a5c48` … `8ffdeb2` (2026-09-29) | 없음 (LICENSE 파일이 들어 있지 않음) |
 | `main` — **MIT 로 공개된 버전** (94개) | `32d05f5` (2026-09-29, *Add README, license and preview media*) 부터 **`e40dd8e2318ad0f26d1e41b71c989b2df95724d3`** (2026-10-08) 까지 | MIT License — `Copyright (c) 2026 LeanAgileHungry Inc.` |
-| `main` 밖의 공개 브랜치 `fix/mac-pens-task-comment` — **MIT 로 공개된 버전** (3개) | `199f998` · `c22ee73` · `04a1227` (2026-10-08, `main` 의 `e575428` 에서 갈라짐) | MIT License — 위와 같은 파일 |
+| `main` 밖의 공개 브랜치 — **MIT 로 공개된 버전** (12개, 2026-10-10 기준) | `fix/mac-pens-task-comment`: `199f998` · `c22ee73` · `04a1227` · `39c393a` · `bda033e`<br>`mac/meal-dday-1008`: `1e4f219` · `0634091` · `8cf30a2` · `5dcbeb3`<br>`ios/kit-dday-popover-1009`: `cb8a255` · `6b37d1e` · `c9f843f`<br>(2026-10-08 ~ 10-10. 모두 `main` 의 `e575428` — 라이선스를 바꾸기 전 — 에서 갈라져, 라이선스를 바꾼 뒤에 올라간 것도 MIT `LICENSE` 를 그대로 품고 있음. 세 브랜치가 함께 지닌 커밋은 한 번만 셈) | MIT License — 위와 같은 파일 |
 | 라이선스를 바꾼 커밋부터 | 이 파일이 처음 들어간 커밋 (부모: `e40dd8e`) 과 그 뒤 | [PolyForm Noncommercial License 1.0.0](LICENSE) — `Required Notice: Copyright 2026 LeanAgileHungry Inc. (https://spiralday.com)` |
 
-정리하면, **라이선스를 바꾼 커밋 전에 이 저장소에 공개된 커밋 가운데 `LICENSE` 파일이 들어 있는 것은 모두 MIT 버전**입니다 (브랜치 · 태그 포함, 위 표의 97개).
-`e40dd8e` 는 `main` 에서 MIT 로 공개된 마지막 커밋입니다.
+정리하면, **이 저장소에 공개된 커밋 가운데 라이선스를 바꾼 커밋을 조상으로 갖지 않고 `LICENSE` 파일이 들어 있는 것은 모두 MIT 버전**입니다 (브랜치 · 태그 포함, 위 표의 106개 — `main` 94개 + `main` 밖 12개).
+`e40dd8e` 는 `main` 에서 MIT 로 공개된 마지막 커밋입니다. 위 `main` 밖의 커밋은 나중에 `main` 에 합쳐질 수 있고, 합쳐져도 그 커밋 자체는 MIT 버전 그대로입니다 (그 커밋들을 합친 커밋과 그 뒤는 PolyForm Noncommercial).
 
 ## MIT 로 공개된 태그 · 릴리스
 
@@ -44,7 +44,7 @@ Windows 앱은 따로(비공개로) 관리하는 코드이고, 이 저장소에�
 
 ## 예전 MIT 버전은 MIT 그대로
 
-- 위 표의 MIT 버전(`main` 의 `32d05f5` ~ `e40dd8e`, 브랜치 `fix/mac-pens-task-comment` 의 세 커밋, 위 태그들)은 MIT License 와 함께 공개되었습니다. LeanAgileHungry Inc. 는 그 공개를 거두어들이지 않습니다. 그 버전을 받은 사람은 그 버전에 들어 있는 MIT License 조건대로 계속 쓸 수 있습니다.
+- 위 표의 MIT 버전(`main` 의 `32d05f5` ~ `e40dd8e`, `main` 밖 공개 브랜치의 12개 커밋, 위 태그들)은 MIT License 와 함께 공개되었습니다. LeanAgileHungry Inc. 는 그 공개를 거두어들이지 않습니다. 그 버전을 받은 사람은 그 버전에 들어 있는 MIT License 조건대로 계속 쓸 수 있습니다.
 - 라이선스를 바꾼 커밋과 그 뒤의 버전은 [PolyForm Noncommercial License 1.0.0](LICENSE) 과 함께 공개됩니다. 예전 MIT 버전에 있던 코드가 새 버전에 그대로 남아 있거나 나중에 `main` 에 합쳐지더라도(예: 위 브랜치), 예전 MIT 버전에서 받은 사본은 그 버전의 MIT License 를 따릅니다. 바뀌는 것은 새 버전을 받는 조건입니다.
 - 어느 쪽이든 **Spiralday 이름 · 로고 · 앱 아이콘**은 코드 라이선스와 따로입니다 — [TRADEMARKS.md](TRADEMARKS.md).
 - 함께 들어 있는 외부 구성 요소(Sparkle · libsodium · swift-sodium · Poor Story 글꼴)는 바뀌기 전에도 뒤에도 각자의 라이선스를 따릅니다 — [README 의 라이선스](README.md#라이선스).
@@ -63,16 +63,16 @@ The dividing line is a commit, not a date. The `LICENSE` file included in each v
 |---|---|---|
 | `main` — first commit up to just before the license was added (6 commits) | `e8a5c48` … `8ffdeb2` (2026-09-29) | none (no LICENSE file) |
 | `main` — **published under MIT** (94 commits) | from `32d05f5` (2026-09-29, *Add README, license and preview media*) up to and including **`e40dd8e2318ad0f26d1e41b71c989b2df95724d3`** (2026-10-08) | MIT License — `Copyright (c) 2026 LeanAgileHungry Inc.` |
-| Public branch outside `main`, `fix/mac-pens-task-comment` — **published under MIT** (3 commits) | `199f998`, `c22ee73`, `04a1227` (2026-10-08, branched from `e575428` on `main`) | MIT License — the same file |
+| Public branches outside `main` — **published under MIT** (12 commits, as of 2026-10-10) | `fix/mac-pens-task-comment`: `199f998`, `c22ee73`, `04a1227`, `39c393a`, `bda033e`<br>`mac/meal-dday-1008`: `1e4f219`, `0634091`, `8cf30a2`, `5dcbeb3`<br>`ios/kit-dday-popover-1009`: `cb8a255`, `6b37d1e`, `c9f843f`<br>(2026-10-08 to 10-10. All branched from `e575428` on `main`, before the relicensing commit, so even those pushed after the change still contain the MIT `LICENSE`. Commits shared by these branches are counted once.) | MIT License — the same file |
 | From the relicensing commit onward | the commit that first added this file (parent: `e40dd8e`) and later | [PolyForm Noncommercial License 1.0.0](LICENSE) — `Required Notice: Copyright 2026 LeanAgileHungry Inc. (https://spiralday.com)` |
 
-In short, **every commit published in this repository before the relicensing commit that contains a `LICENSE` file is an MIT version** (branches and tags included; 97 commits in the table above).
-`e40dd8e` is the last commit published under MIT on `main`.
+In short, **every commit published in this repository that contains a `LICENSE` file and does not have the relicensing commit as an ancestor is an MIT version** (branches and tags included; 106 commits in the table above — 94 on `main` and 12 outside it).
+`e40dd8e` is the last commit published under MIT on `main`. The commits outside `main` listed above may later be merged into `main`; they remain MIT versions themselves (the merge commits and everything after them are PolyForm Noncommercial).
 
 Every tag listed above in the Korean section — `v1.0.0` through **`v1.1.0`** (`c0cf90cb89175b84dd5cd3a8387120111d1bfce2`), `win-v0.9.1`, `win-v0.9.2` and `win-latest` — points to a commit at or before `e40dd8e` that contains the MIT `LICENSE`. `win-latest` is shown at its position just before the change; it is a moving tag used for Windows updates, and if it moves, the `LICENSE` in the commit it then points to governs that version.
 The Windows installers attached to the `win-*` releases are not built from this repository; the Windows app is maintained separately (privately) and only its installers are distributed here.
 
-**Earlier MIT versions stay MIT.** The MIT versions in the table above (`32d05f5` … `e40dd8e` on `main`, the three commits on `fix/mac-pens-task-comment`, and the tags) were published with the MIT License, and LeanAgileHungry Inc. does not withdraw that publication: anyone who received those versions may keep using them under the MIT License included in them. The relicensing commit and later versions are published with the PolyForm Noncommercial License 1.0.0. Even where code from an earlier MIT version remains in a later version, or is merged into `main` later (for example, the branch above), a copy received from an earlier MIT version follows that version’s MIT License; what changes is the terms on which the new versions are offered.
+**Earlier MIT versions stay MIT.** The MIT versions in the table above (`32d05f5` … `e40dd8e` on `main`, the 12 commits on public branches outside `main`, and the tags) were published with the MIT License, and LeanAgileHungry Inc. does not withdraw that publication: anyone who received those versions may keep using them under the MIT License included in them. The relicensing commit and later versions are published with the PolyForm Noncommercial License 1.0.0. Even where code from an earlier MIT version remains in a later version, or is merged into `main` later (for example, the branches above), a copy received from an earlier MIT version follows that version’s MIT License; what changes is the terms on which the new versions are offered.
 In either case, the **Spiralday name, logo and app icon** are not part of the code license — see [TRADEMARKS.md](TRADEMARKS.md). Bundled third-party components (Sparkle, libsodium, swift-sodium, the Poor Story font) keep their own licenses before and after the change.
 
 This document is a record of history, not legal advice. Questions: contact@leanagilehungry.com

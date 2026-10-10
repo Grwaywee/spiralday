@@ -23,14 +23,21 @@ final class ReleaseGuardTests: XCTestCase {
         let fixes = try requiredFixes()
         // 형광펜 사고(A) 두 커밋 · 팔레트 책(E) · 넘김 위 고리(B) · 입력 · 팔레트(G H J E D) · 기본값(S) · 처음 안내 합류(I P O)
         // · 그 검토 반영 (실패한 합류의 빈 책 · 받는 중 30초, 고리 굽기)
-        for c in ["3f074d4", "63d21fc", "63ab4fb", "478e1de", "d43ba6c", "0331099", "cacdff6", "9a1bd73", "2a08fbe"] {
+        // 1.1.1: 펜 순서 · 분류 칸 메뉴 · COMMENT 의 Return (+ 검토) · 밥 동그라미 · D-day 닫으면 붙이기 (+ 한글 조합 검토)
+        // · 같은 색으로 다시 칠해 지우면 글씨 · 밥도 (iPhone 처럼) · 통계는 출시 앱만 (+ 1ms 확인 · --ping-test 와 잠깐의 실패 검토)
+        // · 1.1.1 회의적 검토: 거꾸로 든 메모 · 붓질 ⌘Z · 끊긴 동그라미 붓질 · 앱을 바꿔 닫힌 D-day · 찬 COMMENT 의 ⌥↩
+        // (bda033e 는 iOS 쪽 Kit 만 바꿔 Mac 동작이 같다 — Mac 출시 지킴이에는 넣지 않는다)
+        for c in ["3f074d4", "63d21fc", "63ab4fb", "478e1de", "d43ba6c", "0331099", "cacdff6", "9a1bd73", "2a08fbe",
+                  "199f998", "c22ee73", "04a1227", "39c393a", "1e4f219", "0634091", "8cf30a2",
+                  "e05f4f8", "37d0cea", "11d697a", "de57000",
+                  "d283a53", "9e08f68", "3bd4501", "aa725db", "ba3c33a"] {
             XCTAssertTrue(fixes.contains(c), "build.sh 의 출시 지킴이에서 \(c) 가 빠졌다")
         }
         let script = try String(contentsOf: Self.root.appendingPathComponent("build.sh"), encoding: .utf8)
         XCTAssertTrue(script.contains("merge-base --is-ancestor"), "조상인지 git 으로 확인한다")
         XCTAssertTrue(script.contains(#"[ -n "$SIGN_ID" ]"#), "서명한 출시 빌드는 늘 확인한다")
         let build = script.split(separator: "\n").first { $0.hasPrefix("BUILD=") }.flatMap { Int($0.dropFirst("BUILD=".count)) }
-        XCTAssertGreaterThanOrEqual(build ?? 0, 10, "1.1.0 빌드 9 는 고침보다 먼저 만든 것이다")
+        XCTAssertGreaterThanOrEqual(build ?? 0, 11, "1.1.0 빌드 9 는 고침보다 먼저 만든 것이고, 1.1.0 은 빌드 10 — 1.1.1 은 11 부터")
     }
 
     /// git 저장소에서 돌면: 목록의 커밋이 모두 지금 HEAD 에 들어 있다 (출시 빌드가 멈추지 않는다)
