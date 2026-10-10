@@ -256,21 +256,21 @@ build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 �
 
 ## 라이선스
 
-Spiralday 의 코드는 **소스 공개(source-available) · 비영리 목적용**입니다. 누구나 읽고 공부할 수 있지만, OSI 가 정의하는 오픈소스는 아닙니다.
+Spiralday 의 코드는 **소스 공개(source-available) · 비상업 목적용**입니다. 누구나 읽고 공부할 수 있지만, OSI 가 정의하는 오픈소스는 아닙니다.
 
 - **지금 (라이선스를 바꾼 커밋부터)**: [PolyForm Noncommercial License 1.0.0](LICENSE) — `Required Notice: Copyright 2026 LeanAgileHungry Inc. (https://spiralday.com)`
 - **그 전에 MIT 로 공개된 버전은 MIT 그대로**: 라이선스를 바꾸기 전에 MIT `LICENSE` 와 함께 공개된 버전 — [LICENSE-HISTORY.md](LICENSE-HISTORY.md) 의 범위 (`main` 의 `32d05f5` ~ `e40dd8e`, 공개 브랜치 `fix/mac-pens-task-comment`, 태그 `v1.0.0` ~ `v1.1.0` · `win-v0.9.1` · `win-v0.9.2` 등) — 에서 받은 코드는 그 버전에 들어 있는 MIT License 를 따릅니다. 라이선스를 바꾼 커밋과 그 뒤의 버전은 PolyForm Noncommercial 과 함께 공개됩니다.
 
 PolyForm Noncommercial 의 뼈대 (아래는 이해를 돕는 요약이고, 기준은 [LICENSE](LICENSE) 원문입니다. 괄호 안은 원문의 항목 이름):
 
-- **허용된 목적** — 비영리 목적은 모두 허용된 목적입니다 (*Noncommercial Purposes*). 원문은 특히 아래 둘을 허용된 목적으로 적어 둡니다.
+- **허용된 목적** — 비상업 목적은 모두 허용된 목적입니다 (*Noncommercial Purposes*). 원문은 특히 아래 둘을 허용된 목적으로 적어 둡니다.
   - **개인적인 쓰임** (*Personal Uses*) — 공공의 지식을 위한 연구 · 실험 · 테스트, 개인 공부, 개인적인 즐거움, 취미 프로젝트, 아마추어 활동, 종교 활동 — 상업적 쓰임을 예상하지 않는 것
   - **비영리 기관의 쓰임** (*Noncommercial Organizations*) — 자선 단체, 교육 기관, 공공 연구 기관, 공공 안전 · 보건 기관, 환경 보호 단체, 정부 기관 (재원이 어디서 오든)
 - **쓰기 · 고치기 · 새 작업 만들기** — 허용된 목적 안에서 (*Copyright License* · *Changes and New Works License*)
 - **나눠 주기** — *Distribution License* 와 *Notices* 항목대로. 받는 사람이 이 라이선스 사본(또는 URL)과 `Required Notice:` 줄을 함께 받게 해야 합니다. 이름 · 아이콘 등은 [TRADEMARKS.md](TRADEMARKS.md) 를 따라 주세요
 - 그 밖에 원문에는 특허 라이선스 (*Patent License*), 이 소프트웨어가 특허를 침해한다고 서면으로 주장하면 특허 라이선스가 끝나는 규칙 (*Patent Defense*), 처음 위반을 서면으로 알림받았을 때 32일 안에 바로잡으면 라이선스가 이어지고 그러지 않으면 끝나는 규칙 (*Violations*), 보증 · 책임 없음 (*No Liability*) 이 있습니다
 
-허용된 목적에 들지 않는 쓰임 — 예를 들어 이 코드를 회사의 유료 제품 · 서비스에 넣기, 이 코드로 만든 앱을 팔기 — 은 이 라이선스로 허락되지 않으니 **별도 상업 라이선스**를 문의해 주세요. 어디까지가 비영리인지 애매하면 먼저 물어봐 주세요: contact@leanagilehungry.com
+허용된 목적에 들지 않는 쓰임 — 예를 들어 이 코드를 회사의 유료 제품 · 서비스에 넣기, 이 코드로 만든 앱을 팔기 — 은 이 라이선스로 허락되지 않으니 **별도 상업 라이선스**를 문의해 주세요. 어디까지가 비상업 목적인지 애매하면 먼저 물어봐 주세요: contact@leanagilehungry.com
 
 **공식 앱** — [spiralday.com](https://spiralday.com) · [Releases](https://github.com/Grwaywee/spiralday/releases) 에서 받는 서명된 Spiralday 앱은 지금처럼 무료로 받아 쓸 수 있습니다. 위 라이선스는 이 저장소의 소스 코드를 쓰고 · 고치고 · 나누는 조건입니다.
 

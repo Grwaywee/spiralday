@@ -9,7 +9,7 @@ Sparkle 2 — MIT License 와 그 안의 외부 라이선스 (Sparkle-LICENSE.tx
 Poor Story — SIL Open Font License 1.1 (../Fonts/OFL-PoorStory.txt)
   손글씨 글꼴 © YoonDesign Inc.
 
-Spiralday 자체의 소스 코드는 비영리 목적에 공개돼 있어요 (소스 공개 · 오픈소스는 아님).
+Spiralday 자체의 소스 코드는 비상업 목적에 공개돼 있어요 (소스 공개 · 오픈소스는 아님).
 라이선스: PolyForm Noncommercial License 1.0.0 — 원문은 앱 안의 이 폴더에 있는 Spiralday-LICENSE.txt (저장소에서는 LICENSE)
   https://polyformproject.org/licenses/noncommercial/1.0.0
   https://github.com/Grwaywee/spiralday/blob/main/LICENSE
