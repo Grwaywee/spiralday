@@ -25,10 +25,12 @@ final class ReleaseGuardTests: XCTestCase {
         // · 그 검토 반영 (실패한 합류의 빈 책 · 받는 중 30초, 고리 굽기)
         // 1.1.1: 펜 순서 · 분류 칸 메뉴 · COMMENT 의 Return (+ 검토) · 밥 동그라미 · D-day 닫으면 붙이기 (+ 한글 조합 검토)
         // · 같은 색으로 다시 칠해 지우면 글씨 · 밥도 (iPhone 처럼) · 통계는 출시 앱만 (+ 1ms 확인 · --ping-test 와 잠깐의 실패 검토)
+        // · 1.1.1 회의적 검토: 거꾸로 든 메모 · 붓질 ⌘Z · 끊긴 동그라미 붓질 · 앱을 바꿔 닫힌 D-day · 찬 COMMENT 의 ⌥↩
         // (bda033e 는 iOS 쪽 Kit 만 바꿔 Mac 동작이 같다 — Mac 출시 지킴이에는 넣지 않는다)
         for c in ["3f074d4", "63d21fc", "63ab4fb", "478e1de", "d43ba6c", "0331099", "cacdff6", "9a1bd73", "2a08fbe",
                   "199f998", "c22ee73", "04a1227", "39c393a", "1e4f219", "0634091", "8cf30a2",
-                  "e05f4f8", "37d0cea", "11d697a", "de57000"] {
+                  "e05f4f8", "37d0cea", "11d697a", "de57000",
+                  "d283a53", "9e08f68", "3bd4501", "aa725db", "ba3c33a"] {
             XCTAssertTrue(fixes.contains(c), "build.sh 의 출시 지킴이에서 \(c) 가 빠졌다")
         }
         let script = try String(contentsOf: Self.root.appendingPathComponent("build.sh"), encoding: .utf8)
