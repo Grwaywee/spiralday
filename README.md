@@ -120,8 +120,9 @@ open build/Spiralday.app
 | 할 일 분류 | 먼저 쓰고, 할 일의 **왼쪽 칸**을 눌러 형광펜 고르기 · 없음 (주간은 왼쪽 색 막대 자리). 이미 쓰는 형광펜을 고르면 그 묶음 바로 아래로 모여요 |
 | 체크 | 체크 박스 클릭 (○ → △ → × → → → 없음). → 표시하면 다음 날로 넘어가요 (→ 를 떼면 손대지 않은 것은 거둬요) |
 | 형광펜 | 팔레트에서 펜 클릭 또는 `1`–`7`, 지우개 `E` — 팔레트 펜은 타임테이블 칠하기 전용 |
-| 시간 칠하기 | 타임테이블 드래그 (같은 색을 다시 칠하면 지워져요). TOTAL TIME 에 넣을지는 설정 → 형광펜에서 펜마다 |
+| 시간 칠하기 | 타임테이블 드래그 (같은 색을 다시 칠하면 지워져요 — 지우개처럼 그 칸의 글씨 · 밥시간도 함께). 칠하기 · 지우기는 `⌘Z` 로 하나씩 되돌려요. TOTAL TIME 에 넣을지는 설정 → 형광펜에서 펜마다 |
 | 글씨 / 밥시간 | 팔레트의 **글씨** · **밥** 을 고르고 칸을 누르거나 끌기 |
+| COMMENT | 칸을 눌러 쓰기. `Return` 은 줄 바꿈 (다섯 줄까지, 길어지면 글씨가 작아져요) — `⌘↩` · `Esc` · 종이 빈 곳 클릭으로 끝 |
 | 쉬는 날 | 일간 페이지의 COMMENT ▾ → DAY OFF (적어 둔 COMMENT 는 그대로, ▾ → 작성하기로 돌아와요) |
 | 오늘의 컬러 | 팔레트의 색 동그라미 (오른쪽 클릭: 기본값으로) |
 | 팔레트 접기 · 펼치기 | `⌘\` 또는 팔레트 끝의 작은 화살표 · 접힌 손잡이 (손잡이에 마우스를 올리면 잠깐 펼쳐지고, 누르면 펼친 채로 고정). 접혀 있어도 지금 도구로 칠할 수 있고, `1`–`7` · `E` 로 바꾸면 잠깐 펼쳐 보여 줘요 |
@@ -243,7 +244,7 @@ swift test                                   # SpiraldayKit: 페이지 · 넘김
 .build/debug/Spiralday --sync-qa ./out       # 설정 → 동기화의 모든 상태 (라이트 · 다크) · 팔레트 표시 · 안내 PNG (메모리에서만, 서버 · 키체인 없이)
 swift test --filter SpiraldayAppTests        # Mac 앱의 동기화 붙이기 (호스트 · 컨트롤러 · 말) — 가짜 서버 · 메모리 열쇠
 SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter SyncKeychainTests   # 진짜 로그인 키체인 (실행마다 새로 만든 테스트용 서비스 이름)
-build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 한 번 보내 보고 결과 출력
+SPIRALDAY_PING_URL=http://127.0.0.1:8787/ping build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 시험 서버로 한 번 보내 보고 결과 출력 (--ping-test 는 출시 앱이어도 시험 서버로만 — 운영 서버로는 출시 서명 앱의 하루 한 번 보내기만)
 ```
 
 `site/` 에는 소개 페이지 [spiralday.com](https://spiralday.com) 이 들어 있습니다.
@@ -259,7 +260,7 @@ build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 �
 Spiralday 의 코드는 **소스 공개(source-available) · 비상업 목적용**입니다. 누구나 읽고 공부할 수 있지만, OSI 가 정의하는 오픈소스는 아닙니다.
 
 - **지금 (라이선스를 바꾼 커밋부터)**: [PolyForm Noncommercial License 1.0.0](LICENSE) — `Required Notice: Copyright 2026 LeanAgileHungry Inc. (https://spiralday.com)`
-- **그 전에 MIT 로 공개된 버전은 MIT 그대로**: 라이선스를 바꾸기 전에 MIT `LICENSE` 와 함께 공개된 버전 — [LICENSE-HISTORY.md](LICENSE-HISTORY.md) 의 범위 (`main` 의 `32d05f5` ~ `e40dd8e`, 공개 브랜치 `fix/mac-pens-task-comment`, 태그 `v1.0.0` ~ `v1.1.0` · `win-v0.9.1` · `win-v0.9.2` 등) — 에서 받은 코드는 그 버전에 들어 있는 MIT License 를 따릅니다. 라이선스를 바꾼 커밋과 그 뒤의 버전은 PolyForm Noncommercial 과 함께 공개됩니다.
+- **그 전에 MIT 로 공개된 버전은 MIT 그대로**: 라이선스를 바꾸기 전에 MIT `LICENSE` 와 함께 공개된 버전 — [LICENSE-HISTORY.md](LICENSE-HISTORY.md) 의 범위 (`main` 의 `32d05f5` ~ `e40dd8e`, 라이선스를 바꾸기 전에 갈라진 공개 브랜치 `fix/mac-pens-task-comment` · `mac/meal-dday-1008` · `ios/kit-dday-popover-1009` 의 커밋, 태그 `v1.0.0` ~ `v1.1.0` · `win-v0.9.1` · `win-v0.9.2` 등) — 에서 받은 코드는 그 버전에 들어 있는 MIT License 를 따릅니다. 라이선스를 바꾼 커밋과 그 뒤의 버전은 PolyForm Noncommercial 과 함께 공개됩니다.
 
 PolyForm Noncommercial 의 뼈대 (아래는 이해를 돕는 요약이고, 기준은 [LICENSE](LICENSE) 원문입니다. 괄호 안은 원문의 항목 이름):
 
@@ -285,4 +286,4 @@ PolyForm Noncommercial 의 뼈대 (아래는 이해를 돕는 요약이고, 기�
 
 페이지 구성은 흔히 쓰는 10분 단위 종이 플래너 형식에서 영감을 받았으며, 특정 제품의 상표와 로고는 포함하지 않습니다.
 
-<sub>**English** — Spiralday is source-available for noncommercial purposes, not open source. Starting with the relicensing commit, this repository is published under the [PolyForm Noncommercial License 1.0.0](LICENSE). Versions published earlier with the MIT `LICENSE` — the range in [LICENSE-HISTORY.md](LICENSE-HISTORY.md): `32d05f5`–`e40dd8e` on `main`, the public branch `fix/mac-pens-task-comment`, and tags such as `v1.0.0`–`v1.1.0`, `win-v0.9.1` and `win-v0.9.2` — remain under the MIT License they shipped with. Uses outside the permitted purposes are not covered by this license; for a separate commercial license, contact contact@leanagilehungry.com. The summary above is for convenience only; the [LICENSE](LICENSE) text governs. The Spiralday name, logo and icon are trademarks of LeanAgileHungry Inc. and are not licensed with the code — see [TRADEMARKS.md](TRADEMARKS.md). Third-party components keep their own licenses.</sub>
+<sub>**English** — Spiralday is source-available for noncommercial purposes, not open source. Starting with the relicensing commit, this repository is published under the [PolyForm Noncommercial License 1.0.0](LICENSE). Versions published earlier with the MIT `LICENSE` — the range in [LICENSE-HISTORY.md](LICENSE-HISTORY.md): `32d05f5`–`e40dd8e` on `main`, the commits on the public branches `fix/mac-pens-task-comment`, `mac/meal-dday-1008` and `ios/kit-dday-popover-1009` (branched before the change), and tags such as `v1.0.0`–`v1.1.0`, `win-v0.9.1` and `win-v0.9.2` — remain under the MIT License they shipped with. Uses outside the permitted purposes are not covered by this license; for a separate commercial license, contact contact@leanagilehungry.com. The summary above is for convenience only; the [LICENSE](LICENSE) text governs. The Spiralday name, logo and icon are trademarks of LeanAgileHungry Inc. and are not licensed with the code — see [TRADEMARKS.md](TRADEMARKS.md). Third-party components keep their own licenses.</sub>

@@ -1,0 +1,35 @@
+{
+  "about": "Where a click opens the highlighter (category) menu of a written task, and the faint hover shade inside it — design units [x, y, width, height]. The hit area is the whole printed category column: from the block's left edge to where the task text starts (taskTextX = categoryX + 16), over every ruled row the task uses, with no inset, so a press near a ruled line, the left edge or the dotted line never falls through to the paper (which ends writing and drops a just-started empty task — owner report 2026-10-08). Mac · iOS: SpiraldayKit DailyForm.taskCategoryHitRect / taskCategoryHighlightRect (Tests/SpiraldayKitTests/TaskCategoryCellTests.swift); Windows · Android web use the same numbers.",
+  "version": 1,
+  "daily": [
+    {
+      "name": "first row of 15",
+      "row": 0,
+      "span": 1,
+      "rows": 15,
+      "hit": [55.4, 444.5, 140.4, 76.12],
+      "highlight": [58.4, 447.5, 117.4, 70.12]
+    },
+    {
+      "name": "a two-row task on the 4th row",
+      "row": 3,
+      "span": 2,
+      "rows": 15,
+      "hit": [55.4, 672.86, 140.4, 152.24],
+      "highlight": [58.4, 675.86, 117.4, 146.24]
+    },
+    {
+      "name": "17th row of a day grown to 17 rows (rows shrink)",
+      "row": 16,
+      "span": 1,
+      "rows": 17,
+      "hit": [55.4, 1519.1353, 140.4, 67.1647],
+      "highlight": [58.4, 1521.7824, 117.4, 61.8706]
+    }
+  ],
+  "weekly": {
+    "about": "Weekly day column coordinates (origin = the column's top-left), first task line: from the colour tick to where the text starts, the full line height. The hover shade is 3 in from the top and bottom and 2 before the text.",
+    "hit0": [6, 56, 18, 35],
+    "highlight0": [6, 59, 16, 29]
+  }
+}

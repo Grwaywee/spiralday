@@ -201,6 +201,18 @@ private struct WeekDayColumn: View {
     let date: Date
     let u: CGFloat
 
+    /// 주간 할 일의 분류 칸을 두는지. iPad 에는 두지 않는다: 펼친 책의 주간 장에서 이 칸은 화면에서 폭 6–10pt 라 손가락이
+    /// 닿지 않고, 눌러도(세로 · 가로, 가운데 · 가장자리) 형광펜 메뉴가 뜨지 않았다 — 보이지 않는 죽은 단추가 손쉬운 사용에만
+    /// ‘형광펜: …’ 으로 남았다 (iPad Pro 11 · iOS 26 시뮬레이터, Kit main · 04a1227 같음, 2026-10-08). iPad 는 1.0.0 부터
+    /// 주간에서 분류를 고르지 않는다 (일간에서 고른다) — 그 기준 동작 그대로. 주간에서도 고르게 하려면 손가락 크기의 자리가 필요하다
+    @MainActor static var offersCategoryCell: Bool {
+        #if os(macOS)
+        true
+        #else
+        UIDevice.current.userInterfaceIdiom != .pad
+        #endif
+    }
+
     @EnvironmentObject private var store: PlannerStore
     @EnvironmentObject private var state: AppState
     @Environment(\.isSnapshot) private var isSnapshot
@@ -287,10 +299,12 @@ private struct WeekDayColumn: View {
                 .frame(width: 4 * u, height: 17 * u)
                 .offset(x: WK.tickX * u, y: (y + 11) * u)
         }
-        // 왼쪽 색 막대 자리: 누르면 형광펜(분류) 메뉴 (화면에서만)
-        if let task, !isSnapshot {
-            TaskCategoryCell(date: d, taskID: task.id, cornerRadius: 3 * u)
-                .place(CGRect(x: WK.tickX - 8, y: y + 3, width: WK.textX - WK.tickX + 6, height: WK.taskH - 6), u)
+        // 왼쪽 색 막대 자리: 누르면 형광펜(분류) 메뉴 (화면에서만). 누르는 자리는 그 줄 전체 높이 · 글이 시작하는 곳까지,
+        // 옅게 칠하는 모양은 예전 그대로 (위아래 3, 글 앞 2 만큼 안쪽). iPad 에는 두지 않는다 (offersCategoryCell)
+        if let task, !isSnapshot, Self.offersCategoryCell {
+            TaskCategoryCell(date: d, taskID: task.id, cornerRadius: 3 * u,
+                             highlightInsets: EdgeInsets(top: 3 * u, leading: 0, bottom: 3 * u, trailing: 2 * u))
+                .place(CGRect(x: WK.tickX - 8, y: y, width: WK.textX - (WK.tickX - 8), height: WK.taskH), u)
         }
 
         if let task {

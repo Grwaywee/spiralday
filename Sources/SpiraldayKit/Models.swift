@@ -63,6 +63,9 @@ public struct TimeNote: Codable, Identifiable, Equatable, Sendable {
         self.end = end
         self.text = text
     }
+
+    /// 덮는 칸 (시작 · 끝의 순서와 상관없이 — 거꾸로 든 메모도 `start...end` 처럼 멈추지 않게)
+    public var span: ClosedRange<Int> { min(start, end)...max(start, end) }
 }
 
 public struct DayRecord: Codable, Equatable, Sendable {
@@ -1394,10 +1397,11 @@ public final class PlannerStore: ObservableObject {
         editDay(d) { $0.notes.removeAll { $0.id == id } }
     }
 
-    /// 지우개: 범위와 겹치는 메모/밥시간을 지운다
+    /// 지우개: 범위와 겹치는 메모/밥시간을 지운다.
+    /// 메모의 시작 · 끝은 순서를 맞춰 읽는다 (start > end 인 메모가 하나라도 있으면 `start...end` 에서 앱이 멈췄다 — 그리는 쪽처럼 min · max)
     public func removeNotes(_ d: Date, overlapping range: ClosedRange<Int>) {
-        guard day(d).notes.contains(where: { range.overlaps($0.start...$0.end) }) else { return }
-        editDay(d) { $0.notes.removeAll { range.overlaps($0.start...$0.end) } }
+        guard day(d).notes.contains(where: { range.overlaps($0.span) }) else { return }
+        editDay(d) { $0.notes.removeAll { range.overlaps($0.span) } }
     }
 
     /// 편집을 마쳤는데 비어 있는 글씨 메모는 지운다

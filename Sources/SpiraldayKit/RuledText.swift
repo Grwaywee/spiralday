@@ -25,6 +25,12 @@ public enum RuledText {
         }
     }
 
+    /// 줄 수: wrap 과 같되, 글이 줄 바꿈으로 끝나면 그 뒤의 빈 줄도 한 줄로 센다
+    /// (wrap("가\n") 은 ["가"] 지만, 쓰는 중 Return 을 막 친 자리 — 커서가 있는 줄 — 도 칸에 들어가야 한다)
+    public static func lineCount(_ text: String, fontSize: CGFloat, width: CGFloat) -> Int {
+        wrap(text, fontSize: fontSize, width: width).count + (text.last?.isNewline == true ? 1 : 0)
+    }
+
     /// wrap 과 같게 나눈 줄마다 글 안의 자리 (NSString 단위). 빈 글은 빈 줄 하나.
     /// 쓰는 중에 ↑ ↓ 로 줄을 옮길 때, 글자 커서가 첫 줄 / 마지막 줄에 있는지 볼 때 쓴다.
     public static func lineRanges(_ text: String, fontSize: CGFloat, width: CGFloat) -> [NSRange] {
@@ -152,12 +158,14 @@ public enum RuledText {
         return RowLayout(rows: rows, scale: s, items: out, owners: owners)
     }
 
-    /// 한 칸(상자)에 여러 줄로 쓸 때 다 들어가도록 글자를 조금씩 줄인 비율
+    /// 한 칸(상자)에 여러 줄로 쓸 때 다 들어가도록 글자를 조금씩 줄인 비율.
+    /// countsTrailingNewline: 끝의 줄 바꿈 뒤 빈 줄도 센다 (lineCount — 일간 COMMENT)
     public static func fitScale(_ text: String, fontSize: CGFloat, width: CGFloat, height: CGFloat,
-                         maxLines: Int, minScale: CGFloat = 0.4) -> CGFloat {
+                         maxLines: Int, minScale: CGFloat = 0.4, countsTrailingNewline: Bool = false) -> CGFloat {
         var s: CGFloat = 1
         while s > minScale {
-            let n = wrap(text, fontSize: fontSize * s, width: width).count
+            let n = countsTrailingNewline ? lineCount(text, fontSize: fontSize * s, width: width)
+                : wrap(text, fontSize: fontSize * s, width: width).count
             if n <= maxLines && CGFloat(n) * lineHeight(fontSize: fontSize * s) <= height { break }
             s *= 0.94
         }
