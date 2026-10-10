@@ -244,7 +244,7 @@ swift test                                   # SpiraldayKit: 페이지 · 넘김
 .build/debug/Spiralday --sync-qa ./out       # 설정 → 동기화의 모든 상태 (라이트 · 다크) · 팔레트 표시 · 안내 PNG (메모리에서만, 서버 · 키체인 없이)
 swift test --filter SpiraldayAppTests        # Mac 앱의 동기화 붙이기 (호스트 · 컨트롤러 · 말) — 가짜 서버 · 메모리 열쇠
 SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter SyncKeychainTests   # 진짜 로그인 키체인 (실행마다 새로 만든 테스트용 서비스 이름)
-build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 한 번 보내 보고 결과 출력
+SPIRALDAY_PING_URL=http://127.0.0.1:8787/ping build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 시험 서버로 한 번 보내 보고 결과 출력 (운영 서버로는 출시 서명 앱만 보낸다)
 ```
 
 `site/` 에는 소개 페이지 [spiralday.com](https://spiralday.com) 이 들어 있습니다.
