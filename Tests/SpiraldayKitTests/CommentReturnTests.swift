@@ -326,7 +326,8 @@ final class CommentReturnTests: XCTestCase {
         XCTAssertEqual(store.day(today).comment, "오늘한\n가")
     }
 
-    /// 다섯 줄이 찬 상자에서 조합 중 Return: 확정한 글자는 남고 줄 바꿈만 받지 않는다 (삑). ⌥↩ 은 입력기에 넘기지도 않는다
+    /// 다섯 줄이 찬 상자에서 조합 중 Return: 확정한 글자는 남고 줄 바꿈만 받지 않는다 (삑).
+    /// ⌥↩ 은 찼어도 입력기에 넘기고(한자 변환), 입력기가 넘긴 줄 바꿈만 받지 않는다
     func testReturnWhileComposingInAFullBoxKeepsTheSyllable() async throws {
         let (store, state, w, tv) = try await rig(text: "가\n나\n다\n라\n마")
         var calls = 0
@@ -345,11 +346,42 @@ final class CommentReturnTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(store.day(today).comment, "가\n나\n다\n라\n마한")
         XCTAssertEqual(state.editingKey, commentKey)
-        // 조합 중이 아니면 넘칠지 미리 안다: ⌥↩ 도 입력기에 넘기지 않고 받지 않는다
-        try await appKey(w, mods: [.option])
+        // 조합 중이 아닌 Return 은 넘칠지 미리 안다: 입력기에 넘기지 않고 받지 않는다
+        try await appKey(w)
         XCTAssertEqual(calls, 1)
         XCTAssertEqual(refused, 2)
+        // ⌥↩ 는 입력기에 넘긴다 (한자 변환은 줄을 늘리지 않는다). 여기 입력기는 쓰지 않아 키 묶음대로 줄 바꿈 → 넘쳐서 그 줄 바꿈만 뺀다
+        try await appKey(w, mods: [.option])
+        XCTAssertEqual(calls, 2, "찬 상자에서도 ⌥↩ 은 입력기가 먼저 본다")
+        XCTAssertEqual(refused, 3)
         XCTAssertEqual(tv.string, "가\n나\n다\n라\n마한")
+        XCTAssertTrue(tv.isFieldEditor)
+    }
+
+    /// 다섯 줄이 찬 상자에서 글을 골라 ⌥↩ (한글 입력기의 한자 변환): 예전에는 삑 소리만 나고 입력기에 키가 가지 않았다
+    /// (회의적 검토 2026-10-10 — 릴리스 노트는 '한자 변환(⌥↩)은 그대로'). 한자로 바꾸는 것은 줄을 늘리지 않으니 입력기에 넘긴다
+    func testOptionReturnOnASelectionInAFullBoxConvertsToHanja() async throws {
+        let (store, state, w, tv) = try await rig(text: "오늘 맑음\n나\n다\n라\n마")
+        var calls = 0
+        ReturnNewlineMonitorView.textSystem = { tv, e in
+            calls += 1
+            XCTAssertTrue(e.modifierFlags.contains(.option))
+            // 한자 변환: 고른 글을 후보로 바꿔 보여 주고(조합 중), 후보 창의 Return 으로 확정한다
+            let r = tv.hasMarkedText() ? tv.markedRange() : tv.selectedRange()
+            tv.setMarkedText("今日", selectedRange: NSRange(location: 2, length: 0), replacementRange: r)
+        }
+        tv.setSelectedRange(NSRange(location: 0, length: 2))
+        XCTAssertFalse(DailyForm.commentFits(MultilineReturn.inserting(into: tv.string, selection: tv.selectedRange())),
+                       "틀 확인: 상자가 찼다 (줄 바꿈을 넣으면 여섯째 줄)")
+        try await appKey(w, mods: [.option])
+        XCTAssertEqual(calls, 1, "찬 상자에서도 ⌥↩ 은 입력기에 간다")
+        XCTAssertEqual(refused, 0, "삑 하지 않는다")
+        XCTAssertTrue(tv.hasMarkedText(), "한자 후보를 고르는 중")
+        tv.unmarkText()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(tv.string, "今日 맑음\n나\n다\n라\n마")
+        XCTAssertEqual(store.day(today).comment, "今日 맑음\n나\n다\n라\n마")
+        XCTAssertEqual(state.editingKey, commentKey)
         XCTAssertTrue(tv.isFieldEditor)
     }
 

@@ -451,14 +451,16 @@ final class ReturnNewlineMonitorView: NSView {
                 tv.inputContext?.discardMarkedText()
             }
             state.endEditing()
-        case .refuse where !composing:
-            // 상자가 찼다 (조합 중이 아닐 때는 미리 안다 — ⌥↩ 도 입력기에 넘기지 않는다)
+        case .refuse where !composing && !mods.contains(.option):
+            // 상자가 찼다 (조합 중이 아닐 때는 미리 안다)
             Self.refuseFeedback()
         case .newline where !composing && !mods.contains(.option):
             tv.insertNewlineIgnoringFieldEditor(nil)
         default:
             // 입력기가 먼저 본다: 조합 중 Return(한글 — 확정하고 넘긴다 · 한자 후보 · 일본어 변환 — 입력기가 먹는다),
-            // ⌥↩ (한글 입력기의 한자 변환 키 — 입력기가 쓰지 않으면 키 묶음의 insertNewlineIgnoringFieldEditor: 로 줄 바꿈)
+            // ⌥↩ (한글 입력기의 한자 변환 키 — 입력기가 쓰지 않으면 키 묶음의 insertNewlineIgnoringFieldEditor: 로 줄 바꿈).
+            // 상자가 찼어도 ⌥↩ 는 넘긴다: 고른 글을 한자로 바꾸는 것은 줄을 늘리지 않는다 — 예전에는 삑 소리만 났다
+            // (회의적 검토 2026-10-10). 입력기가 넘긴 줄 바꿈이 상자를 넘치면 passToInputMethod 가 그 줄 바꿈만 빼고 삑
             passToInputMethod(tv, e)
         }
         return true
