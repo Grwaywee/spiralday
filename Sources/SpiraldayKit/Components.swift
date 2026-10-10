@@ -897,7 +897,7 @@ public struct Stars: View {
 /// - 형광펜: 드래그로 칠하기 (같은 색을 다시 칠하면 지워짐)
 /// - 글씨 도구: 칸을 누르거나 끌어서 그 자리에 손글씨 메모
 /// - 밥 도구: 시작 칸에 🍴 아이콘, 끝나는 칸까지 화살표 (클릭만 하면 1시간)
-/// - 지우개: 칠한 칸과 겹치는 메모/밥시간을 함께 지운다
+/// - 지우개: 칠한 칸과 겹치는 메모/밥시간을 함께 지운다 (Mac 은 같은 색으로 다시 칠해 지울 때도 — iPhone 처럼, erasesNotes)
 /// 격자 자체(선, 숫자)는 각 페이지가 그린다.
 public struct SlotPainter: View {
     public let date: Date
@@ -1154,11 +1154,23 @@ public struct SlotPainter: View {
             // 누르기만 하면 한 시간
             let end = range.count == 1 ? min(range.lowerBound + 5, 143) : range.upperBound
             store.addNote(date, TimeNote(kind: .meal, start: range.lowerBound, end: end))
-        case AppState.eraser:
-            store.removeNotes(date, overlapping: range)
         default:
-            break
+            if erasesNotes { store.removeNotes(date, overlapping: range) }
         }
+    }
+
+    /// 이번 붓질이 칠한 칸과 겹친 글씨 메모 · 밥시간도 지우는지 (dragEnded 에서, snapshot 을 비우기 전에 본다).
+    /// - Mac: 지우는 붓질이면 늘 — 지우개든, 칠한 칸을 같은 색 형광펜으로 다시 칠해 지우든 (paint == -1).
+    ///   iPhone TimePaintView.finish 와 같다 (`if paint == -1 { removeNotes }`).
+    /// - iOS: 이 층은 예전 그대로 지우개일 때만 (iPhone 은 TimePaintView, iPad 는 앱의 PadInput · PaintSession 으로 칠한다).
+    ///   iPad 의 PaintSession.finish 도 지우개일 때만 지우므로, iOS 1.0.1 에서 `case AppState.eraser:` 를 `paint == -1` 로 바꿔 iPhone 과 맞춘다.
+    private var erasesNotes: Bool {
+        if state.tool == AppState.eraser { return true }
+        #if os(macOS)
+        return snapshot != nil && paint == -1
+        #else
+        return false
+        #endif
     }
 }
 

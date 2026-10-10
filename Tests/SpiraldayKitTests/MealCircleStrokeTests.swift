@@ -144,6 +144,9 @@ final class MealCircleStrokeTests: XCTestCase {
         // 동그라미 클릭 한 번도 다른 칸과 같다: 같은 펜으로 칠한 칸이면 지우고, 빈 칸이면 칠한다
         await stroke(r, from: mealStart, to: mealStart)
         XCTAssertEqual(slots(r)[mealStart], empty, "\(kind): 칠한 칸의 동그라미를 같은 펜으로 누르면 그 칸이 지워져야 한다")
+        // 같은 색으로 지우는 붓질은 겹친 밥도 지운다 (iPhone 처럼 — RepaintEraseNotesTests). 동그라미를 다시 두고 누른다
+        XCTAssertTrue(meals(r).isEmpty, "\(kind): 같은 색으로 지운 칸의 밥도 함께 지워진다")
+        await addMeal(r)
         await stroke(r, from: mealStart, to: mealStart)
         XCTAssertEqual(slots(r)[mealStart], pen(r), "\(kind): 동그라미를 누르면 그 칸이 칠해져야 한다")
     }
