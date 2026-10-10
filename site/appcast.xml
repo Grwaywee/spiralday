@@ -5,26 +5,19 @@
     <link>https://spiralday.com</link>
     <language>ko</language>
     <item>
-      <title>Spiralday 1.1.0</title>
-      <pubDate>Tue, 06 Oct 2026 04:59:41 +0000</pubDate>
-      <sparkle:version>10</sparkle:version>
-      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <title>Spiralday 1.1.1</title>
+      <pubDate>Sat, 10 Oct 2026 04:14:21 +0000</pubDate>
+      <sparkle:version>11</sparkle:version>
+      <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description><![CDATA[<ul><li>켜기: 설정 → 동기화에서 ‘이 Mac 에서 시작하기’를 누르고 복구 코드를 적어 둬요 (복사 · 텍스트 파일 · 인쇄, 두 묶음을 다시 입력해 확인). 다른 기기는 ‘기기 추가’의 QR 이나 8자리 코드로 들어오고, 새 기기에 보이는 숫자 4자리를 이 Mac 에 입력해야 연결돼요</li>
-<li>이미 동기화를 쓰는 기기가 있으면 ‘다른 기기에 합류하기’에 그 기기의 8자리 코드나 연결 글을 넣어요. 합치기 직전에 이 Mac 의 플래너를 저절로 백업해 둬요 (설정 → 데이터 → 백업 가져오기). 기기를 모두 잃었다면 ‘복구 코드로 되살리기’</li>
-<li>종단간 암호화: 기록은 이 Mac 에서 암호화한 뒤에 보내요. 열쇠는 내 기기에만 있어서 서버도, Spiralday 도 플래너를 읽을 수 없어요. 계정 · 이메일 · 비밀번호는 필요 없어요</li>
-<li>실시간 쓰기: 두 기기에 같은 플래너를 펼쳐 두면 치는 글자(한글은 조합되는 대로) · 칠한 칸이 상대 종이에 바로 보여요. 내가 쓰는 칸에 다른 기기도 쓰고 있으면 그 칸 옆에 ‘다른 기기에서 쓰는 중’이 작게 떠요</li>
-<li>겹쳐 써도 괜찮아요: 칸마다 마지막에 쓴 것이 남고, 지운 것은 되살아나지 않아요. 인터넷이 없어도 쓰다가 연결되면 맞춰요. 내가 쓰는 칸은 흔들리지 않고, ⌘Z 가 다른 기기의 글을 지우지 않아요</li>
-<li>이전 버전(30일): 일간 · 주간 장을 보면서 플래너 메뉴 → ‘이 날의 이전 버전…’ · ‘이 주의 이전 버전…’</li>
-<li>설정 → 동기화에서 기기 목록 · 이 Mac 이름 바꾸기 · 다른 기기 빼기, 복구 코드 새로 만들기, 이 Mac 에서 끄기, 그룹 지우기(서버의 사본을 바로 지워요). 플래너 메뉴에 ‘지금 맞추기’(⇧⌘S) · ‘동기화 설정…’, 팔레트의 설정 단추 귀퉁이에 동기화 상태가 작게 보여요 (켰을 때만)</li>
-<li>다른 Mac 으로 옮겨 왔을 때(이전 지원 · Time Machine 복원)는 두 Mac 이 한 기기로 붙지 않게 동기화를 멈추고 ‘이 Mac 에서 이어 쓰기’ · ‘정리하기’를 물어요</li>
-<li>설정 → 데이터 → 정보에 오픈소스 고지(libsodium · swift-sodium · Sparkle)를 넣었어요</li>
-<li>처음 켤 때 ‘다른 기기에서 이미 써요 → 동기화로 가져오기’를 고를 수 있어요. 합류한 뒤에도 사용법과 둘러보기가 그대로 이어지고, 아무것도 적지 않은 빈 플래너는 합칠 때 빼고 합쳐요</li>
-<li>넘길 때 스프링 고리가 넘어가는 종이 위로 비치던 것을 고쳤어요. 일간 · 주간 모두 들린 종이가 고리를 가려요</li>
-<li>주간 · 홈은 트랙패드 두 손가락 위아래, ↑ ↓, fn + ↑ ↓ 로도 넘겨요 (위로 = 다음 주)</li>
-<li>PDF 내보내기 · 설정 · 업데이트 창에서 친 숫자 · 화살표 · 두 손가락 쓸기가 뒤의 플래너로 가지 않아요</li>
-<li>팔레트 맨 위에 지금 펼친 플래너(표지 색 책과 이름)가 보이고, 누르면 플래너를 바꿔요. 화면이 작으면 형광펜 목록만 스크롤돼서 설정 단추가 화면 밖으로 나가지 않아요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
-      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.1.0/Spiralday-1.1.0-macOS.zip" sparkle:edSignature="WQDJR/Swhj2cKnZqa+IaN0dKirMAafKJ/XgpyZNzUdo7iBCQ/XpyVZTku2/ElROSkOGwgD/qapBrOPVH4heVDA==" length="8741666" type="application/octet-stream"/>
+      <description><![CDATA[<ul><li>설정 → 형광펜에서 펜 줄을 끌어 위아래 순서를 바꿀 수 있어요. 숫자 배지와 숫자 키 1–7 도 새 순서를 따라요 (오른쪽 클릭 ‘위로 · 아래로 옮기기’도 돼요)</li>
+<li>일간 · 주간 할 일 앞의 분류 칸이 잘 눌려요. 천천히 누르거나, 누르면서 조금 움직이거나, 칸 가장자리를 눌러도 형광펜 메뉴가 떠요</li>
+<li>일간 COMMENT 에서 Return 을 누르면 줄이 바뀌어요 (다섯 줄까지). 쓰기를 끝낼 때는 ⌘↩ · Esc · 종이 빈 곳 클릭. 조합 중인 키는 입력기가 먼저 받아서 한글 조합 · 한자 변환(⌥↩) · 후보 고르기는 그대로 돼요. 다섯 줄보다 긴 예전 글은 다섯 줄까지 보이고 뒤는 … 로 줄여요 (글은 그대로 남아요)</li>
+<li>타임테이블의 밥 동그라미 위에서 시작해도 다른 칸처럼 칠하고 지워요 (글씨 · 밥 도구도). 동그라미를 오른쪽 클릭하면 예전처럼 ‘밥시간 지우기’</li>
+<li>칠한 칸을 같은 색으로 다시 칠해 지우면, 지우개처럼 그 칸의 밥시간 · 글씨 메모도 함께 지워져요 (iPhone 과 같아요). 타임테이블에서 칠하거나 지운 것은 ⌘Z 로 한 번에 하나씩 되돌릴 수 있어요</li>
+<li>D-day ‘새로 만들기’에 이름을 적고 [붙이기]를 누르지 않고 닫아도(바깥 클릭) 그 날에 붙어요. 한글을 조합하던 마지막 글자까지 붙고, 붙이지 않으려면 Esc 로 닫아요. 다른 앱으로 넘어가며 닫히면 붙이지 않고, 다시 열면 적던 이름이 그대로 있어요</li>
+<li>Spiralday 의 소스 코드 라이선스가 MIT 에서 PolyForm Noncommercial 1.0.0(소스 공개 · 비상업)으로 바뀌어, 설정 → 데이터 → 정보와 도움말 메뉴에 반영했어요. 그 전에 MIT 로 공개된 버전은 MIT 그대로예요</li></ul><p>Spiralday 가 도움이 됐다면 <a href="https://github.com/Grwaywee/spiralday">GitHub 에서 ⭐ 하나</a> 눌러 주세요.</p>]]></description>
+      <enclosure url="https://github.com/Grwaywee/spiralday/releases/download/v1.1.1/Spiralday-1.1.1-macOS.zip" sparkle:edSignature="QiyyAojNJ49HIDtKZNRQWvZorD/71wNYTST4sCrqaV5kD3KLRPT1L2CnJCllfAbmWtBStHPbpcEcBqrQJABUAg==" length="8833866" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
