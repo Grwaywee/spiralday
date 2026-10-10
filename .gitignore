@@ -10,6 +10,7 @@ DerivedData/
 # 로컬 전용 배포 도구
 /release/
 
-# 따로(비공개로) 관리하는 Windows · Android · 웹 앱 — 이 공개 저장소에는 올리지 않는다
+# 따로(비공개로) 관리하는 Windows · Android · 웹 앱 · iPhone · iPad 앱 — 이 공개 저장소에는 올리지 않는다
 /web/
+/apple/
 /.github/workflows/windows.yml

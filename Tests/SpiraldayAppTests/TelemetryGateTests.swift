@@ -251,8 +251,13 @@ final class TelemetryGateTests: XCTestCase {
         XCTAssertFalse(TelemetryGate.isRelease(s))
     }
 
-    /// 이 Mac 에 공식 출시 앱이 깔려 있으면 (실행하지 않고 서명만 읽어) 출시 앱으로 알아보는지 본다
+    /// 이 Mac 에 공식 출시 앱이 깔려 있으면 (실행하지 않고 서명만 읽어) 출시 앱으로 알아보는지 본다.
+    /// 깔린 Spiralday.app 은 건드리지 않는 것이 규칙이라 (읽기만 해도) 평소 swift test 에서는 돌지 않는다 —
+    /// SPIRALDAY_READ_INSTALLED=1 을 줄 때만 (회의적 검토 2026-10-10)
     func testTheInstalledReleaseIsRecognized() throws {
+        guard ProcessInfo.processInfo.environment["SPIRALDAY_READ_INSTALLED"] == "1" else {
+            throw XCTSkip("SPIRALDAY_READ_INSTALLED=1 일 때만 /Applications/Spiralday.app 의 서명을 읽는다")
+        }
         let app = URL(fileURLWithPath: "/Applications/Spiralday.app")
         guard FileManager.default.fileExists(atPath: app.path) else { throw XCTSkip("/Applications/Spiralday.app 없음") }
         let s = TelemetrySigning.read(at: app)
