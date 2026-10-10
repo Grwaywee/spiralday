@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Safari(iPhone · iPad) 위쪽에 뜨는 App Store 배너 -->
 <meta name="apple-itunes-app" content="app-id=6818437748">
-<title>Spiralday — 10분 종이 플래너 · Mac · Windows · iPhone · iPad 무료</title>
-<meta name="description" content="Mac · Windows(베타) · iPhone · iPad 에서 지금 무료로 쓰는 10분 단위 종이 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄. Android 앱도 곧 나와요. 기록은 내 기기에만.">
+<title>Spiralday — 10분 종이 플래너 · Mac · Windows · iPhone · iPad · Android 무료</title>
+<meta name="description" content="Mac · Windows(베타) · iPhone · iPad · Android 에서 지금 무료로 쓰는 10분 단위 종이 플래너. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄. 기록은 내 기기에만.">
 <link rel="canonical" href="https://spiralday.com/">
 <meta name="theme-color" content="#FCFBF7">
 <meta name="color-scheme" content="light">
@@ -18,18 +18,18 @@
 <meta property="og:locale" content="ko_KR">
 <meta property="og:url" content="https://spiralday.com/">
 <meta property="og:title" content="Spiralday — 화면 하나가 종이 한 장인 10분 플래너">
-<meta property="og:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) · iPhone · iPad 는 지금 무료, Android 는 곧 나와요.">
-<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261009">
+<meta property="og:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) · iPhone · iPad · Android 에서 지금 무료로 써요.">
+<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261010">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone 에 함께 떠 있는 모습. iPad 는 바닷가 책상, iPhone 두 대는 학교 책상의 낮과 저녁">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Spiralday — 화면 하나가 종이 한 장인 10분 플래너">
-<meta name="twitter:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) · iPhone · iPad 는 지금 무료, Android 는 곧 나와요.">
-<meta name="twitter:image" content="https://spiralday.com/assets/og.jpg?v=20261009">
+<meta name="twitter:description" content="10분 단위로 하루를 칠하고, 진짜 종이처럼 넘기는 플래너. Mac · Windows(베타) · iPhone · iPad · Android 에서 지금 무료로 써요.">
+<meta name="twitter:image" content="https://spiralday.com/assets/og.jpg?v=20261010">
 <meta name="twitter:image:alt" content="Spiralday 주간 · 일간 페이지가 Mac, iPad, iPhone 에 함께 떠 있는 모습. iPad 는 바닷가 책상, iPhone 두 대는 학교 책상의 낮과 저녁">
-<!-- 검색 엔진용 앱 정보. Google Play 에 나오면 operatingSystem · downloadUrl 에 Android 를 더해 주세요 (아래 스크립트 맨 위의 출시 체크리스트) -->
+<!-- 검색 엔진용 앱 정보. 새 기기 앱이 나오면 operatingSystem · downloadUrl 을 함께 늘려 주세요 (아래 스크립트 맨 위의 출시 체크리스트) -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -38,11 +38,12 @@
   "description": "10분 단위 종이 플래너를 그대로 옮긴 플래너 앱. 형광펜 타임테이블, ○△× 체크, 진짜 종이처럼 넘어가는 페이지, A4 반쪽 PDF 인쇄.",
   "url": "https://spiralday.com/",
   "applicationCategory": "BusinessApplication",
-  "operatingSystem": "macOS 14+, Windows 10, Windows 11, iOS 17+, iPadOS 17+",
+  "operatingSystem": "macOS 14+, Windows 10, Windows 11, iOS 17+, iPadOS 17+, Android 8.0+",
   "downloadUrl": [
     "https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg",
     "https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe",
-    "https://apps.apple.com/kr/app/spiralday/id6818437748"
+    "https://apps.apple.com/kr/app/spiralday/id6818437748",
+    "https://play.google.com/store/apps/details?id=com.spiralday.app&hl=ko"
   ],
   "image": "https://spiralday.com/assets/og.jpg",
   "screenshot": "https://spiralday.com/assets/hero-daily.webp",
@@ -62,8 +63,8 @@
 <script>
   /*
    * 기기별 출시 상태 — 여기 한 곳만 바꾸면 배지 · 버튼 · 안내 글 · 대문 소개 · 마지막 줄이 따라 바뀌어요.
-   * status: 'available'(지금) · 'beta'(베타) · 'soon'(곧). 스토어에 나오면 예를 들어
-   *   android: { status: 'available', url: 'https://play.google.com/store/apps/details?id=…' },
+   * status: 'available'(지금) · 'beta'(베타) · 'soon'(곧). 예를 들어 Windows 가 베타를 떼면
+   *   windows: { status: 'available', url: '…' },
    * 처럼 한 줄만 바꾸면 돼요.
    *
    * 출시 체크리스트 — 스크립트가 닿지 않는 곳이라 손으로 맞춰 주세요 (검색 결과 · 링크 미리 보기 · 스크립트 없이 보는 사람용):
@@ -72,21 +73,21 @@
    *   3. assets/og.jpg 의 글자 (다시 뽑으면 og:image 의 ?v= 값도 올리기)
    *   4. HTML 기본 글자: 배지(data-badge), data-text 세 곳(대문 소개 · 기기 설명 · 마지막 줄), 대문 상태 줄(data-avail),
    *      대문 meta 의 사양 줄, 대문 그림(폰 · 태블릿 그림은 iPhone · iPad 화면),
-   *      대문 · 마지막 줄 .cta 의 스토어 버튼(data-os — 지금은 App Store. 첫 그림부터 자리를 잡게 HTML 에 두고, 보이는 기기는 CSS 가 정한다)
+   *      대문 · 마지막 줄 .cta 의 스토어 버튼(data-os — 지금은 App Store · Google Play. 첫 그림부터 자리를 잡게 HTML 에 두고, 보이는 기기는 CSS 가 정한다)
    *   5. privacy.html (새 앱 · 동기화가 처리하는 정보)
    */
   var PLATFORMS = {
     mac:     { status: 'available', url: 'https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg' },
     windows: { status: 'beta',      url: 'https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe' },
     ios:     { status: 'available', url: 'https://apps.apple.com/kr/app/spiralday/id6818437748' },
-    android: { status: 'soon',      url: null },
+    android: { status: 'available', url: 'https://play.google.com/store/apps/details?id=com.spiralday.app&hl=ko' },
     sync:    { status: 'available' }
   };
   var THREADS = 'https://www.threads.com/@owlu_app';
   // 나왔나: 'soon' 이 아니고, 받을 주소가 있으면 (Sync 는 주소 없이 상태만)
   function platformOut(k) { var p = PLATFORMS[k]; return !!(p && p.status !== 'soon' && (p.url || k === 'sync')); }
 
-  // 들어온 기기 — 첫 화면을 그리기 전에 html 에 표시를 붙인다. 버튼 위계 · '곧 나와요' 안내는 이 표시를 보고 CSS 가 그린다
+  // 들어온 기기 — 첫 화면을 그리기 전에 html 에 표시를 붙인다. 버튼 위계 · 보이는 스토어 버튼은 이 표시를 보고 CSS 가 그린다
   (function () {
     var ua = navigator.userAgent || '';
     var uad = navigator.userAgentData, uap = (uad && uad.platform) || '';
@@ -102,10 +103,7 @@
     var h = document.documentElement;
     if (!os) { if (/Linux|CrOS|X11/i.test(ua)) h.className += ' os-other'; return; }
     h.setAttribute('data-visitor', os);
-    if (os === 'ios' || os === 'android') {
-      h.className += ' is-mobile' + (platformOut(os) ? '' : ' m-soon');
-      if (navigator.share || (navigator.clipboard && navigator.clipboard.writeText)) h.className += ' can-share';
-    }
+    if (os === 'ios' || os === 'android') h.className += ' is-mobile' + (platformOut(os) ? '' : ' m-soon');
   })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -259,7 +257,6 @@
   .btn.ghost .beta { background: rgba(0,0,0,.07); }
   .btn.soft { color: var(--plum); background: var(--plum-soft); }
   .btn.soft:hover { background: #E2DAF3; }
-  .btn.small { padding: 12px 18px; font-size: 18px; border-radius: 12px; }
   @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none !important; } }
   /* GitHub 별 버튼: 별 수는 모서리 스티커로 띄운다. 글자 span 안에 둬서 flex 항목이 아니라 불러와도 버튼 크기가 바뀌지 않는다 */
   .btn.star { position: relative; }
@@ -284,23 +281,13 @@
   .avail a { color: var(--ink); text-decoration-color: var(--dot); text-underline-offset: 4px; }
   .avail a:hover { text-decoration-color: currentColor; }
 
-  /* 폰 · 태블릿으로 들어온 사람에게 — 곧 나와요 */
-  .soon-note { margin: 0 0 18px; padding: 20px 20px 18px; border-radius: 16px; background: #fff; border: 1.5px dashed var(--dot); box-shadow: 0 10px 30px -24px rgba(0,0,0,.45); max-width: 560px; }
-  .soon-note .soon-title { display: block; margin: 0 0 8px; font-size: 24px; line-height: 1.35; color: var(--ink); }
-  .soon-note p { margin: 0 0 16px; font-size: 19px; }
-  .soon-note .row { display: flex; flex-wrap: wrap; gap: 10px; }
   /* 컴퓨터용 다운로드는 한 줄 링크로 (폰 · 태블릿에서만 보인다) */
   .desk-link { display: none; margin: 0 0 14px; font-size: 18px; }
   .desk-link a { color: var(--ink); text-decoration-color: var(--dot); text-underline-offset: 4px; }
   html.is-mobile .desk-link { display: block; }
   /* 들어온 기기에 따라 (머리 스크립트가 html 에 붙인 표시로) — 첫 그림부터 맞게 */
-  .soon-note, [data-share], .other-note, .soon-title [data-for], header nav a.dl .dl-soon { display: none; }
-  html.m-soon .soon-note { display: block; }
-  html.m-soon.can-share [data-share] { display: inline-flex; }
+  .other-note { display: none; }
   html.os-other .other-note { display: block; }
-  html[data-visitor="ios"] .soon-title [data-for="ios"], html[data-visitor="android"] .soon-title [data-for="android"] { display: inline; }
-  html.m-soon header nav a.dl .dl-get { display: none; }
-  html.m-soon header nav a.dl .dl-soon { display: inline; }
   /* 컴퓨터: 내 기기 버튼만 진하게, 다른 OS 버튼은 한 단계 낮춘다 (스크립트가 없으면 둘 다 진하게)
      폰 · 태블릿: 기기 카드의 dmg · exe 버튼과 다른 모바일 OS 의 스토어 버튼을 낮춘다 — 진한 버튼은 내 기기 것 하나만 */
   html[data-visitor="mac"] .cta [data-os="windows"],
@@ -323,11 +310,11 @@
   html.is-mobile .cta [data-os="mac"], html.is-mobile .cta [data-os="windows"] { display: none; }
   /* 폰 · 태블릿: 다른 모바일 OS 의 스토어 버튼은 숨긴다 (Android 에서 App Store, iPhone · iPad 에서 Google Play) */
   html[data-visitor="android"] .cta [data-os="ios"], html[data-visitor="ios"] .cta [data-os="android"] { display: none; }
-  /* 대문의 App Store 버튼은 iPhone · iPad 로 들어온 사람에게만. HTML 에 미리 두어 첫 그림부터 자리를 잡는다 (컴퓨터 · 스크립트 없이는 Mac · Windows 만) */
-  .hero .cta [data-os="ios"] { display: none; }
-  html[data-visitor="ios"]:not(.m-soon) .hero .cta [data-os="ios"] { display: inline-flex; }
+  /* 대문의 App Store · Google Play 버튼은 그 기기로 들어온 사람에게만. HTML 에 미리 두어 첫 그림부터 자리를 잡는다 (컴퓨터 · 스크립트 없이는 Mac · Windows 만) */
+  .hero .cta [data-os="ios"], .hero .cta [data-os="android"] { display: none; }
+  html[data-visitor="ios"]:not(.m-soon) .hero .cta [data-os="ios"],
+  html[data-visitor="android"]:not(.m-soon) .hero .cta [data-os="android"] { display: inline-flex; }
   html.is-mobile .hero .avail, html.is-mobile .hero .meta .spec { display: none; }
-  html.m-soon .hero .lead [data-text] { display: none; }
 
   .hero-shot { position: relative; padding-top: 44px; }
   .hero-shot img { width: auto; max-width: 100%; max-height: min(640px, 74vh); margin: 0 auto; filter: drop-shadow(0 30px 40px rgba(40,30,20,.18)); transform: rotate(1.2deg); }
@@ -369,7 +356,6 @@
   .plat-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .plat-head svg { width: 30px; height: 30px; color: var(--ink); flex: none; }
   .plat h3 { margin: 0; font-size: 28px; font-weight: 400; color: var(--ink); line-height: 1.2; }
-  .plat .where { margin: -4px 0 0; font-size: 18px; color: var(--soft); }
   .plat .spec { list-style: none; margin: 0; padding: 0; font-size: 18px; }
   .plat .spec li { position: relative; padding: 7px 0 7px 24px; border-bottom: 1px dashed var(--rule); }
   .plat .spec li:last-child { border-bottom: 0; }
@@ -475,9 +461,6 @@
   .final h2 { margin-bottom: 10px; }
   .final .sub { font-size: 24px; color: var(--soft); margin: 0; }
   .final .cta { justify-content: center; margin-top: 26px; }
-  .final .cta-mobile { display: none; }
-  html.m-soon .final .cta-mobile { display: flex; }
-  html.m-soon .final .cta-mobile + .cta { margin-top: 14px; }
   .final .desk-link { margin: 18px 0 0; }
 
   footer { position: relative; z-index: 1; border-top: 1px solid var(--rule); background: var(--paper-2); padding: 44px 0 36px; font-size: 17px; color: var(--soft); }
@@ -537,7 +520,7 @@
     .hero .lead { font-size: 20px; }
     .hero-shot img { width: min(60vw, 236px); }
     .hero-shot .tag { left: 0; bottom: 12%; font-size: 18px; padding: 8px 12px; }
-    .cta .btn, .soon-note .row .btn { flex: 1 1 100%; }
+    .cta .btn { flex: 1 1 100%; }
     html.is-mobile .cta .btn.star { flex: 0 1 auto; }
     .plat { padding: 24px 18px 20px; }
     .plat .act .btn { flex: 1 1 100%; }
@@ -547,8 +530,6 @@
     .device figcaption b, .widgets figcaption b { font-size: 17px; }
     .device figcaption { font-size: 15px; }
     section p.desc { font-size: 20px; }
-    .soon-note { padding: 18px 16px 16px; }
-    .soon-note .soon-title { font-size: 22px; }
     /* 책상: 바닷가를 크게 한 대, 학교 책상 낮 · 저녁은 그 아래 나란히 */
     .desks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 16px; }
     .desks .lead { grid-column: 1 / -1; justify-self: center; width: min(100%, 250px); }
@@ -581,7 +562,7 @@
       <a class="threads" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener" aria-label="Threads @owlu_app (새 창)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 12a4 4 0 1 1-1.2-2.85M16 8v5.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.6 7.2"/></svg><span>Threads</span>
       </a>
-      <a class="dl" href="#download"><span class="dl-get">다운로드</span><span class="dl-soon">출시 소식</span></a>
+      <a class="dl" href="#download">다운로드</a>
     </nav>
   </header>
 
@@ -591,7 +572,7 @@
     <div class="hero-text">
       <p class="label">Daily paper planner</p>
       <h1>화면 하나가<br><span class="hl" style="--c: #F7C3CD">종이 한 장.</span></h1>
-      <p class="lead">10분 단위 종이 플래너를 그대로 옮긴 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.<span data-text="lead"> Mac · Windows · iPhone&nbsp;·&nbsp;iPad 에서 지금 무료로 쓸 수 있고, Android 앱도 곧 나와요.</span></p>
+      <p class="lead">10분 단위 종이 플래너를 그대로 옮긴 플래너예요. 형광펜으로 하루를 칠하고, 펜으로 ○△× 체크하고, 다 쓰면 스프링 노트처럼 한 장 넘겨요.<span data-text="lead"> Mac&nbsp;· Windows&nbsp;· iPhone&nbsp;·&nbsp;iPad&nbsp;· Android 에서 지금 무료로 쓸 수 있어요.</span></p>
     </div>
 
     <div class="hero-shot">
@@ -605,15 +586,6 @@
     </div>
 
     <div class="hero-act">
-      <!-- 앱이 아직 없는 폰 · 태블릿(지금은 Android)으로 들어오면 스크립트가 보여 준다 -->
-      <div class="soon-note" id="mobile-note">
-        <p class="soon-title"><span class="hl" style="--c: #CDB6EF" data-for="android">Android 앱은 Google Play 에 곧 나와요.</span></p>
-        <p>지금은 Mac · Windows 에서 먼저 써 보세요. 나오는 날 Threads 에서 가장 먼저 알려 드릴게요.</p>
-        <div class="row">
-          <a class="btn primary" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
-          <button class="btn ghost small" type="button" data-share>컴퓨터로 링크 보내기</button>
-        </div>
-      </div>
       <p class="desk-link"><a href="#platforms">Mac · Windows(베타) 용은 컴퓨터에서 받아요 →</a></p>
 
       <div class="cta">
@@ -629,17 +601,18 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
           App Store 에서 받기
         </a>
+        <a class="btn primary" data-os="android" href="https://play.google.com/store/apps/details?id=com.spiralday.app&amp;hl=ko">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          Google Play 에서 받기
+        </a>
         <a class="btn ghost star" href="https://github.com/Grwaywee/spiralday" aria-label="GitHub에서 별 주기 — Spiralday">
           <span aria-hidden="true">⭐</span><span>GitHub에서 별 주기<span class="count" data-stars aria-hidden="true"></span></span>
         </a>
       </div>
       <script>(function () { var o = document.documentElement.getAttribute('data-visitor'), c = document.currentScript.previousElementSibling, m = o && c.querySelector('[data-os="' + o + '"]'); if (m && c.firstElementChild !== m) c.insertBefore(m, c.firstElementChild); })();</script>
-      <p class="avail" data-avail>
-        <span class="grp"><span class="badge is-available">지금 무료</span><span><a href="#p-mac">Mac</a> · <a href="#p-windows">Windows</a>&nbsp;(베타) · <a href="#p-ios">iPhone&nbsp;·&nbsp;iPad</a></span></span>
-        <span class="grp"><span class="badge is-soon">곧 나와요</span><span><a href="#p-android">Android</a></span></span>
-      </p>
+      <p class="avail" data-avail><span class="grp"><span class="badge is-available">지금 무료</span><span><a href="#p-mac">Mac</a>&nbsp;· <a href="#p-windows">Windows</a>&nbsp;(베타)&nbsp;· <a href="#p-ios">iPhone&nbsp;·&nbsp;iPad</a>&nbsp;· <a href="#p-android">Android</a></span></span></p>
       <p class="other-note" id="other-note">Linux · ChromeOS 용 앱은 아직 없어요. 필요하면 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads DM<span class="sr"> (새 창)</span></a> 으로 알려 주세요.</p>
-      <p class="meta">무료 · 계정 없이 · 기록은 내 기기에만<span class="spec"><br>macOS 14 이상 (Apple Silicon &amp; Intel) · Windows&nbsp;10&nbsp;·&nbsp;11 64비트&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad (iOS 17 이상)</span></p>
+      <p class="meta">무료 · 계정 없이 · 기록은 내 기기에만<span class="spec"><br>macOS 14 이상 (Apple Silicon &amp; Intel) · Windows&nbsp;10&nbsp;·&nbsp;11 64비트&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad (iOS 17 이상) · Android&nbsp;8.0 이상</span></p>
       <p class="ask-line">요청 · 버그는 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads DM<span class="sr"> (새 창)</span></a> 이나 <a href="mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EC%9A%94%EC%B2%AD%20%C2%B7%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0">메일</a>로 보내 주세요.</p>
     </div>
   </div>
@@ -648,7 +621,7 @@
   <section id="platforms" aria-labelledby="platforms-h">
     <p class="label">Platforms</p>
     <h2 id="platforms-h">어느 기기에서든 <span class="hl" style="--c: #A9CFF3">같은 종이</span>.</h2>
-    <p class="desc" data-text="desc">Mac · Windows&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad 는 지금 바로 무료로 받을 수 있어요. Android 앱은 준비하고 있어요.</p>
+    <p class="desc" data-text="desc">Mac&nbsp;· Windows&nbsp;(베타)&nbsp;· iPhone&nbsp;·&nbsp;iPad&nbsp;· Android 는 지금 바로 무료로 받을 수 있어요.</p>
     <div class="plats" data-reorder>
       <article class="plat" id="p-mac" data-platform="mac" aria-labelledby="p-mac-h">
         <div class="plat-head">
@@ -716,17 +689,20 @@
         <div class="plat-head">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>
           <h3 id="p-android-h">Android</h3>
-          <span class="badge is-soon" data-badge="android">곧 나와요</span>
+          <span class="badge is-available" data-badge="android">지금 무료</span>
         </div>
-        <p class="where" data-show="android:soon">Google Play 에 곧 나와요</p>
         <ul class="spec">
+          <li>Android 8.0 이상</li>
           <li>폰 · 태블릿 · 폴더블</li>
           <li>같은 종이 그대로, S Pen 으로도</li>
           <li>홈 화면 위젯 — 2×2, 4×2 미니 타임테이블</li>
           <li>앱 아이콘을 길게 눌러 여는 바로가기</li>
         </ul>
         <div class="act">
-          <a class="btn soft" data-get="android" data-state="notify" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
+          <a class="btn primary" data-get="android" data-state="get" href="https://play.google.com/store/apps/details?id=com.spiralday.app&amp;hl=ko">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Google Play 에서 받기
+          </a>
         </div>
       </article>
     </div>
@@ -935,7 +911,7 @@
       <div>
         <p class="label">Spiralday Sync</p>
         <h2 id="sync-h">내 기기끼리,<br><span class="hl" style="--c: #8EDCD2">나만 읽을 수 있게</span>.</h2>
-        <p class="intro"><span class="badge is-available" data-badge="sync">지금 쓸 수 있어요</span> <span>켜고 싶은 사람만 켜는 동기화예요. 지금은 Mac · Windows · iPhone · iPad 끼리 맞춰요.</span></p>
+        <p class="intro"><span class="badge is-available" data-badge="sync">지금 쓸 수 있어요</span> <span>켜고 싶은 사람만 켜는 동기화예요. Mac&nbsp;· Windows&nbsp;· iPhone&nbsp;· iPad&nbsp;· Android 끼리 맞춰요.</span></p>
         <ul class="marks">
           <li><span class="m" aria-hidden="true">○</span><div><b>종단간 암호화</b> — 플래너는 내 기기에서 잠근 뒤에 보내요. 서버에는 알아볼 수 없는 암호문으로만 남아서, 만든 저희도 읽을 수 없어요.</div></li>
           <li><span class="m" aria-hidden="true">○</span><div><b>계정 없이</b> — 이메일도 비밀번호도 없어요. QR 코드를 찍거나 8자리 코드를 넣으면 연결돼요. 기기를 바꾸거나 잃어버려도 25자리 복구 코드로 다시 이어요. 복구 코드는 저희도 모르니 꼭 따로 적어 두세요.</div></li>
@@ -975,10 +951,9 @@
         <h3>iPhone · iPad <span class="badge is-available" data-badge="ios">지금 무료</span></h3>
         <p><a data-get="ios" data-state="get" href="https://apps.apple.com/kr/app/spiralday/id6818437748">App Store</a> 에서 Spiralday 를 받으면 끝이에요.</p>
       </div>
-      <div class="inst later" data-platform="android">
-        <h3>Android <span class="badge is-soon" data-badge="android">곧 나와요</span></h3>
-        <p data-show="android:soon">Google Play 에 나오면 받기만 하면 돼요. 나오는 날 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads<span class="sr"> (새 창)</span></a> 에서 바로 알려 드릴게요.</p>
-        <p data-show="android:out" hidden><a data-get="android" data-state="get" href="#p-android">Google Play</a> 에서 Spiralday 를 받으면 끝이에요.</p>
+      <div class="inst" data-platform="android">
+        <h3>Android <span class="badge is-available" data-badge="android">지금 무료</span></h3>
+        <p><a data-get="android" data-state="get" href="https://play.google.com/store/apps/details?id=com.spiralday.app&amp;hl=ko">Google Play</a> 에서 Spiralday 를 받으면 끝이에요.</p>
       </div>
     </div>
   </section>
@@ -1029,12 +1004,7 @@
   <section class="final" id="download" aria-labelledby="download-h">
     <img class="icon" src="assets/icon-240.webp" alt="" width="120" height="120" loading="lazy" decoding="async">
     <h2 id="download-h">오늘 한 장, 넘겨 볼까요?</h2>
-    <p class="hand sub" data-text="final">무료 · Mac&nbsp;(macOS&nbsp;14&nbsp;이상) · Windows&nbsp;10&nbsp;·&nbsp;11&nbsp;(베타) · iPhone&nbsp;·&nbsp;iPad&nbsp;(iOS&nbsp;17&nbsp;이상)<br>Android 는 곧 나와요</p>
-    <!-- 폰 · 태블릿으로 들어왔고 그 기기 앱이 아직이면 이 줄이 먼저 보인다 -->
-    <div class="cta cta-mobile">
-      <a class="btn primary" href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads 에서 출시 소식 받기<span class="sr"> (새 창)</span></a>
-      <button class="btn ghost" type="button" data-share>컴퓨터로 링크 보내기</button>
-    </div>
+    <p class="hand sub" data-text="final">무료&nbsp;· Mac&nbsp;(macOS&nbsp;14&nbsp;이상)&nbsp;· Windows&nbsp;10&nbsp;·&nbsp;11&nbsp;(베타)&nbsp;· iPhone&nbsp;·&nbsp;iPad&nbsp;(iOS&nbsp;17&nbsp;이상)&nbsp;· Android&nbsp;8.0&nbsp;이상</p>
     <div class="cta">
       <a class="btn primary" data-os="mac" href="https://github.com/Grwaywee/spiralday/releases/latest/download/Spiralday.dmg">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
@@ -1048,13 +1018,17 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
         App Store 에서 받기
       </a>
+      <a class="btn ghost" data-os="android" href="https://play.google.com/store/apps/details?id=com.spiralday.app&amp;hl=ko">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+        Google Play 에서 받기
+      </a>
       <a class="btn ghost star" href="https://github.com/Grwaywee/spiralday" aria-label="GitHub에서 별 주기 — Spiralday">
         <span aria-hidden="true">⭐</span><span>GitHub에서 별 주기<span class="count" data-stars aria-hidden="true"></span></span>
       </a>
     </div>
     <script>(function () { var o = document.documentElement.getAttribute('data-visitor'), c = document.currentScript.previousElementSibling, m = o && c.querySelector('[data-os="' + o + '"]'); if (m && c.firstElementChild !== m) c.insertBefore(m, c.firstElementChild); })();</script>
     <p class="desk-link"><a href="#platforms">Mac · Windows(베타) 용은 컴퓨터에서 받아요 →</a></p>
-    <p class="meta"><a href="https://github.com/Grwaywee/spiralday/releases">지난 버전 모두 보기</a><span data-show="android:soon"> · <a href="#p-android">Android&nbsp;소식</a></span></p>
+    <p class="meta"><a href="https://github.com/Grwaywee/spiralday/releases">지난 버전 모두 보기</a></p>
   </section>
   </main>
 </div>
@@ -1085,7 +1059,7 @@
         <a href="https://leanagilehungry.com" target="_blank" rel="noopener">회사 소개<span class="sr"> (새 창)</span></a>
       </nav>
     </div>
-    <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday™ 는 LeanAgileHungry Inc. 의 상표예요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/TRADEMARKS.md">상표 정책</a>) · Mac 앱 소스 코드는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> 으로 비상업 목적에 공개돼 있어요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE-HISTORY.md">라이선스를 바꾸기 전에 MIT 로 공개된 버전은 MIT 그대로</a>) · 손글씨 폰트: Poor Story © YoonDesign Inc. (SIL OFL 1.1) · Apple, iPhone, iPad, Mac 은 미국과 그 밖의 나라에 등록된 Apple Inc. 의 상표이고, App&nbsp;Store 는 Apple Inc. 의 서비스 마크예요</p>
+    <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday™ 는 LeanAgileHungry Inc. 의 상표예요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/TRADEMARKS.md">상표 정책</a>) · Mac 앱 소스 코드는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> 으로 비상업 목적에 공개돼 있어요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE-HISTORY.md">라이선스를 바꾸기 전에 MIT 로 공개된 버전은 MIT 그대로</a>) · 손글씨 폰트: Poor Story © YoonDesign Inc. (SIL OFL 1.1) · Apple, iPhone, iPad, Mac 은 미국과 그 밖의 나라에 등록된 Apple Inc. 의 상표이고, App&nbsp;Store 는 Apple Inc. 의 서비스 마크예요 · Android, Google&nbsp;Play 는 Google LLC 의 상표예요</p>
   </div>
 </footer>
 <script>
@@ -1094,7 +1068,7 @@
     var BADGE = { available: '지금 무료', beta: '베타 · 무료', soon: '곧 나와요' };
     var GET = { mac: 'Mac용 무료 다운로드', windows: 'Windows용 무료 다운로드', ios: 'App Store 에서 받기', android: 'Google Play 에서 받기' };
     var NAME = { mac: 'Mac', windows: 'Windows', ios: 'iPhone · iPad', android: 'Android' };
-    var SPEC = { mac: 'Mac (macOS 14 이상)', windows: 'Windows 10 · 11', ios: 'iPhone · iPad (iOS 17 이상)', android: 'Android' };
+    var SPEC = { mac: 'Mac (macOS 14 이상)', windows: 'Windows 10 · 11', ios: 'iPhone · iPad (iOS 17 이상)', android: 'Android 8.0 이상' };
     // 영어 이름 뒤의 조사: 맥은 · 윈도우즈는 · 아이패드는 · 안드로이드는
     var TOPIC = { mac: '은', windows: '는', ios: '는', android: '는' };
     var ORDER = ['mac', 'windows', 'ios', 'android'];
@@ -1104,7 +1078,9 @@
     function each(sel, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), fn); }
     function nb(s) { return s.replace(/ /g, '&nbsp;'); }
     function beta(k) { return PLATFORMS[k].status === 'beta' ? '&nbsp;(베타)' : ''; }
-    function names(keys, withBeta) { return keys.map(function (k) { return nb(NAME[k]) + (withBeta ? beta(k) : ''); }).join(' · '); }
+    // 가운뎃점은 앞 낱말에 붙인다 (좁은 화면에서 줄이 '·' 로 시작하지 않게)
+    var SEP = '&nbsp;· ';
+    function names(keys, withBeta) { return keys.map(function (k) { return nb(NAME[k]) + (withBeta ? beta(k) : ''); }).join(SEP); }
     function topic(keys) { return TOPIC[keys[keys.length - 1]]; }
     var now = ORDER.filter(out), soon = ORDER.filter(function (k) { return !out(k); });
 
@@ -1142,7 +1118,7 @@
       lead: function () { return ' ' + names(now) + ' 에서 지금 무료로 쓸 수 있' + (soon.length ? '고, ' + names(soon) + ' 앱도 곧 나와요.' : '어요.'); },
       desc: function () { return names(now, true) + ' ' + topic(now) + ' 지금 바로 무료로 받을 수 있어요.' + (soon.length ? ' ' + names(soon) + ' 앱은 준비하고 있어요.' : ''); },
       final: function () {
-        return '무료 · ' + now.map(function (k) { return nb(SPEC[k]) + beta(k); }).join(' · ') +
+        return '무료' + SEP + now.map(function (k) { return nb(SPEC[k]) + beta(k); }).join(SEP) +
           (soon.length ? '<br>' + names(soon) + ' ' + topic(soon) + ' 곧 나와요' : '');
       }
     };
@@ -1155,11 +1131,11 @@
     if (avail) {
       var link = function (k) { return '<a href="#p-' + k + '">' + nb(NAME[k]) + '</a>'; };
       avail.innerHTML =
-        (now.length ? '<span class="grp"><span class="badge is-available">지금 무료</span><span>' + now.map(function (k) { return link(k) + beta(k); }).join(' · ') + '</span></span>' : '') +
-        (soon.length ? ' <span class="grp"><span class="badge is-soon">곧 나와요</span><span>' + soon.map(link).join(' · ') + '</span></span>' : '');
+        (now.length ? '<span class="grp"><span class="badge is-available">지금 무료</span><span>' + now.map(function (k) { return link(k) + beta(k); }).join(SEP) + '</span></span>' : '') +
+        (soon.length ? ' <span class="grp"><span class="badge is-soon">곧 나와요</span><span>' + soon.map(link).join(SEP) + '</span></span>' : '');
     }
     // 마지막 줄: 스토어에 나온 기기는 받기 버튼을 둔다 (HTML 에 이미 있으면 주소만 맞추고, 아직이면 뺀다)
-    var finalCta = document.querySelector('.final .cta:not(.cta-mobile)');
+    var finalCta = document.querySelector('.final .cta');
     ['ios', 'android'].forEach(function (k) {
       if (!finalCta) return;
       var a = finalCta.querySelector('[data-os="' + k + '"]');
@@ -1200,32 +1176,16 @@
     // 다운로드 버튼의 순서 · 위계는 각 .cta 바로 뒤의 작은 스크립트와 CSS 가 맡는다 (첫 그림부터 맞게)
     if (!mobile) return;
 
-    // 폰 · 태블릿: dmg · exe 버튼은 CSS 가 숨기고 '컴퓨터에서 받아요' 한 줄만 남긴다
-    if (out(os)) {
-      each('.cta:not(.cta-mobile)', function (c) {
-        var mine = c.querySelector('[data-os="' + os + '"]');
-        if (mine) { mine.className = 'btn primary'; mine.href = PLATFORMS[os].url; return; }
-        var a = document.createElement('a');
-        a.className = 'btn primary'; a.href = PLATFORMS[os].url; a.setAttribute('data-os', os);
-        a.innerHTML = DL + ' ' + GET[os];
-        c.insertBefore(a, c.firstElementChild);
-      });
-      return;
-    }
-    // '곧 나와요' 안내 · 카드 위계 · 머리의 '출시 소식' 은 CSS 가 html.m-soon 을 보고 그린다
-    // 컴퓨터로 링크 보내기: 공유 시트, 없으면 링크 복사 (버튼은 html.can-share 일 때만 보인다)
-    var url = 'https://spiralday.com/';
-    if (navigator.share || (navigator.clipboard && navigator.clipboard.writeText)) {
-      each('[data-share]', function (share) {
-        share.addEventListener('click', function () {
-          if (navigator.share) {
-            navigator.share({ title: 'Spiralday', text: '컴퓨터에서 열어 볼 종이 플래너', url: url }).catch(function () {});
-          } else {
-            navigator.clipboard.writeText(url).then(function () { share.textContent = '링크를 복사했어요'; }, function () {});
-          }
-        });
-      });
-    }
+    // 폰 · 태블릿: dmg · exe 버튼은 CSS 가 숨기고 '컴퓨터에서 받아요' 한 줄만 남긴다. 내 기기 스토어 버튼은 진하게
+    if (!out(os)) return;
+    each('.cta', function (c) {
+      var mine = c.querySelector('[data-os="' + os + '"]');
+      if (mine) { mine.className = 'btn primary'; mine.href = PLATFORMS[os].url; return; }
+      var a = document.createElement('a');
+      a.className = 'btn primary'; a.href = PLATFORMS[os].url; a.setAttribute('data-os', os);
+      a.innerHTML = DL + ' ' + GET[os];
+      c.insertBefore(a, c.firstElementChild);
+    });
   })();
 
   // Mac 최신 버전: 업데이트 피드(appcast.xml)에서 읽는다. 못 읽으면 HTML 의 값을 그대로 둔다
