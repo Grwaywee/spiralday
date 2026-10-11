@@ -24,6 +24,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # 앱 안 '소식' 파일이 앱의 규칙(Docs/InAppNews.md)대로 모두 읽힐 때만 올린다
+      - name: 소식 파일 검사
+        run: node Scripts/news-check.mjs site/news/news.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

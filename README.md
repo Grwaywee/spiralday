@@ -249,6 +249,8 @@ SPIRALDAY_PING_URL=http://127.0.0.1:8787/ping build/Spiralday.app/Contents/MacOS
 
 `site/` 에는 소개 페이지 [spiralday.com](https://spiralday.com) 이 들어 있습니다.
 
+`site/news/news.json` 은 앱 안 ‘소식’이 읽는 파일입니다 (계정 · 푸시 없이, 앱을 열 때 이 정적 파일만 읽습니다). 소식을 올리는 법과 규칙은 [Docs/InAppNews.md](Docs/InAppNews.md) §9 — 올리기 전에 `node Scripts/news-check.mjs site/news/news.json` 으로 검사하고 (배포할 때도 같은 검사를 거칩니다), `main` 에 올리면 사이트와 함께 나갑니다.
+
 ## 로드맵
 
 - [ ] 월간 페이지

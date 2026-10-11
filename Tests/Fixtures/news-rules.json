@@ -1,0 +1,988 @@
+{
+  "about": "In-app news ('소식', Docs/InAppNews.md): which feed the app reads, which items it lists, which one becomes the one-time card, what it remembers — the same vectors for the Mac · iPhone · iPad (SpiraldayKit) and Windows · Android (web). The private repo's web/tests/fixtures/news-rules.json is the same bytes as this file (Tests/Fixtures/news-rules.json). Reference implementation: Scripts/news-check.mjs (open · list · markListSeen; node Scripts/news-check.mjs --fixtures). Owner decision 2026-10-11: no accounts, no push — a static feed on spiralday.com and notes bundled with the app.",
+  "version": 1,
+  "conventions": {
+    "feed": "parse · select: 'feed' is the JSON the server sends (serialize it with any JSON writer, then hand the BYTES to the parser), or the name of one in 'feeds', or null (nothing cached). 'feedText' is the exact text instead (UTF-8), 'feedBase64' the exact bytes. 'bom': true puts EF BB BF in front. 'padToBytes': n appends ASCII spaces until the body is n bytes.",
+    "repeat": "{\"$repeat\": \"s\", \"times\": n} in a string's place is s repeated n times. In the items array, {\"$repeat\": {item}, \"times\": n} is n copies of the item whose ids get -1 … -n appended. Expand both before serializing.",
+    "parseExpect": "accepted: whether the whole feed is read (false = keep the previous cache). ids: the items kept, in feed order. links (when given): each kept item's link after the allowlist (null = no link).",
+    "select": "One app open (open() in the spec): env and state are merged over selectDefaults; bundled is the name of a whats-new.json in 'bundled' (default selectDefaults.bundled). expect.card: null | {type:'notice', id} | {type:'whatsNew', app}. expect.save: the state the app stores right after this open (a card counts as seen the moment it shows). expect.list · dot: Settings › 소식 (list() in the spec) computed from expect.save — title · body in env.lang ('ko'; anything else is 'en', each text falling back to ko on its own), unseen = that row's dot, dot = any unseen. Then opening the list adds every listed id to seen, after which dot is false — check that too.",
+    "text": "Lengths are Unicode code points (Swift unicodeScalars.count, JS [...s].length) — not UTF-16 units, not grapheme clusters.",
+    "patterns": "All patterns are ASCII only and match the whole string: no \\d (Swift's matches other digits), and a final line break does not match ($ in ICU · Swift may match before it).",
+    "dates": "dates · versions.valid · links: [value, ok]. A value that is not a string is never ok. versions.compare: [a, b, sign of a − b].",
+    "fetch": "status null = timeout or no connection. body: valid = a feed the parser accepts, invalid = one it rejects, tooBig = more than limits.maxBytes. replace = store this body (and its ETag · Last-Modified) as the cache; keep = the previous cache stays as it is."
+  },
+  "request": {
+    "url": "https://spiralday.com/news/news.json",
+    "method": "GET",
+    "headers": { "User-Agent": "Spiralday", "Accept": "application/json", "Accept-Language": "*" },
+    "conditional": ["If-None-Match", "If-Modified-Since"],
+    "noQueryString": true,
+    "cookies": false,
+    "followRedirects": false,
+    "timeoutSeconds": 5,
+    "minMinutesBetweenTries": 60,
+    "refreshHoursWhileOpen": 24,
+    "openAfterAwayMinutes": 60
+  },
+  "limits": { "maxBytes": 65536, "maxItems": 50, "maxDepth": 16, "idMax": 64, "titleMax": 80, "bodyMax": 600, "linkMax": 200, "seenMax": 200 },
+  "dates": [
+    ["2026-10-11", true],
+    ["2026-12-31", true],
+    ["2028-02-29", true],
+    ["2000-02-29", true],
+    ["2026-02-29", false],
+    ["2100-02-29", false],
+    ["2026-04-31", false],
+    ["2026-13-01", false],
+    ["2026-00-10", false],
+    ["2026-10-00", false],
+    ["0000-01-01", false],
+    ["2026-1-05", false],
+    ["26-10-11", false],
+    ["2026/10/11", false],
+    ["2026-10-11T00:00", false],
+    ["2026-10-11\n", false],
+    [" 2026-10-11", false],
+    ["２０２６-１０-１１", false],
+    ["", false],
+    [20261011, false],
+    [null, false]
+  ],
+  "versions": {
+    "valid": [
+      ["1", true],
+      ["1.2", true],
+      ["1.2.3", true],
+      ["0.9.2", true],
+      ["01.2", true],
+      ["123456.0.0", true],
+      ["1234567", false],
+      ["1.2.3.4", false],
+      ["v1.2", false],
+      ["1.2-beta", false],
+      ["1.2.0 (beta)", false],
+      ["1..2", false],
+      ["1.2.", false],
+      [".1", false],
+      [" 1.2", false],
+      ["1.2\n", false],
+      ["１.２", false],
+      ["", false],
+      [12, false],
+      [null, false]
+    ],
+    "compare": [["1.2.0", "1.2", 0], ["1", "1.0.0", 0], ["01.2", "1.2", 0], ["1.10.0", "1.9.9", 1], ["0.9.2", "1.0.0", -1], ["1.1.1", "1.1.0", 1], ["1.0.4", "1.0.10", -1], ["2", "1.99.99", 1]]
+  },
+  "links": [
+    ["https://spiralday.com/", true],
+    ["https://spiralday.com/privacy.html", true],
+    ["https://spiralday.com/privacy.html#4", true],
+    ["https://spiralday.com/news/2026-10-20-sync.html", true],
+    ["https://spiralday.com/a_b~c.d-e/", true],
+    [
+      "https://spiralday.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      true
+    ],
+    [
+      "https://spiralday.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      false
+    ],
+    ["https://spiralday.com", false],
+    ["http://spiralday.com/", false],
+    ["https://www.spiralday.com/", false],
+    ["https://SPIRALDAY.COM/", false],
+    ["HTTPS://spiralday.com/", false],
+    ["https://spiralday.com.evil.example/", false],
+    ["https://spiralday.com@evil.example/", false],
+    ["https://spiralday.com:443/", false],
+    ["https://evil.example/?u=https://spiralday.com/", false],
+    ["https://spiralday.com/privacy.html?from=app", false],
+    ["https://spiralday.com/%2e%2e/", false],
+    ["https://spiralday.com/a b", false],
+    ["https://spiralday.com/\n", false],
+    ["https://spiralday.com/한글", false],
+    ["https://spiralday.com/#a#b", false],
+    ["javascript:alert(1)//https://spiralday.com/", false],
+    [" https://spiralday.com/", false],
+    [42, false],
+    [null, false]
+  ],
+  "parse": [
+    { "name": "the smallest feed (what site/news/news.json starts as)", "feed": { "version": 1, "items": [] }, "expect": { "accepted": true, "ids": [] } },
+    {
+      "name": "unknown fields are ignored, at the top and in items",
+      "feed": {
+        "version": 1,
+        "generated": "2026-10-20",
+        "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "color": "pink", "extra": { "x": [1, 2] } }]
+      },
+      "expect": { "accepted": true, "ids": ["a"] }
+    },
+    {
+      "name": "version 2 is not read (a new format gets a new URL)",
+      "feed": { "version": 2, "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "version as a string",
+      "feed": { "version": "1", "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "version true (Swift: an NSNumber bool is not 1)",
+      "feed": { "version": true, "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "no version",
+      "feed": { "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "items is not an array",
+      "feed": { "version": 1, "items": { "a": { "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } } } },
+      "expect": { "accepted": false }
+    },
+    { "name": "no items", "feed": { "version": 1 }, "expect": { "accepted": false } },
+    {
+      "name": "the top is an array",
+      "feed": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }],
+      "expect": { "accepted": false }
+    },
+    { "name": "not JSON", "feedText": "{\"version\":1,\"items\":[", "expect": { "accepted": false } },
+    { "name": "an HTML error page", "feedText": "<!DOCTYPE html><title>404</title>", "expect": { "accepted": false } },
+    { "name": "not UTF-8", "feedBase64": "eyJ2ZXJzaW9uIjoxLCJpdGVtcyI6W10sIngiOiL/In0=", "expect": { "accepted": false } },
+    {
+      "name": "a leading BOM is skipped",
+      "bom": true,
+      "feed": { "version": 1, "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "expect": { "accepted": true, "ids": ["a"] }
+    },
+    {
+      "name": "exactly 65536 bytes",
+      "feed": { "version": 1, "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "padToBytes": 65536,
+      "expect": { "accepted": true, "ids": ["a"] }
+    },
+    {
+      "name": "65537 bytes",
+      "feed": { "version": 1, "items": [{ "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "padToBytes": 65537,
+      "expect": { "accepted": false }
+    },
+    { "name": "a lone surrogate anywhere, even in an unknown field", "feedText": "{\"version\":1,\"items\":[],\"note\":\"\\ud800\"}", "expect": { "accepted": false } },
+    {
+      "name": "a surrogate pair escape is one character",
+      "feedText": "{\"version\":1,\"items\":[{\"id\":\"a\",\"date\":\"2026-10-01\",\"kind\":\"notice\",\"importance\":\"normal\",\"title\":{\"ko\":\"\\ud83d\\ude00\"},\"body\":{\"ko\":\"x\"}}]}",
+      "expect": { "accepted": true, "ids": ["a"] }
+    },
+    { "name": "nesting 16 deep is fine", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[]]]]]]]]]]]]]]] }, "expect": { "accepted": true, "ids": [] } },
+    { "name": "nesting 17 deep is not", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]] }, "expect": { "accepted": false } },
+    {
+      "name": "only the first 50 items are read",
+      "feed": {
+        "version": 1,
+        "items": [{ "$repeat": { "id": "n", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }, "times": 51 }]
+      },
+      "expect": {
+        "accepted": true,
+        "ids": [
+          "n-1",
+          "n-2",
+          "n-3",
+          "n-4",
+          "n-5",
+          "n-6",
+          "n-7",
+          "n-8",
+          "n-9",
+          "n-10",
+          "n-11",
+          "n-12",
+          "n-13",
+          "n-14",
+          "n-15",
+          "n-16",
+          "n-17",
+          "n-18",
+          "n-19",
+          "n-20",
+          "n-21",
+          "n-22",
+          "n-23",
+          "n-24",
+          "n-25",
+          "n-26",
+          "n-27",
+          "n-28",
+          "n-29",
+          "n-30",
+          "n-31",
+          "n-32",
+          "n-33",
+          "n-34",
+          "n-35",
+          "n-36",
+          "n-37",
+          "n-38",
+          "n-39",
+          "n-40",
+          "n-41",
+          "n-42",
+          "n-43",
+          "n-44",
+          "n-45",
+          "n-46",
+          "n-47",
+          "n-48",
+          "n-49",
+          "n-50"
+        ]
+      }
+    },
+    {
+      "name": "entries that are not objects are skipped",
+      "feed": { "version": 1, "items": [null, "x", 3, [], { "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }] },
+      "expect": { "accepted": true, "ids": ["a"] }
+    },
+    {
+      "name": "ids",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "2026-10-20-sync-check", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          {
+            "id": "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "date": "2026-10-01",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" }
+          },
+          {
+            "id": "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "date": "2026-10-01",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" }
+          },
+          { "id": "A", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "-a", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "a_b", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "a.b", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "가", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "a\n", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "app-x", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": 12, "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": null, "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["a", "2026-10-20-sync-check", "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"] }
+    },
+    {
+      "name": "duplicate ids: the first VALID one wins",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "d", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "" }, "body": { "ko": "본문", "en": "Body" }, "link": "https://spiralday.com/1" },
+          { "id": "d", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "link": "https://spiralday.com/2" },
+          { "id": "d", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "link": "https://spiralday.com/3" }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["d"], "links": { "d": "https://spiralday.com/2" } }
+    },
+    {
+      "name": "dates and expires",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "ok", "date": "2028-02-29", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "expires": "2028-03-01" },
+          { "id": "leap", "date": "2026-02-29", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "month", "date": "2026-13-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "short", "date": "2026-1-05", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "time", "date": "2026-10-11T09:00:00Z", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "nl", "date": "2026-10-11\n", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "wide", "date": "２０２６-１０-１１", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "num", "date": 20261011, "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "none", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "exp-bad", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "expires": "2026-11-31" },
+          { "id": "exp-num", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "expires": 1 },
+          { "id": "exp-null", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "expires": null }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["ok", "exp-null"] }
+    },
+    {
+      "name": "kind and importance",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "notice", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "update", "date": "2026-10-01", "kind": "update", "importance": "important", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "big-kind", "date": "2026-10-01", "kind": "Notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "other-kind", "date": "2026-10-01", "kind": "alert", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "urgent", "date": "2026-10-01", "kind": "notice", "importance": "urgent", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "no-kind", "date": "2026-10-01", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "no-importance", "date": "2026-10-01", "kind": "notice", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["notice", "update"] }
+    },
+    {
+      "name": "titles: ko needed, en optional, one line, 80 code points",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "ok", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "en-empty", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가", "en": "" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "en-null", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가", "en": null }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "ko-only", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "cp-80", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": { "$repeat": "😀", "times": 80 } }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "cp-81", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": { "$repeat": "😀", "times": 81 } }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "missing", "date": "2026-10-01", "kind": "notice", "importance": "normal", "body": { "ko": "본문", "en": "Body" } },
+          { "id": "string", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": "제목", "body": { "ko": "본문", "en": "Body" } },
+          { "id": "no-ko", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "ko-empty", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "en-number", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가", "en": 5 }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "newline", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가\n나" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "tab", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가\t나" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "bidi", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가\u202e나" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "line-sep", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가\u2028나" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "c1", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "가\u0085나" }, "body": { "ko": "본문", "en": "Body" } }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["ok", "en-empty", "en-null", "ko-only", "cp-80"] }
+    },
+    {
+      "name": "bodies: line breaks are \\n only, 600 code points",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "lines", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "하나\n둘\n\n셋", "en": "one\ntwo" } },
+          { "id": "cp-600", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": { "$repeat": "😀", "times": 600 } } },
+          { "id": "cp-601", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": { "$repeat": "😀", "times": 601 } } },
+          { "id": "graphemes-600", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": { "$repeat": "👍🏽", "times": 300 } } },
+          { "id": "graphemes-602", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": { "$repeat": "👍🏽", "times": 301 } } },
+          { "id": "en-601", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "가", "en": { "$repeat": "a", "times": 601 } } },
+          { "id": "crlf", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "가\r\n나" } },
+          { "id": "nul", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "가\u0000나" } },
+          { "id": "para-sep", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "가\u2029나" } },
+          { "id": "lri", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "가\u2066나" } },
+          { "id": "del", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "가\u007f" } },
+          { "id": "no-body", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" } }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["lines", "cp-600", "graphemes-600"] }
+    },
+    {
+      "name": "platforms",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "null", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": null },
+          { "id": "one", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": ["mac"] },
+          { "id": "unknown-too", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": ["mac", "visionos"] },
+          { "id": "empty", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": [] },
+          { "id": "string", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": "mac" },
+          { "id": "number", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": [1] }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["null", "one", "unknown-too"] }
+    },
+    {
+      "name": "minVersion · maxVersion: every value must be a version, unknown keys too",
+      "feed": {
+        "version": 1,
+        "items": [
+          {
+            "id": "ok",
+            "date": "2026-10-01",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "minVersion": { "mac": "1.2" },
+            "maxVersion": { "ios": "1.0.4", "android": "1" }
+          },
+          { "id": "empty", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": {} },
+          { "id": "other-key", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "linux": "2.0" } },
+          { "id": "v-prefix", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "mac": "v1.2" } },
+          { "id": "four", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "maxVersion": { "mac": "1.2.3.4" } },
+          { "id": "bad-other-key", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "linux": "x" } },
+          { "id": "number", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "mac": 12 } },
+          { "id": "string", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": "1.2" },
+          { "id": "array", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "maxVersion": ["1.2"] }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["ok", "empty", "other-key"] }
+    },
+    {
+      "name": "syncOnly is a boolean (Swift: an NSNumber 1 is not true)",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "true", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": true },
+          { "id": "false", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": false },
+          { "id": "null", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": null },
+          { "id": "yes", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": "yes" },
+          { "id": "one", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": 1 }
+        ]
+      },
+      "expect": { "accepted": true, "ids": ["true", "false", "null"] }
+    },
+    {
+      "name": "a link off the allowlist is removed, the item stays",
+      "feed": {
+        "version": 1,
+        "items": [
+          {
+            "id": "ok",
+            "date": "2026-10-01",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "link": "https://spiralday.com/privacy.html#4"
+          },
+          { "id": "none", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "null", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "link": null },
+          { "id": "http", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "link": "http://spiralday.com/" },
+          {
+            "id": "other-host",
+            "date": "2026-10-01",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "link": "https://spiralday.com.evil.example/"
+          },
+          {
+            "id": "query",
+            "date": "2026-10-01",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "link": "https://spiralday.com/?from=app"
+          },
+          { "id": "number", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "link": 42 }
+        ]
+      },
+      "expect": {
+        "accepted": true,
+        "ids": ["ok", "none", "null", "http", "other-host", "query", "number"],
+        "links": { "ok": "https://spiralday.com/privacy.html#4", "none": null, "null": null, "http": null, "other-host": null, "query": null, "number": null }
+      }
+    }
+  ],
+  "feeds": {
+    "two-important": {
+      "version": 1,
+      "items": [
+        {
+          "id": "2026-10-15-all",
+          "date": "2026-10-15",
+          "kind": "notice",
+          "importance": "important",
+          "title": { "ko": "모두에게 중요한 소식", "en": "Important news for everyone" },
+          "body": { "ko": "시험용 글이에요.", "en": "A test text." },
+          "expires": "2026-10-31",
+          "link": "https://spiralday.com/privacy.html"
+        },
+        {
+          "id": "2026-10-18-sync",
+          "date": "2026-10-18",
+          "kind": "notice",
+          "importance": "important",
+          "title": { "ko": "동기화를 쓰는 분께 중요한 소식", "en": "Important news for sync users" },
+          "body": { "ko": "시험용 글이에요.", "en": "A test text." },
+          "syncOnly": true,
+          "expires": "2026-11-30"
+        },
+        { "id": "2026-10-19-new", "date": "2026-10-19", "kind": "update", "importance": "normal", "title": { "ko": "새 소식", "en": "Something new" }, "body": { "ko": "영어 본문이 없어요." } },
+        { "id": "2026-10-01-old", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "지난 소식" }, "body": { "ko": "영어가 없어요." } }
+      ]
+    }
+  },
+  "bundled": {
+    "mac-1.2.0": {
+      "version": 1,
+      "notes": [
+        { "app": "1.2.0", "date": "2026-10-16", "body": { "ko": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "en": "- Test change one\n- Test change two" } },
+        { "app": "1.1.1", "date": "2026-10-10", "body": { "ko": "- 지난 버전" } }
+      ]
+    },
+    "none": { "version": 1, "notes": [] },
+    "written-1.2": { "version": 1, "notes": [{ "app": "1.2", "date": "2026-10-16", "body": { "ko": "짧은 번호" } }] },
+    "broken": {
+      "version": 1,
+      "notes": [{ "app": "v1.2.0", "date": "2026-10-16", "body": { "ko": "x" } }, { "app": "1.2.0", "date": "2026-13-01", "body": { "ko": "x" } }, { "app": "1.2.0", "date": "2026-10-16", "body": { "ko": "" } }]
+    }
+  },
+  "selectDefaults": {
+    "env": { "platform": "mac", "appVersion": "1.2.0", "today": "2026-10-20", "lang": "ko", "syncOn": false, "firstRun": false },
+    "state": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] },
+    "bundled": "mac-1.2.0"
+  },
+  "select": [
+    {
+      "name": "fresh install (the first-run flow shows): no card; remember this version and today",
+      "env": { "firstRun": true },
+      "state": { "lastSeenAppVersion": null, "since": null, "seen": [] },
+      "feed": "two-important",
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.2.0", "since": "2026-10-20", "seen": ["app-1.2.0"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "새 소식", "body": "영어 본문이 없어요.", "link": null, "unseen": false },
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false },
+          { "id": "2026-10-15-all", "title": "모두에게 중요한 소식", "body": "시험용 글이에요.", "link": "https://spiralday.com/privacy.html", "unseen": true },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": false }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "…the next open: the important notice that is still running shows once",
+      "state": { "lastSeenAppVersion": "1.2.0", "since": "2026-10-20", "seen": ["app-1.2.0"] },
+      "feed": "two-important",
+      "expect": {
+        "card": { "type": "notice", "id": "2026-10-15-all" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": "2026-10-20", "seen": ["app-1.2.0", "2026-10-15-all"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "새 소식", "body": "영어 본문이 없어요.", "link": null, "unseen": false },
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false },
+          { "id": "2026-10-15-all", "title": "모두에게 중요한 소식", "body": "시험용 글이에요.", "link": "https://spiralday.com/privacy.html", "unseen": false },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": false }
+        ],
+        "dot": false
+      }
+    },
+    {
+      "name": "…and the open after that: nothing",
+      "state": { "lastSeenAppVersion": "1.2.0", "since": "2026-10-20", "seen": ["app-1.2.0", "2026-10-15-all"] },
+      "feed": "two-important",
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.2.0", "since": "2026-10-20", "seen": ["app-1.2.0", "2026-10-15-all"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "새 소식", "body": "영어 본문이 없어요.", "link": null, "unseen": false },
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false },
+          { "id": "2026-10-15-all", "title": "모두에게 중요한 소식", "body": "시험용 글이에요.", "link": "https://spiralday.com/privacy.html", "unseen": false },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": false }
+        ],
+        "dot": false
+      }
+    },
+    {
+      "name": "updated from 1.1.1, offline (nothing cached): what’s new, once",
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": [] },
+      "feed": null,
+      "expect": {
+        "card": { "type": "whatsNew", "app": "1.2.0" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] },
+        "list": [{ "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "updated from a version before 소식 (nothing stored, not a first run): what’s new",
+      "state": { "lastSeenAppVersion": null, "seen": [] },
+      "feed": null,
+      "expect": {
+        "card": { "type": "whatsNew", "app": "1.2.0" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] },
+        "list": [{ "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "updated with two important notices waiting: the newest notice first, what’s new waits",
+      "env": { "syncOn": true },
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": [] },
+      "feed": "two-important",
+      "expect": {
+        "card": { "type": "notice", "id": "2026-10-18-sync" },
+        "save": { "lastSeenAppVersion": "1.1.1", "since": null, "seen": ["2026-10-18-sync"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "새 소식", "body": "영어 본문이 없어요.", "link": null, "unseen": true },
+          { "id": "2026-10-18-sync", "title": "동기화를 쓰는 분께 중요한 소식", "body": "시험용 글이에요.", "link": null, "unseen": false },
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": true },
+          { "id": "2026-10-15-all", "title": "모두에게 중요한 소식", "body": "시험용 글이에요.", "link": "https://spiralday.com/privacy.html", "unseen": true },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "…the next open: the other notice (one card per open)",
+      "env": { "syncOn": true },
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": ["2026-10-18-sync"] },
+      "feed": "two-important",
+      "expect": {
+        "card": { "type": "notice", "id": "2026-10-15-all" },
+        "save": { "lastSeenAppVersion": "1.1.1", "since": null, "seen": ["2026-10-18-sync", "2026-10-15-all"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "새 소식", "body": "영어 본문이 없어요.", "link": null, "unseen": true },
+          { "id": "2026-10-18-sync", "title": "동기화를 쓰는 분께 중요한 소식", "body": "시험용 글이에요.", "link": null, "unseen": false },
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": true },
+          { "id": "2026-10-15-all", "title": "모두에게 중요한 소식", "body": "시험용 글이에요.", "link": "https://spiralday.com/privacy.html", "unseen": false },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "…and then what’s new",
+      "env": { "syncOn": true },
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": ["2026-10-18-sync", "2026-10-15-all"] },
+      "feed": "two-important",
+      "expect": {
+        "card": { "type": "whatsNew", "app": "1.2.0" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["2026-10-18-sync", "2026-10-15-all", "app-1.2.0"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "새 소식", "body": "영어 본문이 없어요.", "link": null, "unseen": true },
+          { "id": "2026-10-18-sync", "title": "동기화를 쓰는 분께 중요한 소식", "body": "시험용 글이에요.", "link": null, "unseen": false },
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false },
+          { "id": "2026-10-15-all", "title": "모두에게 중요한 소식", "body": "시험용 글이에요.", "link": "https://spiralday.com/privacy.html", "unseen": false },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "what’s new already read in Settings › 소식 does not pop up",
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": ["app-1.2.0"] },
+      "feed": null,
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] },
+        "list": [{ "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "same version: nothing",
+      "feed": null,
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] },
+        "list": [{ "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "downgraded: nothing, the newer version stays remembered",
+      "env": { "appVersion": "1.1.1" },
+      "bundled": "none",
+      "feed": null,
+      "expect": { "card": null, "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] }, "list": [], "dot": false }
+    },
+    {
+      "name": "updated to a version without a note: no card, remember the version",
+      "env": { "appVersion": "1.2.1" },
+      "feed": null,
+      "expect": { "card": null, "save": { "lastSeenAppVersion": "1.2.1", "since": null, "seen": ["app-1.2.0"] }, "list": [], "dot": false }
+    },
+    {
+      "name": "a note written as 1.2 is the app’s 1.2.0",
+      "bundled": "written-1.2",
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": [] },
+      "feed": null,
+      "expect": {
+        "card": { "type": "whatsNew", "app": "1.2" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2"] },
+        "list": [{ "id": "app-1.2", "title": "1.2 에서 달라진 점", "body": "짧은 번호", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "broken bundled notes are skipped",
+      "bundled": "broken",
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": [] },
+      "feed": null,
+      "expect": { "card": null, "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": [] }, "list": [], "dot": false }
+    },
+    {
+      "name": "a stored version that is not a version counts as none",
+      "state": { "lastSeenAppVersion": "abc", "seen": [] },
+      "feed": null,
+      "expect": {
+        "card": { "type": "whatsNew", "app": "1.2.0" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] },
+        "list": [{ "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "the app’s own version is unreadable: no what’s new, items limited to this platform’s versions hide",
+      "env": { "appVersion": "1.2.0 (beta)" },
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "plain", "date": "2026-10-10", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "mac-min", "date": "2026-10-11", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "mac": "1.0" } },
+          { "id": "win-min", "date": "2026-10-12", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "win": "1.0" } }
+        ]
+      },
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.1.1", "since": null, "seen": [] },
+        "list": [{ "id": "win-min", "title": "제목", "body": "본문", "link": null, "unseen": true }, { "id": "plain", "title": "제목", "body": "본문", "link": null, "unseen": true }],
+        "dot": true
+      }
+    },
+    {
+      "name": "platforms: an iPad is ipados, not ios",
+      "env": { "platform": "ipados", "appVersion": "1.0.3" },
+      "bundled": "none",
+      "state": { "lastSeenAppVersion": "1.0.3", "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "ios", "date": "2026-10-11", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": ["ios"] },
+          { "id": "ipados", "date": "2026-10-12", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": ["ipados"] },
+          { "id": "both", "date": "2026-10-13", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": ["ios", "ipados"] },
+          { "id": "others", "date": "2026-10-14", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "platforms": ["mac", "win", "android"] },
+          { "id": "all", "date": "2026-10-15", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }
+        ]
+      },
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.0.3", "since": null, "seen": [] },
+        "list": [
+          { "id": "all", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "both", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "ipados", "title": "제목", "body": "본문", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "versions: both ends included; an iPad uses ipados, else the ios key",
+      "env": { "platform": "ipados", "appVersion": "1.0.3" },
+      "bundled": "none",
+      "state": { "lastSeenAppVersion": "1.0.3", "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "min-equal", "date": "2026-10-11", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "ios": "1.0.3" } },
+          { "id": "min-above", "date": "2026-10-12", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "ios": "1.0.4" } },
+          { "id": "max-equal", "date": "2026-10-13", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "maxVersion": { "ios": "1.0.3" } },
+          { "id": "max-below", "date": "2026-10-14", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "maxVersion": { "ios": "1.0.2" } },
+          {
+            "id": "ipados-key-wins",
+            "date": "2026-10-15",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "minVersion": { "ios": "1.0.0", "ipados": "1.0.4" }
+          },
+          { "id": "mac-only-key", "date": "2026-10-16", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "minVersion": { "mac": "9.0" } },
+          {
+            "id": "mixed-keys",
+            "date": "2026-10-17",
+            "kind": "notice",
+            "importance": "normal",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "minVersion": { "ios": "1.0" },
+            "maxVersion": { "ipados": "1.0.3" }
+          }
+        ]
+      },
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.0.3", "since": null, "seen": [] },
+        "list": [
+          { "id": "mixed-keys", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "mac-only-key", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "max-equal", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "min-equal", "title": "제목", "body": "본문", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "an important “please update” reaches only older apps (1.1.1 sees it)",
+      "env": { "appVersion": "1.1.1" },
+      "bundled": "none",
+      "state": { "lastSeenAppVersion": "1.1.1", "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          {
+            "id": "please-update",
+            "date": "2026-10-12",
+            "kind": "update",
+            "importance": "important",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "maxVersion": { "mac": "1.1.1", "ios": "1.0.4" }
+          }
+        ]
+      },
+      "expect": {
+        "card": { "type": "notice", "id": "please-update" },
+        "save": { "lastSeenAppVersion": "1.1.1", "since": null, "seen": ["please-update"] },
+        "list": [{ "id": "please-update", "title": "제목", "body": "본문", "link": null, "unseen": false }],
+        "dot": false
+      }
+    },
+    {
+      "name": "…1.2.0 does not",
+      "bundled": "none",
+      "state": { "lastSeenAppVersion": "1.2.0", "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          {
+            "id": "please-update",
+            "date": "2026-10-12",
+            "kind": "update",
+            "importance": "important",
+            "title": { "ko": "제목", "en": "Title" },
+            "body": { "ko": "본문", "en": "Body" },
+            "maxVersion": { "mac": "1.1.1", "ios": "1.0.4" }
+          }
+        ]
+      },
+      "expect": { "card": null, "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": [] }, "list": [], "dot": false }
+    },
+    {
+      "name": "syncOnly: hidden while sync is off in this app",
+      "bundled": "none",
+      "state": { "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "sync", "date": "2026-10-12", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": true },
+          { "id": "everyone", "date": "2026-10-11", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": false }
+        ]
+      },
+      "expect": { "card": null, "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": [] }, "list": [{ "id": "everyone", "title": "제목", "body": "본문", "link": null, "unseen": true }], "dot": true }
+    },
+    {
+      "name": "…shown once it is on",
+      "env": { "syncOn": true },
+      "bundled": "none",
+      "state": { "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "sync", "date": "2026-10-12", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": true },
+          { "id": "everyone", "date": "2026-10-11", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "syncOnly": false }
+        ]
+      },
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": [] },
+        "list": [{ "id": "sync", "title": "제목", "body": "본문", "link": null, "unseen": true }, { "id": "everyone", "title": "제목", "body": "본문", "link": null, "unseen": true }],
+        "dot": true
+      }
+    },
+    {
+      "name": "dates: a future item waits for its day, expires is the last day shown",
+      "bundled": "none",
+      "state": { "seen": [] },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "tomorrow", "date": "2026-10-21", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "today", "date": "2026-10-20", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "ends-today", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "expires": "2026-10-20" },
+          { "id": "ended", "date": "2026-10-01", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" }, "expires": "2026-10-19" }
+        ]
+      },
+      "expect": {
+        "card": null,
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": [] },
+        "list": [{ "id": "today", "title": "제목", "body": "본문", "link": null, "unseen": true }, { "id": "ends-today", "title": "제목", "body": "본문", "link": null, "unseen": true }],
+        "dot": true
+      }
+    },
+    {
+      "name": "English: each text falls back to Korean on its own",
+      "env": { "lang": "en" },
+      "feed": "two-important",
+      "expect": {
+        "card": { "type": "notice", "id": "2026-10-15-all" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0", "2026-10-15-all"] },
+        "list": [
+          { "id": "2026-10-19-new", "title": "Something new", "body": "영어 본문이 없어요.", "link": null, "unseen": true },
+          { "id": "app-1.2.0", "title": "What’s new in 1.2.0", "body": "- Test change one\n- Test change two", "link": null, "unseen": false },
+          { "id": "2026-10-15-all", "title": "Important news for everyone", "body": "A test text.", "link": "https://spiralday.com/privacy.html", "unseen": false },
+          { "id": "2026-10-01-old", "title": "지난 소식", "body": "영어가 없어요.", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "same date: the bundled note first, then the feed’s order — the card is the first important one",
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "x1", "date": "2026-10-16", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "x2", "date": "2026-10-16", "kind": "notice", "importance": "important", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "x3", "date": "2026-10-16", "kind": "notice", "importance": "important", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }
+        ]
+      },
+      "expect": {
+        "card": { "type": "notice", "id": "x2" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0", "x2"] },
+        "list": [
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false },
+          { "id": "x1", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "x2", "title": "제목", "body": "본문", "link": null, "unseen": false },
+          { "id": "x3", "title": "제목", "body": "본문", "link": null, "unseen": true }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "since (a fresh install’s day): older normal items have no dot, from that day on they do",
+      "state": { "since": "2026-10-15" },
+      "feed": {
+        "version": 1,
+        "items": [
+          { "id": "n-before", "date": "2026-10-14", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "n-on", "date": "2026-10-15", "kind": "notice", "importance": "normal", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } },
+          { "id": "i-before", "date": "2026-10-14", "kind": "notice", "importance": "important", "title": { "ko": "제목", "en": "Title" }, "body": { "ko": "본문", "en": "Body" } }
+        ]
+      },
+      "expect": {
+        "card": { "type": "notice", "id": "i-before" },
+        "save": { "lastSeenAppVersion": "1.2.0", "since": "2026-10-15", "seen": ["app-1.2.0", "i-before"] },
+        "list": [
+          { "id": "app-1.2.0", "title": "1.2.0 에서 달라진 점", "body": "- 시험용 달라진 점 하나\n- 시험용 달라진 점 둘", "link": null, "unseen": false },
+          { "id": "n-on", "title": "제목", "body": "본문", "link": null, "unseen": true },
+          { "id": "n-before", "title": "제목", "body": "본문", "link": null, "unseen": false },
+          { "id": "i-before", "title": "제목", "body": "본문", "link": null, "unseen": false }
+        ],
+        "dot": true
+      }
+    },
+    {
+      "name": "nothing cached, no note: an empty list",
+      "bundled": "none",
+      "feed": null,
+      "expect": { "card": null, "save": { "lastSeenAppVersion": "1.2.0", "since": null, "seen": ["app-1.2.0"] }, "list": [], "dot": false }
+    }
+  ],
+  "fetch": [
+    { "name": "200 with a feed the app reads (an empty one too)", "status": 200, "body": "valid", "expect": "replace" },
+    { "name": "200 with a feed it does not read", "status": 200, "body": "invalid", "expect": "keep" },
+    { "name": "200 larger than 64 KB", "status": 200, "body": "tooBig", "expect": "keep" },
+    { "name": "304 not modified", "status": 304, "expect": "keep" },
+    { "name": "301 · 302: redirects are not followed", "status": 301, "expect": "keep" },
+    { "name": "404", "status": 404, "expect": "keep" },
+    { "name": "503", "status": 503, "expect": "keep" },
+    { "name": "timeout (5 s) or no connection", "status": null, "expect": "keep" }
+  ]
+}
