@@ -62,7 +62,9 @@ enum StarPrompt {
         Task { @MainActor in
             try? await Task.sleep(for: delay)
             // 창이 내려가 있거나 다른 시트가 떠 있으면 방해하지 않는다
-            guard let w = target(), w.isVisible, !w.isMiniaturized, w.attachedSheet == nil else { return }
+            // 소식 카드가 떠 있어도 (한 번에 하나만 — 다음에 켤 때 다시)
+            guard let w = target(), w.isVisible, !w.isMiniaturized, w.attachedSheet == nil,
+                  !NewsCardController.shared.isShowing else { return }
             present(on: w, persist: persist)
         }
     }

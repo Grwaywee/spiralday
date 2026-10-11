@@ -226,6 +226,7 @@ flowchart LR
 | `Palette.swift` · `Settings.swift` · `Onboarding.swift` · `Tour.swift` · `PDFExportWindow.swift` | 도구 팔레트, 설정, 튜토리얼, 플래너 둘러보기, PDF 창 |
 | `Sync/` | 동기화 붙이기: `SyncController` (엔진 수명 · 잠자기 · 깨어남 · 네트워크 · 끝내기 · 흐름), `PlannerSyncHost` (PlannerStore ↔ 엔진), 설정 → 동기화 화면 · 이전 버전 · 팔레트 표시 · 메뉴, 합치기 전 백업, `--sync-qa` |
 | `Telemetry.swift` · `StarPrompt.swift` · `DataSafety.swift` | 익명 사용 통계, GitHub ⭐ 부탁 (한 번만), 데이터 안전 알림 |
+| `News.swift` · `NewsCard.swift` · `NewsSettings.swift` · `NewsQA.swift` | 앱 안 ‘소식’: 열 때 받아 오기 · 종이 옆 카드 (한 번만) · 설정 › 소식, `--news-qa` (규칙은 Kit `InAppNews.swift` · 받기는 `InAppNewsFetch.swift`) |
 
 ## 개발
 
@@ -242,6 +243,8 @@ swift test                                   # SpiraldayKit: 페이지 · 넘김
 .build/debug/Spiralday --palette-test ./out  # 팔레트 네 자리 × 펼침 · 접힘(펜 · 지우개 · 글씨 · 밥) 을 종이 옆에 그린 PNG, 설정의 자리 고르기
 .build/debug/Spiralday --demo --palette-edge top   # 설정을 건드리지 않고 이번 실행만 팔레트를 그 자리에
 .build/debug/Spiralday --sync-qa ./out       # 설정 → 동기화의 모든 상태 (라이트 · 다크) · 팔레트 표시 · 안내 PNG (메모리에서만, 서버 · 키체인 없이)
+.build/debug/Spiralday --news-qa ./out       # 앱 안 소식: 카드 · 설정 › 소식 · 종이 옆 카드 자리 PNG (라이트 · 다크, 메모리에서만 · 받지 않음)
+.build/debug/Spiralday --demo --news-feed feed.json   # 소식을 로컬 파일로 바꿔 끼워 카드까지 보기 (SPIRALDAY_NEWS_URL=http://127.0.0.1:8000/news.json 도 — 디버그 · 출시 서명이 없는 빌드만, 상태는 메모리에만)
 swift test --filter SpiraldayAppTests        # Mac 앱의 동기화 붙이기 (호스트 · 컨트롤러 · 말) — 가짜 서버 · 메모리 열쇠
 SPIRALDAY_KEYCHAIN_TEST=1 swift test --filter SyncKeychainTests   # 진짜 로그인 키체인 (실행마다 새로 만든 테스트용 서비스 이름)
 SPIRALDAY_PING_URL=http://127.0.0.1:8787/ping build/Spiralday.app/Contents/MacOS/Spiralday --ping-test   # 익명 통계를 시험 서버로 한 번 보내 보고 결과 출력 (--ping-test 는 출시 앱이어도 시험 서버로만 — 운영 서버로는 출시 서명 앱의 하루 한 번 보내기만)

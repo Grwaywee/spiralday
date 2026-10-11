@@ -6,7 +6,7 @@ import SpiraldayKit
 
 // MARK: - Window
 
-/// 설정 창 (플래너, 형광펜, 기본 컬러 컨셉, D-day, PDF, 팔레트, 단축키, 튜토리얼, 데이터). 팔레트의 톱니 버튼 / ⌘, 로 연다.
+/// 설정 창 (플래너, 형광펜, 기본 컬러 컨셉, D-day, PDF, 팔레트, 단축키, 튜토리얼, 소식, 데이터, 동기화). 팔레트의 톱니 버튼 / ⌘, 로 연다.
 /// 패널이라 플래너의 트랙패드 넘김 처리에서 빠지고, 닫으면 초점이 곧바로 플래너 창으로 돌아간다.
 @MainActor
 final class SettingsWindowController {
@@ -27,6 +27,8 @@ final class SettingsWindowController {
         // 팔레트는 앱을 깨우지 않으므로, 다른 앱을 쓰던 중일 때만 앞으로 가져온다
         if !NSApp.isActive { NSApp.activate() }
         w.makeKeyAndOrderFront(nil)
+        // 소식 항목을 펼친 채로 다시 열었으면 그 목록을 본 것으로 (SwiftUI 의 onAppear 는 닫았다 다시 연 창에서 오지 않을 수 있다)
+        if SettingsView.currentPane == .news { NewsCenter.shared.paneShown() }
         guard fresh else { return }
         // 새로 연 창에서 첫 입력 칸이 저절로 잡혀 이름이 선택된 채로 있지 않게 한다
         DispatchQueue.main.async { [weak w] in
@@ -43,6 +45,12 @@ final class SettingsWindowController {
     /// 동기화를 펼친 채로 연다 (팔레트의 동기화 표시 · 플래너 메뉴의 동기화 항목)
     func showSync(store: PlannerStore, state: AppState) {
         UserDefaults.standard.set(SettingsPane.sync.rawValue, forKey: SettingsView.paneKey)
+        show(store: store, state: state)
+    }
+
+    /// 소식을 펼친 채로 연다 (도움말 메뉴의 ‘소식…’)
+    func showNews(store: PlannerStore, state: AppState) {
+        UserDefaults.standard.set(SettingsPane.news.rawValue, forKey: SettingsView.paneKey)
         show(store: store, state: state)
     }
 
@@ -76,7 +84,11 @@ final class SettingsWindowController {
             .sink { [weak w] secret in w?.sharingType = secret ? .none : .readOnly }
         // 창을 닫으면 아무도 보지 않는 흐름(기기 추가 기다림 등)을 거둔다
         closeWatch = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
-            MainActor.assumeIsolated { SyncController.shared?.settingsClosed() }
+            MainActor.assumeIsolated {
+                SyncController.shared?.settingsClosed()
+                // 소식 목록을 떠났다 — 다음에 열면 줄의 점도 없다
+                NewsCenter.shared.paneHidden()
+            }
         }
         w.contentViewController = host
         w.setContentSize(Self.size)
@@ -114,7 +126,7 @@ private final class SettingsPanel: NSPanel {
 // MARK: - Sections
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case books, pens, concept, dday, pdf, palette, shortcuts, tutorials, data, sync
+    case books, pens, concept, dday, pdf, palette, shortcuts, tutorials, news, data, sync
 
     var id: Self { self }
 
@@ -128,6 +140,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "팔레트"
         case .shortcuts: "단축키"
         case .tutorials: "튜토리얼"
+        case .news: "소식"
         case .data: "데이터"
         case .sync: "동기화"
         }
@@ -143,6 +156,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "도구 팔레트를 종이의 어느 쪽에 둘지, 쓰지 않을 때 접어 둘지 골라요. 모든 플래너에 똑같이 적용돼요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
         case .tutorials: "처음 안내와 플래너 둘러보기를 언제든, 보고 싶은 것만 골라 다시 볼 수 있어요."
+        case .news: "새 소식과 업데이트에서 달라진 점을 모아 둬요."
         case .data: "기록은 적는 즉시 이 Mac 에 자동으로 저장돼요. 동기화를 켜면 내 다른 기기에도 암호화해서 보내요."
         case .sync: "내 다른 기기와 플래너를 맞춰요. 종단간 암호화라 서버도 Spiralday 도 기록을 읽을 수 없고, 계정이 필요 없어요."
         }
@@ -158,6 +172,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "sidebar.right"
         case .shortcuts: "keyboard.fill"
         case .tutorials: "graduationcap.fill"
+        case .news: "newspaper.fill"
         case .data: "externaldrive.fill"
         case .sync: "arrow.triangle.2.circlepath"
         }
@@ -173,6 +188,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: Color(hex: "5E6AD2")
         case .shortcuts: Color(hex: "8A8A93")
         case .tutorials: Color(hex: "2FA3A0")
+        case .news: Color(hex: "C2783A")
         case .data: Color(hex: "3A84F0")
         case .sync: Color(hex: "2B8FBF")
         }
@@ -191,6 +207,11 @@ struct SettingsView: View {
 
     private var pane: SettingsPane { fixedPane ?? SettingsPane(rawValue: paneRaw) ?? .books }
 
+    /// 지금 고른 항목 (설정 창을 다시 열 때 본다)
+    static var currentPane: SettingsPane {
+        SettingsPane(rawValue: UserDefaults.standard.string(forKey: paneKey) ?? "") ?? .books
+    }
+
     var body: some View {
         NavigationSplitView {
             List(selection: Binding<SettingsPane?>(get: { pane }, set: { if let p = $0, fixedPane == nil { paneRaw = p.rawValue } })) {
@@ -198,8 +219,14 @@ struct SettingsView: View {
                     HStack(spacing: 9) {
                         SettingsIconTile(symbol: p.symbol, tint: p.tint, size: 22)
                         Text(p.title)
+                        if p == .news {
+                            Spacer(minLength: 4)
+                            // 안 본 소식이 있을 때만 작은 점 (설정 안의 이 자리뿐 — 종이 · 팔레트 · 설정 단추에는 없다)
+                            NewsSidebarDot()
+                        }
                     }
                     .padding(.vertical, 1)
+                    .accessibilityElement(children: .combine)
                     .tag(p)
                 }
             }
@@ -217,6 +244,7 @@ struct SettingsView: View {
                 case .palette: SettingsPalettePane()
                 case .shortcuts: SettingsShortcutsPane()
                 case .tutorials: SettingsTutorialsPane()
+                case .news: NewsSettingsPane()
                 case .data: SettingsDataPane()
                 case .sync: SyncSettingsPane()
                 }

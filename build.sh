@@ -65,9 +65,9 @@ check_required_fixes() {
     echo "  이 목록과 Tests/SpiraldayAppTests/ReleaseGuardTests.swift 를 함께 고친다 (다음부터는 rebase 말고 merge)."
     exit 1
   fi
-  if [ -n "$(git status --porcelain -- Sources Resources Package.swift Package.resolved)" ]; then
+  if [ -n "$(git status --porcelain -- Sources Resources Package.swift Package.resolved Docs/release-notes/whats-new.json)" ]; then
     echo "✗ 커밋하지 않은 소스 변경이 있어요 — 출시 빌드는 커밋한 그대로 만들어요."
-    git status --short -- Sources Resources Package.swift Package.resolved
+    git status --short -- Sources Resources Package.swift Package.resolved Docs/release-notes/whats-new.json
     exit 1
   fi
   echo "✓ 고친 커밋 ${#REQUIRED_FIXES[@]}개가 모두 들어 있어요 ($(git rev-parse --short HEAD))"
@@ -122,6 +122,8 @@ mkdir -p "$APP/Contents/Resources/Licenses"
 cp Resources/Licenses/* "$APP/Contents/Resources/Licenses/"
 # Spiralday 자체 소스 코드의 라이선스 원문 (PolyForm Noncommercial 1.0.0 · 'Required Notice:' 줄 포함) — 이 빌드를 나눠 줄 때 고지가 함께 가도록
 cp LICENSE "$APP/Contents/Resources/Licenses/Spiralday-LICENSE.txt"
+# 앱 안 소식의 ‘이번에 달라진 점’ (Docs/InAppNews.md §3): 버전마다 릴리스 노트를 3–5줄로 줄인 것. 앱은 지금 버전과 같은 노트 하나만 쓴다
+cp Docs/release-notes/whats-new.json "$APP/Contents/Resources/whats-new.json"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

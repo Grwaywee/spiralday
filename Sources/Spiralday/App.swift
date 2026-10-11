@@ -30,6 +30,10 @@ struct SpiraldayApp: App {
                         guard !TourController.shared.isRunning else { NSSound.beep(); return }
                         SettingsWindowController.shared.showTutorials(store: delegate.store, state: delegate.state)
                     }
+                    Button("소식…") {
+                        guard !TourController.shared.isRunning else { NSSound.beep(); return }
+                        SettingsWindowController.shared.showNews(store: delegate.store, state: delegate.state)
+                    }
                     Divider()
                     Button("Spiralday 웹사이트") { Links.open(Links.website) }
                     Button("버그 신고 · 기능 제안…") { Links.open(Links.feedback) }
@@ -125,7 +129,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Self.args.contains("--demo") || Self.args.contains("--snapshot") || Self.args.contains("--pdf-test")
             || Self.args.contains("--ping-test") || Self.args.contains("--dday-migrate-test") || Self.args.contains("--icon")
             || Self.args.contains("--sample-book-test") || Self.args.contains("--tour-test")
-            || Self.args.contains("--palette-test") || Self.args.contains("--load-safety-test") || Self.args.contains("--sync-qa") {
+            || Self.args.contains("--palette-test") || Self.args.contains("--load-safety-test") || Self.args.contains("--sync-qa")
+            || Self.args.contains("--news-qa") {
             // 개발/스크린샷용: 실제 데이터 파일을 건드리지 않는다
             store = PlannerStore(inMemory: true)
             store.fillSample(around: Date())
@@ -228,6 +233,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // 앱 안 소식의 카드 · 설정 › 소식 · 카드 자리를 라이트 · 다크로 PNG 로 찍고 끝낸다 (메모리에서만 · 받지 않는다)
+        if let i = Self.args.firstIndex(of: "--news-qa") {
+            guard i + 1 < Self.args.count else {
+                print("사용법: Spiralday --news-qa <결과 폴더>")
+                exit(2)
+            }
+            let dir = URL(fileURLWithPath: Self.args[i + 1])
+            Fonts.activate {
+                Task { @MainActor in exit(await NewsQA.run(to: dir)) }
+            }
+            return
+        }
         if let i = Self.args.firstIndex(of: "--pdf-test"), i + 1 < Self.args.count {
             let dir = URL(fileURLWithPath: Self.args[i + 1])
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -327,15 +344,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !demo {
             StarPrompt.start(store: store, window: mainWindow)
         }
+        // 앱 안 소식 (Docs/InAppNews.md): 데모는 받지 않고 메모리에만. 디버그 · 출시 서명이 없는 빌드만 로컬 피드로 바꿔 끼울 수 있다
+        let newsLaunch = NewsLaunch.decide(args: Self.args, environment: ProcessInfo.processInfo.environment, demo: demo,
+                                           releaseSigned: Self.releaseSigned)
+        let sy = sync
+        NewsCenter.shared.configure(newsLaunch, notes: NewsCenter.bundledNotes(), appVersion: NewsCenter.bundleVersion,
+                                    syncOn: { [weak sy] in sy?.inGroup ?? false })
+        NewsCenter.shared.host = NewsCardController.shared
         // 예시 플래너만 있으면 아직 처음이다: 튜토리얼에서 내 플래너를 만든다
-        if !demo && (store.userBooks.isEmpty || OnboardingController.needsOnboarding) || Self.args.contains("--onboarding") {
+        let firstRun = !demo && (store.userBooks.isEmpty || OnboardingController.needsOnboarding)
+        if firstRun || Self.args.contains("--onboarding") {
             // 동기화를 넘겨 2 단계에서 "다른 기기의 플래너를 동기화로 가져오기" (합류하면 책을 억지로 만들지 않는다)
             OnboardingController.shared.show(store: store, state: state, sync: demo ? nil : sync) { [weak self] in self?.openPlanner() }
         } else {
             openPlanner()
         }
+        // 소식의 첫 ‘열 때’: 새로 설치했으면 (처음 안내) 카드 없이 이 버전과 오늘만 적는다
+        NewsCenter.shared.start(firstRun: firstRun)
         let st = state
         Fonts.activate { Task { @MainActor in st.fontsReady = true } }
+    }
+
+    /// 출시 서명(Developer ID · 팀 SCQ7JJP5MN)이 확실한 앱인지 — 그런 앱은 소식 주소를 바꿔 끼우지 못한다.
+    /// 디버그 빌드는 늘 아니고, 서명을 이번에 읽지 못했으면 출시 앱으로 친다 (바꿔 끼우기를 막는 쪽으로)
+    private static var releaseSigned: Bool {
+        #if DEBUG
+        return false
+        #else
+        switch Telemetry.signing.check() {
+        case .definite(let s): return TelemetryGate.isRelease(s)
+        case .transient: return true
+        }
+        #endif
     }
 
     /// 플래너(책)가 준비된 뒤 본 창을 연다
@@ -346,6 +386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 실시간 쓰기(동기화를 켰을 때만): 조합 중인 글자 · "다른 기기에서 쓰는 중" 은 이 창의 글 칸에서
         sync.plannerWindow = { [weak wc] in wc?.window }
         wc.show()
+        // 소식 카드는 이 창 옆 여백에 (종이 위가 아니라)
+        NewsCardController.shared.attach(planner: wc.window, state: state, sync: sync)
         state.installMonitors()
         TourController.shared.attach(store: store, state: state, window: wc.window)
         if Self.args.contains("--settings") { SettingsWindowController.shared.show(store: store, state: state) }

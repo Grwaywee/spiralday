@@ -17,7 +17,9 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 
 ### 1.1 카드 — ‘열 때’(§5.1)마다 많아야 하나
 
-종이 위에 그리지 않는다. Mac 은 플래너 창의 작은 시트, iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱의 기존 대화상자 모양.
+종이 위에 그리지 않는다. Mac 은 플래너 창 옆 여백의 작은 카드 (팔레트처럼 창에 붙어 함께 움직인다 — 팔레트의 반대쪽 → 아래 → 위 → 팔레트 너머 중
+화면에 들어가고 팔레트 · 스프링과 겹치지 않는 첫 자리. 창이 화면을 꽉 채워 자리가 없을 때만 종이 아래 가운데에 겹친다),
+iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱의 기존 대화상자 모양.
 소리 · 진동 없음, 플랫폼 기본보다 큰 움직임 없음.
 
 | | 소식 카드 | 이번에 달라진 점 카드 |
@@ -115,6 +117,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 - 목록에서는 id `app-<app>` (적힌 그대로), 제목 ‘`<app>` 에서 달라진 점’ (en ‘What’s new in `<app>`’), 종류 업데이트, 보통, 링크 없음.
 - 글: 그 버전의 릴리스 노트(Mac 은 `Docs/release-notes/<ver>.md`)를 3–5줄로 줄인 같은 목소리. 설치 안내는 빼고 600자 안.
   작은 고침 버전은 노트를 빼도 된다 (카드 없이 지나간다).
+- Mac: `Docs/release-notes/whats-new.json` 에 버전마다 적고 `build.sh` 가 `Spiralday.app/Contents/Resources/whats-new.json` 으로 넣는다
+  (출시 빌드는 이 파일도 커밋한 그대로여야 만든다). `InAppNewsTests.testBundledNotesAreAllRead` 가 노트가 모두 읽히는지 · 릴리스 노트가 있는 버전인지 본다.
 
 ## 4. 받아 오기
 
@@ -213,7 +217,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 | `news.fetchEnabled` | 받아 오기 스위치 (기본 true) |
 | 캐시 | 마지막으로 받아들인 피드 바이트 · ETag · Last-Modified · 마지막 시도 시각 |
 
-- Mac · iPhone · iPad: UserDefaults (`news.` 접두), 캐시는 Caches 폴더의 `news.json` (지워지면 다시 받으면 된다).
+- Mac · iPhone · iPad: UserDefaults (`news.` 접두), 캐시는 Caches 폴더(`Caches/<묶음 id>/`)의 `news.json` 과 ETag · Last-Modified ·
+  마지막 시도 시각을 적은 `news-meta.json` (지워지면 다시 받으면 된다 — `news.json` 이 없으면 조건부 헤더도 보내지 않는다). Kit `NewsDefaultsStorage`.
   Windows · Android: `app-settings.json` (기기마다 — 클라우드 백업 · 동기화 밖), 캐시는 앱 캐시 폴더.
 - 동기화로 보내지 않고, 통계에도 넣지 않는다 (카드를 봤는지 세지 않는다).
 - 데모 · 스냅샷 · 시험 실행은 이 값을 읽거나 쓰지 않는다 (메모리 값만).
@@ -236,7 +241,9 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 
 자리:
 
-- SpiraldayKit: `Sources/SpiraldayKit/InAppNews.swift` (순수 — 읽기 · 걸러 내기 · open · list · markListSeen), `Tests/SpiraldayKitTests/InAppNewsTests.swift`.
+- SpiraldayKit: `Sources/SpiraldayKit/InAppNews.swift` (순수 `NewsRules` — 읽기 · 걸러 내기 · open · list · markListSeen · 날짜 글 · 문구 `NewsCopy`),
+  `Sources/SpiraldayKit/InAppNewsFetch.swift` (받기 `NewsFetcher` · `NewsURLSessionTransport`, 저장 `NewsDefaultsStorage` · `NewsMemoryStorage` —
+  iPhone · iPad 도 그대로 쓴다), `Tests/SpiraldayKitTests/InAppNewsTests.swift` · `InAppNewsFetchTests.swift` (127.0.0.1 의 작은 서버로 실제 요청).
   iPhone · iPad 는 `KitSharedVectorsTests` 에서 같은 파일을 읽는다.
 - web: `web/src/core/news.ts`, `web/tests/news.test.ts`.
 - 참고 구현: `node Scripts/news-check.mjs --fixtures` 가 모든 벡터를 통과한다.
@@ -298,8 +305,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 | 어디 | 할 일 |
 |---|---|
 | 공개 저장소 (이 브랜치 `site/news-feed`) | 이 문서 · 공유 벡터 · 빈 피드 · 검사기 · 배포 전 검사 |
-| SpiraldayKit | `InAppNews.swift` (순수) + 벡터 시험 |
-| Mac | 받아 오기 · ‘열 때’ · 카드 시트 · 설정 › 소식 (`SettingsPane.news`) · `whats-new.json` 묶기 · `--news-feed` · 카드와 목록의 스냅샷 (라이트 · 다크) |
+| SpiraldayKit | `InAppNews.swift` (순수) · `InAppNewsFetch.swift` (받기 · 저장) + 벡터 시험 |
+| Mac | 받아 오기 · ‘열 때’ · 종이 옆 카드 · 설정 › 소식 (`SettingsPane.news`) · `whats-new.json` 묶기 (`Docs/release-notes/whats-new.json` → `build.sh`) · `--news-feed` · `SPIRALDAY_NEWS_URL` · `--news-qa` 스냅샷 (라이트 · 다크) |
 | iPhone · iPad | Kit 쓰기 · 받아 오기 · 카드 시트 · 설정 › 소식 · `whats-new.json` · `KitSharedVectorsTests` 에 `news-rules.json` |
 | Windows · Android (web) | `news.ts` + 벡터 시험 · `SHARED` 에 더하기 · 메인 프로세스 / 네이티브 받아 오기 · 카드 · 설정 › 소식 · `whats-new.json` |
 | 사이트 | 처리방침 반영 (§10) — 첫 앱 버전보다 먼저 |

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "about": "앱 안 ‘이번에 달라진 점’ (Docs/InAppNews.md §3). build.sh 가 이 파일을 Spiralday.app/Contents/Resources/whats-new.json 으로 넣는다. 버전마다 그 릴리스 노트(<ver>.md)를 3–5줄로 줄인 같은 목소리 — 설치 안내는 빼고 600자 안, 한국어 · 영어. 작은 고침 버전은 빼도 된다 (카드 없이 지나간다). 앱은 지금 버전과 숫자로 같은 노트 하나만 쓴다.",
+  "notes": [
+    {
+      "app": "1.1.1",
+      "date": "2026-10-10",
+      "body": {
+        "ko": "- 설정 → 형광펜에서 펜 줄을 끌어 순서를 바꿔요. 숫자 키 1–7 도 새 순서를 따라요\n- 일간 COMMENT 에서 Return 을 누르면 줄이 바뀌어요 (다섯 줄까지). 쓰기를 끝낼 때는 ⌘↩ · Esc\n- 할 일 앞의 분류 칸이 잘 눌리고, 밥 동그라미 위에서 시작해도 칠하고 지워요\n- 같은 색으로 다시 칠해 지우면 그 칸의 글씨 · 밥시간도 함께 지워지고, 타임테이블은 ⌘Z 로 하나씩 되돌려요\n- D-day ‘새로 만들기’는 [붙이기]를 누르지 않고 닫아도 붙어요 (Esc 는 취소)",
+        "en": "- Drag pens in Settings → Highlighters to change their order. Number keys 1–7 follow the new order\n- Return starts a new line in the daily COMMENT (up to five lines). Finish with ⌘↩ or Esc\n- The category box before a task is easier to click, and you can paint or erase starting on a meal circle\n- Painting a cell again in the same color also clears its handwriting and meal time, and ⌘Z undoes timetable strokes one by one\n- A new D-day sticks even if you close it without pressing Attach (Esc cancels)"
+      }
+    },
+    {
+      "app": "1.1.0",
+      "date": "2026-10-06",
+      "body": {
+        "ko": "- 내 기기끼리 플래너를 맞추는 Spiralday Sync 를 넣었어요. 설정 → 동기화에서 켜요 (기본은 꺼져 있어요)\n- 종단간 암호화라 서버도 Spiralday 도 기록을 읽을 수 없고, 계정이 필요 없어요\n- 두 기기에 같은 플래너를 펼쳐 두면 쓰는 글자와 칠한 칸이 바로 보여요\n- 넘길 때 스프링 고리가 넘어가는 종이 위로 비치지 않아요",
+        "en": "- Spiralday Sync keeps your planners in step across your own devices. Turn it on in Settings → Sync (it starts off)\n- It is end-to-end encrypted: neither the server nor Spiralday can read your planner, and no account is needed\n- Open the same planner on two devices and you see the letters you type and the cells you paint right away\n- The spring rings no longer show through the page as it turns"
+      }
+    }
+  ]
+}
