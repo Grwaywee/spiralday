@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Windows 설치 · 업데이트 안내 — Spiralday</title>
+<meta name="description" content="Spiralday Windows 앱을 설치하고 업데이트하는 방법. 이미 쓰고 있다면 저절로 업데이트되고, 설치가 막혔다면 1.0 을 새로 받으면 돼요. 업데이트하거나 다시 설치해도 기록은 그대로예요.">
+<meta name="theme-color" content="#FCFBF7">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="canonical" href="https://spiralday.com/windows.html">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://spiralday.com/windows.html">
+<meta property="og:title" content="Windows 설치 · 업데이트 안내 — Spiralday">
+<meta property="og:description" content="이미 쓰고 있다면 저절로 업데이트돼요. 설치가 막혔다면 1.0 을 새로 받아 주세요. 기록은 그대로예요.">
+<meta property="og:image" content="https://spiralday.com/assets/og.jpg?v=20261009">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poor+Story&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #FCFBF7;
+    --paper-2: #F4F0E8;
+    --ink: #2B2B2F;
+    --text: #3A3940;
+    --soft: #69656F;
+    --rule: #D9D4CA;
+    --dot: #BDB8AF;
+    --pen: #E0474C;
+    --pink: #E7728F;
+    --pink-ink: #C2365A;
+    --plum: #3C3357;
+    --plum-soft: #ECE6F7;
+    --mint: #8EDCD2;
+    --hand: "Poor Story", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --print: var(--hand);
+    --body: var(--hand);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 19px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
+  }
+  /* 종이 결 */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity: .5;
+    z-index: 0;
+  }
+  a { color: inherit; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--plum); outline-offset: 3px; border-radius: 8px; }
+  img { max-width: 100%; display: block; }
+  .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* 위쪽 스프링 링 */
+  .rings {
+    position: relative; z-index: 2;
+    height: 34px;
+    background:
+      radial-gradient(circle at 50% 78%, #55575E 0 5px, transparent 5.5px) 0 0 / 34px 34px repeat-x,
+      linear-gradient(90deg, transparent 0 13px, #B9BCC2 13px 14.5px, #F4F5F7 14.5px 16px, #8C8F96 16px 17.5px, transparent 17.5px 34px) 0 0 / 34px 26px repeat-x;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* 인쇄된 라벨: LABEL ──── */
+  .label {
+    display: flex; align-items: center; gap: 14px;
+    font-family: var(--print); font-weight: 400;
+    font-size: 17px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 18px;
+  }
+  .label::after { content: ""; flex: 1; height: 2.5px; background: var(--ink); border-radius: 2px; }
+  .hl { background: linear-gradient(transparent 58%, var(--c, var(--mint)) 58% 92%, transparent 92%); padding: 0 .08em; }
+  b, strong { font-weight: 400; }
+  b.k { background: linear-gradient(transparent 60%, #FCE38A 60% 92%, transparent 92%); }
+
+  /* 머리 */
+  header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 8px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 26px; color: var(--ink); }
+  .brand img { width: 36px; height: 36px; }
+  nav a { text-decoration: none; color: var(--soft); font-size: 19px; margin-left: 22px; }
+  nav a:hover { color: var(--ink); }
+
+  /* 본문 */
+  main { max-width: 780px; padding: 36px 0 80px; }
+  h1 { font-size: clamp(38px, 6vw, 60px); line-height: 1.12; color: var(--ink); margin: 6px 0 18px; font-weight: 400; }
+  .lead { font-size: 21px; margin: 0 0 26px; }
+  .summary { background: var(--plum); color: #EDEAF5; border-radius: 22px; padding: 26px 28px; margin: 0 0 30px; }
+  .summary ul { margin: 0; padding: 0; list-style: none; }
+  .summary li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.14); }
+  .summary li:last-child { border: 0; }
+  .summary b { color: #fff; }
+  .summary a { color: #fff; }
+
+  /* 받기 */
+  .get { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin: 0 0 46px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 15px 26px; border-radius: 14px; text-decoration: none; border: 0; cursor: pointer;
+    font-family: var(--hand); font-size: 20px; line-height: 1.3; text-align: center;
+    background: var(--ink); color: #fff; box-shadow: 0 10px 24px -8px rgba(43,43,47,.5);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -8px rgba(43,43,47,.55); }
+  .btn svg { flex: none; }
+  .get .meta { margin: 0; color: var(--soft); font-size: 17px; }
+  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none; } }
+
+  section { margin: 0 0 44px; scroll-margin-top: 16px; }
+  h2 { font-size: 30px; line-height: 1.25; color: var(--ink); font-weight: 400; margin: 0 0 12px; }
+  h2 .n { color: var(--pink-ink); margin-right: 6px; }
+  p { margin: 0 0 12px; }
+  ul.list { margin: 0 0 12px; padding-left: 1.1em; }
+  ul.list li { margin: 5px 0; }
+
+  /* 순서 */
+  ol.steps { list-style: none; counter-reset: s; margin: 6px 0 14px; padding: 0; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 0 0 14px 46px; }
+  ol.steps > li::before {
+    content: counter(s);
+    position: absolute; left: 0; top: 1px;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center;
+    border: 2px solid var(--ink); color: var(--ink); font-size: 18px; line-height: 1;
+  }
+  .card { background: #fff; border-radius: 16px; box-shadow: 0 0 0 1px rgba(0,0,0,.06); padding: 18px 20px; margin: 10px 0 14px; }
+  .card p:last-child { margin-bottom: 0; }
+  .tip { background: var(--plum-soft); border-radius: 14px; padding: 14px 18px; margin: 10px 0 14px; color: var(--ink); }
+  .tip p:last-child { margin: 0; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 15px; background: var(--paper-2); padding: 2px 6px; border-radius: 6px; }
+  .note { color: var(--soft); font-size: 17px; }
+
+  /* 자주 묻는 질문 */
+  details { background: #fff; border-radius: 16px; box-shadow: 0 0 0 1px rgba(0,0,0,.06); margin: 0 0 12px; scroll-margin-top: 16px; }
+  details > summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 16px 20px; color: var(--ink); font-size: 20px; line-height: 1.45;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "+"; flex: none; width: 22px; text-align: center; color: var(--pink-ink); font-size: 24px; line-height: 1.1; }
+  details[open] > summary::before { content: "–"; }
+  details .a { padding: 0 20px 16px 54px; }
+  details .a p:last-child, details .a ul:last-child, details .a ol:last-child { margin-bottom: 0; }
+
+  footer { position: relative; z-index: 1; border-top: 1px solid var(--rule); background: var(--paper-2); padding: 44px 0 36px; font-size: 17px; color: var(--soft); }
+  footer a { color: var(--soft); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  .foot { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; }
+  .lah { display: inline-flex; align-items: center; gap: 10px; font-size: 24px; color: var(--ink) !important; }
+  .lah img { width: 30px; height: 30px; }
+  .made { margin: 10px 0 12px; color: var(--text); }
+  .biz { list-style: none; padding: 0; margin: 0; font-size: 16px; line-height: 1.75; }
+  .links { display: flex; flex-direction: column; gap: 8px; }
+  .links h2 { margin: 0 0 4px; font-weight: 400; font-size: 20px; color: var(--ink); }
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .legal { margin: 30px 0 0; padding-top: 18px; border-top: 1px dashed var(--dot); font-size: 15px; }
+
+  @media (max-width: 900px) {
+    .foot { grid-template-columns: 1fr; }
+    nav a:not(.dl) { display: none; }
+    main { padding-top: 24px; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 0 16px; }
+    .summary { padding: 20px 20px; }
+    .get .btn { flex: 1 1 100%; }
+    details > summary { padding: 14px 16px; font-size: 19px; }
+    details .a { padding: 0 16px 14px 16px; }
+    ol.steps > li { padding-left: 42px; }
+  }
+</style>
+</head>
+<body>
+<div class="rings" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="assets/icon-240.webp" alt="" width="36" height="36">Spiralday</a>
+    <nav>
+      <a href="./#features">기능</a>
+      <a href="./#install">설치</a>
+      <a class="dl" href="./#download">다운로드</a>
+    </nav>
+  </header>
+
+  <main>
+    <p class="label">Windows</p>
+    <h1>Windows 설치 · <span class="hl" style="--c: #F7C3CD">업데이트</span> 안내</h1>
+    <p class="lead">Spiralday for Windows 1.0 이 나왔어요. 설치 파일 안의 모든 파일에 회사 서명을 넣어서, 그동안 설치가 막혔던 PC 에서도 설치되게 했어요.</p>
+
+    <div class="summary">
+      <ul>
+        <li><b>이미 쓰고 있다면</b> — 할 일이 없어요. 앱이 새 버전을 저절로 받아 두고, 종이 위에 ‘재시작해서 업데이트’를 띄워요 (<a href="#update">업데이트</a>)</li>
+        <li><b>설치가 막혔다면</b> — 아래 단추로 1.0 을 새로 받아 주세요. 예전에 받아 둔 설치 파일은 지워 주세요 (<a href="#smart-app-control">스마트 앱 컨트롤</a>)</li>
+        <li><b>기록은 그대로</b> — 업데이트해도, 다시 설치해도, 앱을 지워도 플래너는 남아 있어요 (<a href="#records">기록</a>)</li>
+      </ul>
+    </div>
+
+    <!-- 다운로드 주소는 대문(index.html)의 Windows 단추와 같이 바꾼다 -->
+    <div class="get" id="download">
+      <a class="btn" href="https://github.com/Grwaywee/spiralday/releases/download/win-latest/Spiralday-Setup.exe">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+        Windows용 무료 다운로드
+      </a>
+      <p class="meta">Windows 10 · 11 (64비트) · 무료 · 계정 없이</p>
+    </div>
+
+    <section id="install">
+      <h2><span class="n">1.</span>처음 설치하기</h2>
+      <ol class="steps">
+        <li><b>받기</b> — 위 단추로 <code>Spiralday-Setup.exe</code> 를 받아요. Edge 가 ‘일반적으로 다운로드되지 않습니다’라고 하면 <a href="#edge">이렇게</a> 해 주세요.</li>
+        <li><b>실행</b> — 받은 파일을 열어요. ‘Windows의 PC 보호’ 창이 뜨면 <b class="k">추가 정보 → 실행</b>을 눌러요. 이때 게시자가 <b>LeanAgileHungry . INC</b> 이면 저희가 서명한 파일이에요 (<a href="#smartscreen">왜 뜨나요?</a>).</li>
+        <li><b>끝</b> — 관리자 권한 없이 내 계정에만 설치되고, 다 되면 바로 열려요.</li>
+      </ol>
+    </section>
+
+    <section id="update">
+      <h2><span class="n">2.</span>이미 쓰고 있다면 — 업데이트</h2>
+      <p>새 버전은 앱이 알아서 받아요. 앱을 켤 때, 그리고 켜 둔 동안 하루에 한 번 확인해요.</p>
+      <ol class="steps">
+        <li>다 받으면 종이 위쪽에 <b>‘새 버전 … 을 받아 두었어요’</b> 카드가 떠요.</li>
+        <li><b class="k">재시작해서 업데이트</b>를 누르면 쓰던 것을 저장하고, 새 버전으로 바꾼 뒤 다시 열어요. 잠깐이면 돼요.</li>
+      </ol>
+      <div class="tip">
+        <p>‘나중에’를 눌렀다면 앱을 닫을 때 조용히 설치돼요. 이때는 다시 열리지 않으니 한 번 더 열어 주세요.<br>
+        앱을 켜 둔 채로 PC 를 끄면 설치되지 않아요. 다음에 켜면 카드가 다시 뜨니, 그때 눌러 주세요.</p>
+      </div>
+      <p><b>지금 버전 보기 · 바로 확인</b> — 설정(<code>Ctrl</code>+<code>,</code> 또는 팔레트의 톱니) → <b>정보</b> → <b>업데이트 확인</b>.</p>
+      <p>1.0 부터는 업데이트한 뒤 처음 열 때 ‘이번에 달라진 점’을 한 번 보여 드려요. 놓쳤다면 설정 → <b>소식</b>에서 다시 볼 수 있어요.</p>
+    </section>
+
+    <section id="reinstall">
+      <h2><span class="n">3.</span>다시 설치하기</h2>
+      <p>이럴 때만 하면 돼요: 앱이 열리지 않을 때, 업데이트 카드가 다시 시작해도 계속 뜰 때, 앱의 일부가 막혔다는 알림이 뜰 때.</p>
+      <ol class="steps">
+        <li><b>백업</b> (권해요) — 설정 → <b>데이터</b> → <b>백업 내보내기…</b> 로 플래너를 파일로 저장해요. 지금 펼친 플래너 한 권씩 저장되니, 여러 권이면 권마다 해 주세요. 앱이 열리지 않으면 건너뛰어도 돼요.</li>
+        <li><b>앱 닫기</b> — Spiralday 창을 모두 닫아요. 켜 둔 채로 설치하면 설치 프로그램이 앱을 바로 닫아서, 방금 쓴 한두 글자를 잃을 수 있어요.</li>
+        <li><b>받아서 실행</b> — 이 페이지의 <a href="#download">다운로드 단추</a>로 새로 받은 파일을 실행해요. 먼저 지우지 않아도 돼요. 쓰던 Spiralday 위에 그대로 설치돼요.</li>
+        <li><b>확인</b> — 앱이 열리면 플래너가 그대로인지 봐요.</li>
+      </ol>
+      <div class="tip">
+        <p>예전에 받아 둔 <code>Spiralday-Setup.exe</code> 는 쓰지 마세요. 설치 프로그램은 버전을 따지지 않아서, 예전 파일로 설치하면 예전 버전으로 돌아가요. 늘 이 페이지에서 새로 받아 주세요.</p>
+      </div>
+    </section>
+
+    <section id="faq">
+      <h2><span class="n">4.</span>자주 묻는 질문</h2>
+
+      <details id="smartscreen">
+        <summary>‘Windows의 PC 보호’ 창이 떠요</summary>
+        <div class="a">
+          <p>Windows 의 SmartScreen 이에요. 새로 나온 파일은 받은 사람이 충분히 쌓일 때까지 이 창을 띄워요. 회사 서명을 넣은 파일도 처음에는 그래요.</p>
+          <p><b class="k">추가 정보</b>를 누르면 게시자가 보여요. <b>LeanAgileHungry . INC</b> 이면 <b class="k">실행</b>을 눌러 주세요. 게시자가 ‘알 수 없음’이거나 다른 이름이면 실행하지 말고, 이 페이지에서 다시 받아 주세요.</p>
+        </div>
+      </details>
+
+      <details id="edge">
+        <summary>Edge 가 ‘일반적으로 다운로드되지 않습니다’라고 해요</summary>
+        <div class="a">
+          <p>이것도 새 파일이라 뜨는 경고예요. 다운로드 목록에서 파일 옆의 <b>…</b> → <b class="k">유지</b> → <b class="k">자세히 표시</b> → <b class="k">그래도 계속</b>을 누르면 받아져요. (Edge 버전에 따라 글자가 조금 다를 수 있어요.)</p>
+        </div>
+      </details>
+
+      <details id="smart-app-control">
+        <summary>‘스마트 앱 컨트롤’이 막았다고 나와요 · 설치가 아예 안 돼요</summary>
+        <div class="a">
+          <p>Windows 11 의 스마트 앱 컨트롤은 서명이 없는 파일을 막아요. 0.9 버전 설치 파일 안에는 서명이 빠진 파일이 몇 개 있어서, 이 기능이 켜진 PC 에서 설치가 막힐 수 있었어요. <b>1.0 부터는 설치 파일 안의 모든 파일에 서명했어요.</b></p>
+          <ol class="steps">
+            <li>예전에 받아 둔 설치 파일은 지워요.</li>
+            <li>이 페이지의 <a href="#download">다운로드 단추</a>로 새로 받아 설치해요.</li>
+          </ol>
+          <p>그래도 막히면 스마트 앱 컨트롤을 끄지 말고 저희에게 알려 주세요. 이 기능은 앱 하나만 허락하는 방법이 없어서, 끄면 PC 전체의 보호가 꺼져요. 켜져 있는지는 <b>Windows 보안 → 앱 및 브라우저 컨트롤 → 스마트 앱 컨트롤 설정</b>에서 볼 수 있어요.</p>
+        </div>
+      </details>
+
+      <details id="records">
+        <summary>업데이트 · 다시 설치하면 기록은 그대로인가요?</summary>
+        <div class="a">
+          <p>네. 플래너는 앱과 따로 <code>%APPDATA%\Spiralday</code> 폴더에 저장돼요. 업데이트도, 다시 설치도, 앱 제거도 이 폴더를 지우지 않아요.</p>
+          <p>동기화를 켜 두었어도 같은 PC · 같은 Windows 계정이면 그대로 이어져요.</p>
+        </div>
+      </details>
+
+      <details id="backup">
+        <summary>백업은 어떻게 하나요?</summary>
+        <div class="a">
+          <ul class="list">
+            <li><b>한 권씩</b> — 설정 → 데이터 → <b>백업 내보내기…</b> 로 지금 펼친 플래너를 파일 하나로 저장해요. 다른 PC 나 Mac 의 Spiralday 에서도 <b>백업 가져오기…</b> 로 열 수 있어요.</li>
+            <li><b>통째로</b> — 앱을 닫고, 설정 → 데이터 → <b>탐색기에서 보기</b>로 열리는 <code>Spiralday</code> 폴더를 USB 같은 곳에 복사해 둬요.</li>
+            <li><b>자동 백업</b> — 앱을 켤 때 하루 한 번 모든 플래너를 복사해 최근 14일치를 남겨요. 설정 → 데이터 → 자동 백업에서 그날의 플래너를 새 플래너로 가져올 수 있어요.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details id="version">
+        <summary>지금 버전은 어디서 보나요?</summary>
+        <div class="a">
+          <p>설정(<code>Ctrl</code>+<code>,</code> 또는 팔레트의 톱니) → <b>정보</b>. 같은 화면의 <b>업데이트 확인</b>으로 바로 확인할 수 있어요.</p>
+        </div>
+      </details>
+
+      <details id="move">
+        <summary>다른 PC 로 옮기고 싶어요</summary>
+        <div class="a">
+          <p>지금 PC 에서 <b>백업 내보내기…</b> 한 파일을 새 PC 의 Spiralday 에서 <b>백업 가져오기…</b> 로 열어요. 동기화를 쓰고 있다면 새 PC 에서 설정 → 동기화 → ‘다른 기기에 합류하기’를 하면 저절로 맞춰져요.</p>
+          <p class="note">데이터 폴더를 통째로 다른 PC 에 옮기면 플래너는 그대로지만, 동기화 연결은 그 PC 에서 읽을 수 없어요. 이때는 복구 코드나 ‘기기 추가’로 다시 연결해 주세요.</p>
+        </div>
+      </details>
+
+      <details id="managed">
+        <summary>회사 · 학교 PC 에서 설치가 안 돼요</summary>
+        <div class="a">
+          <p>관리하는 곳에서 정한 규칙으로 설치가 막힐 수 있어요. PC 를 관리하시는 분께 물어봐 주세요.</p>
+        </div>
+      </details>
+
+      <details id="windows10">
+        <summary>Windows 10 에서도 되나요?</summary>
+        <div class="a">
+          <p>네, Windows 10 · 11 (64비트)에서 돼요. 스마트 앱 컨트롤은 Windows 11 에만 있어요.</p>
+        </div>
+      </details>
+
+      <details id="uninstall">
+        <summary>앱을 지우고 싶어요</summary>
+        <div class="a">
+          <p>Windows 설정 → 앱 → 설치된 앱(Windows 10 은 앱 및 기능) → Spiralday → 제거. 플래너 폴더(<code>%APPDATA%\Spiralday</code>)는 남겨 둬요. 기록까지 모두 지우려면 이 폴더도 직접 지워 주세요. 동기화를 켰다면 먼저 Spiralday 의 설정 → 동기화 → ‘이 컴퓨터에서 끄기’를 하고 지워요.</p>
+        </div>
+      </details>
+    </section>
+
+    <section id="contact">
+      <h2><span class="n">5.</span>그래도 안 되면</h2>
+      <p><a href="mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20Windows%20%EC%84%A4%EC%B9%98%20%C2%B7%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8">contact@leanagilehungry.com</a> 이나 <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads @owlu_app<span class="sr"> (새 창)</span></a> 으로 알려 주세요. Windows 버전(Windows 설정 → 시스템 → 정보), Spiralday 버전, 뜬 창의 화면 사진을 함께 보내 주시면 빨리 볼 수 있어요.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="company">
+        <a class="lah" href="https://leanagilehungry.com" target="_blank" rel="noopener">
+          <img src="assets/lah-logo.svg" alt="" width="30" height="30">LeanAgileHungry.Inc<span class="sr"> (새 창)</span>
+        </a>
+        <p class="made">Spiralday 는 린에자일헝그리가 만들고 운영해요.</p>
+        <ul class="biz">
+          <li>상호: 주식회사 린에자일헝그리 (LeanAgileHungry.Inc)</li>
+          <li>대표자: 위관우</li>
+          <li>사업자등록번호: 791-88-03659</li>
+          <li>주소: 전남광주통합특별시 동구 동계천로 150, 205-2호 (동명동, I-Plex 광주)</li>
+          <li>이메일: <a href="mailto:contact@leanagilehungry.com">contact@leanagilehungry.com</a></li>
+        </ul>
+      </div>
+      <div class="links">
+        <h2>Spiralday</h2>
+        <a href="./#download">다운로드</a>
+        <a href="windows.html">Windows 설치 · 업데이트 안내</a>
+        <a href="https://www.threads.com/@owlu_app" target="_blank" rel="noopener">Threads @owlu_app<span class="sr"> (새 창)</span></a>
+        <a href="mailto:contact@leanagilehungry.com?subject=%5BSpiralday%5D%20%EB%B2%84%EA%B7%B8%20%EC%8B%A0%EA%B3%A0%20%C2%B7%20%EA%B8%B0%EB%8A%A5%20%EC%A0%9C%EC%95%88">버그 신고 · 기능 제안</a>
+        <a href="https://github.com/Grwaywee/spiralday">GitHub (Mac 앱 소스 코드)</a>
+        <a href="privacy.html">개인정보 처리방침</a>
+        <a href="https://leanagilehungry.com" target="_blank" rel="noopener">회사 소개<span class="sr"> (새 창)</span></a>
+      </div>
+    </div>
+    <p class="legal">© 2026 LeanAgileHungry.Inc · Spiralday™ 는 LeanAgileHungry Inc. 의 상표예요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/TRADEMARKS.md">상표 정책</a>) · Mac 앱 소스 코드는 <a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a> 으로 비상업 목적에 공개돼 있어요 (<a href="https://github.com/Grwaywee/spiralday/blob/main/LICENSE-HISTORY.md">라이선스를 바꾸기 전에 MIT 로 공개된 버전은 MIT 그대로</a>) · 손글씨 폰트: Poor Story © YoonDesign Inc. (SIL OFL 1.1)</p>
+  </div>
+</footer>
+<script>
+  // 주소의 #조각이 질문을 가리키면 그 질문을 펼쳐 둔다 (Threads · 앱 안 소식의 링크)
+  (function () {
+    function openFromHash() {
+      var id = decodeURIComponent((location.hash || '').slice(1));
+      if (!id) return;
+      var el = document.getElementById(id);
+      if (el && el.tagName === 'DETAILS') el.open = true;
+    }
+    openFromHash();
+    window.addEventListener('hashchange', openFromHash);
+  })();
+</script>
+</body>
+</html>
