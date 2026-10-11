@@ -24,7 +24,6 @@ const VERSION_RE = /^[0-9]{1,6}(\.[0-9]{1,6}){0,2}$/;
 const LINK_RE = /^https:\/\/spiralday\.com\/[A-Za-z0-9._~/-]*(#[A-Za-z0-9._~-]*)?$/;
 // 제어 문자(C0 · DEL · C1) · 방향 제어 · 줄 · 문단 구분자. 본문은 \n (U+000A) 하나만 허용
 const BAD_TEXT = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069]/;
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const codePoints = (s) => [...s].length;
@@ -109,12 +108,64 @@ export function validateItem(raw) {
   };
 }
 
-function walkOk(v, depth) {
-  if (typeof v === 'string') return !LONE_SURROGATE.test(v);
-  if (v === null || typeof v !== 'object') return true;
-  if (depth > LIMITS.maxDepth) return false;
-  if (Array.isArray(v)) return v.every((x) => walkOk(x, depth + 1));
-  return Object.keys(v).every((k) => !LONE_SURROGATE.test(k) && walkOk(v[k], depth + 1));
+/**
+ * 파서를 거치기 전, 적힌 그대로의 글 (§2.1 '어디에든' — 같은 키가 두 번 나와 덮어써지는 앞의 값까지. JSON.parse 는 뒤의 값만
+ * 남기지만 Mac · iPhone · iPad 의 파서는 앞의 값도 본다): 객체 · 배열은 16단계까지 (맨 위 객체가 1), 서로게이트를 적은 \u escape 는
+ * 모두 짝이 맞는다. JSON.parse 가 받아들인 글에만 쓴다 (escape 꼴은 이미 맞다). UTF-8 을 푼 글 자체에는 짝 없는 서로게이트가 없다.
+ */
+export function rawJsonOk(text) {
+  let depth = 0;
+  const hex = (at) => parseInt(text.slice(at, at + 4), 16);
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x7b || c === 0x5b) {
+      if (++depth > LIMITS.maxDepth) return false;
+    } else if (c === 0x7d || c === 0x5d) depth--;
+    else if (c === 0x22) {
+      // 문자열 (키든 값이든): 닫는 따옴표까지
+      for (i++; i < text.length && text.charCodeAt(i) !== 0x22; i++) {
+        if (text.charCodeAt(i) !== 0x5c) continue;
+        i++;
+        if (text[i] !== 'u') continue;
+        const u = hex(i + 1);
+        i += 4;
+        if (u >= 0xdc00 && u <= 0xdfff) return false;
+        if (u >= 0xd800 && u <= 0xdbff) {
+          const low = text[i + 1] === '\\' && text[i + 2] === 'u' ? hex(i + 3) : -1;
+          if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
+          i += 6;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/** 같은 객체 안에 두 번 나온 키들 (올리기 전 검사의 오류 — 파서마다 다르게 읽을 수 있다). JSON.parse 가 받아들인 글에만 쓴다 */
+export function duplicateKeys(text) {
+  const out = [];
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') stack.push({ keys: new Set(), expectKey: true });
+    else if (c === '[') stack.push(null);
+    else if (c === '}' || c === ']') stack.pop();
+    else if (c === ',') {
+      const top = stack[stack.length - 1];
+      if (top) top.expectKey = true;
+    } else if (c === '"') {
+      const start = i;
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++;
+      const top = stack[stack.length - 1];
+      if (top && top.expectKey) {
+        const key = JSON.parse(text.slice(start, i + 1));
+        if (top.keys.has(key)) out.push(key);
+        else top.keys.add(key);
+        top.expectKey = false;
+      }
+    }
+  }
+  return out;
 }
 
 /** 받은 바이트 → { accepted:false, reason } 또는 { accepted:true, items, dropped, linkRemoved } */
@@ -123,12 +174,14 @@ export function parseFeed(bytes) {
   if (b.length > LIMITS.maxBytes) return { accepted: false, reason: 'too big' };
   if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) b = b.subarray(3);
   let doc;
+  let text;
   try {
-    doc = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(b));
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(b);
+    doc = JSON.parse(text);
   } catch {
     return { accepted: false, reason: 'not JSON (UTF-8)' };
   }
-  if (!walkOk(doc, 1)) return { accepted: false, reason: 'too deep or lone surrogate' };
+  if (!rawJsonOk(text)) return { accepted: false, reason: 'too deep or lone surrogate (an overwritten duplicate key counts too)' };
   if (!isObject(doc)) return { accepted: false, reason: 'not an object' };
   if (typeof doc.version !== 'number' || doc.version !== 1) return { accepted: false, reason: 'version' };
   if (!Array.isArray(doc.items)) return { accepted: false, reason: 'items' };
@@ -349,8 +402,11 @@ export function checkSiteFeed(file, today = localToday()) {
   if (!r.accepted) return { errors: [`앱이 이 파일 전체를 읽지 않아요: ${r.reason}`], warnings, items: [] };
   for (const d of r.dropped) errors.push(`items[${d.index}]${d.id ? ` (${d.id})` : ''} 을 앱이 버려요: ${d.reason}`);
   for (const id of r.linkRemoved) errors.push(`${id}: link 가 https://spiralday.com/… 이 아니라 앱이 링크를 빼요`);
-  const doc = JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/, ''));
+  const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
+  const doc = JSON.parse(text);
   if (bytes[0] === 0xef) warnings.push('파일 맨 앞에 BOM 이 있어요 (앱은 읽지만 빼 주세요)');
+  // 같은 객체에 같은 키가 두 번: 앱마다 다르게 읽을 수 있어 올리지 않는다 (앞의 값은 버려지거나 파일 전체를 버리게 한다)
+  for (const k of new Set(duplicateKeys(text))) errors.push(`같은 키 "${k}" 가 한 객체 안에 두 번 있어요 — 하나만 남겨 주세요 (앱마다 다르게 읽을 수 있어요)`);
   for (const it of r.items) {
     if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}-/.test(it.id)) warnings.push(`${it.id}: id 는 날짜로 시작하게 (예: ${it.date}-sync-check)`);
     if (it.title.en === undefined || it.body.en === undefined) warnings.push(`${it.id}: 영어(en) 가 없어 영어로 쓰는 앱에도 한국어로 보여요`);

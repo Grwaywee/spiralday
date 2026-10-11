@@ -179,6 +179,16 @@
     { "name": "nesting 16 deep is fine", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[]]]]]]]]]]]]]]] }, "expect": { "accepted": true, "ids": [] } },
     { "name": "nesting 17 deep is not", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]] }, "expect": { "accepted": false } },
     {
+      "name": "a duplicated key: the value it overwrites counts too — a lone surrogate there and the file is not read (JSON.parse keeps only the later value)",
+      "feedText": "{\"version\":1,\"x\":\"\\ud800\",\"x\":\"ok\",\"items\":[{\"id\":\"a\",\"date\":\"2026-10-01\",\"kind\":\"notice\",\"importance\":\"important\",\"title\":{\"ko\":\"제목\"},\"body\":{\"ko\":\"본문\"},\"expires\":\"2099-12-31\"}]}",
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "a duplicated key whose overwritten value nests 17 deep: not read",
+      "feedText": "{\"version\":1,\"x\":[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]],\"x\":0,\"items\":[]}",
+      "expect": { "accepted": false }
+    },
+    {
       "name": "only the first 50 items are read",
       "feed": {
         "version": 1,

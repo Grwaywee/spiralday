@@ -27,6 +27,7 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 | 본문 | 항목의 `body` (길면 카드 안에서 스크롤) | 노트의 `body` |
 | 아래 | [자세히 보기] (`link` 가 있을 때만, en Learn more) · [확인] (en OK) | ‘설정 › 소식에서 다시 볼 수 있어요.’ (en You can read this again in Settings › News.) · [확인] |
 
+- 이번에 달라진 점 카드의 제목은 ‘Spiralday’ 와 **앱 버전** (노트에 `1.2` 로 적었어도 앱이 1.2.0 이면 ‘Spiralday 1.2.0’). 목록 줄의 제목은 노트에 적힌 그대로 (§3).
 - **띄우는 순간 본 것**으로 저장한다 (§5.4). [확인] · Esc · 바깥 누르기 · 아래로 쓸기 · 뒤로 가기 — 어떻게 닫아도, 그 사이 앱이 꺼져도 다시 뜨지 않는다.
 - [자세히 보기]는 시스템 브라우저로 열고(§8.2) 카드를 닫는다.
 
@@ -102,6 +103,10 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 4. 객체 · 배열이 16단계보다 깊다 (맨 위 객체가 1단계, `items` 가 2, 항목이 3, `title` 이 4)
 5. 맨 위가 객체가 아니다 · `version` 이 숫자 1 이 아니다 (`"1"` · `true` · 2 도 아님) · `items` 가 배열이 아니다
 
+3 · 4 는 **적힌 글 그대로** 본다 — 한 객체에 같은 키가 두 번 나와 뒤의 값이 앞의 값을 덮어써도, 앞의 값까지.
+JSON.parse 처럼 뒤의 값만 남기는 파서에 맡기면 앞의 값을 보지 못해 플랫폼마다 달라진다 (공유 벡터 `parse` 의 ‘a duplicated key …’ 둘).
+올리기 전 검사는 같은 키가 두 번 있는 파일을 아예 오류로 막는다 (§9).
+
 ## 3. 앱에 넣는 노트 — 이번에 달라진 점
 
 플랫폼마다 앱 묶음 안에 `whats-new.json` 을 넣는다:
@@ -136,7 +141,10 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 - **Mac · iPhone · iPad** — `URLSessionConfiguration.ephemeral`, `httpCookieStorage = nil`, `httpShouldSetCookies = false`, `urlCache = nil`,
   `requestCachePolicy = .reloadIgnoringLocalCacheData`, `timeoutIntervalForRequest` · `timeoutIntervalForResource` 5초, 넘겨주기 delegate 에서 `nil`.
   URLSession 이 저절로 붙이는 `Accept-Language` 는 `*` 로 덮어쓴다.
-- **Android** — `CapacitorHttp.request` (네이티브라 WebView 의 CORS · 쿠키 밖), 넘겨주기 끄기, 5초.
+- **Android** — 앱의 네이티브 GET (`NewsHttp.java`, `HttpURLConnection` — WebView 의 CORS · 쿠키 밖): 이 요청만 앱의 쿠키 저장소를 건너뛰고,
+  넘겨주기 끄기, 5초, 64 KB 에서 끊기. 받은 **바이트**를 그대로 웹 쪽 검사(§2 · §2.1)에 넘긴다.
+  `CapacitorHttp.request` 는 쓰지 않는다 — `application/json` 본문을 객체로 바꿔 BOM · 서로게이트 · 크기 검사에 필요한 바이트를 잃고,
+  기기 언어를 `Accept-Language` 로 보낸다. (고칠 때 CapacitorHttp 로 되돌리지 말 것)
 - **Windows** — 메인 프로세스의 `fetch` (Node — 쿠키 없음), `redirect: 'manual'`, `AbortSignal.timeout(5000)`. 렌더러는 IPC 로 검사가 끝난 항목만 받는다.
 - 소식은 spiralday.com (GitHub Pages) 에만 닿는다. 회사 서버(leanagilehungry.com) · 동기화 서버 · 통계와 상관없고, 받은 것 · 본 것을 어디로도 보내지 않는다.
 
@@ -149,7 +157,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 - `platform` — `mac` · `win` · `ios` · `ipados` · `android`. iPad 에서 도는 iPhone · iPad 앱은 `ipados`, Android 폰 · 태블릿은 모두 `android`
 - `appVersion` — Mac · iOS `CFBundleShortVersionString`, Android `versionName`, Windows `app.getVersion()`
 - `today` — **기기 시간대**의 오늘 `YYYY-MM-DD` (UTC 아님)
-- `lang` — 앱 화면이 한국어면 `ko`, 아니면 `en`. Mac 은 지금 화면이 한국어뿐이라 늘 `ko`, iPhone · iPad 는 `Bundle.main.preferredLocalizations.first`, Windows · Android 는 셸의 `lang`
+- `lang` — 앱 화면이 한국어면 `ko`, 아니면 `en`. iPhone · iPad 는 `Bundle.main.preferredLocalizations.first`.
+  Mac · Windows · Android 는 지금 화면이 한국어뿐이라 늘 `ko` (영어 화면이 생기면 그 앱의 화면 언어를 따른다 — 기기 언어가 아니다)
 - `syncOn` — 이 앱에서 동기화를 켜 그룹에 들어가 있다 (Mac `SyncController.inGroup`)
 - `firstRun` — 이번에 열면서 처음 안내를 띄운다
 - 상태(§6) `lastSeenAppVersion` · `since` · `seen`, 캐시에서 받아들인 항목 (없으면 빈 목록), `whats-new.json` 의 노트
@@ -157,10 +166,16 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 ### 5.1 ‘열 때’
 
 - 앱을 새로 켰을 때, 또는 60분 넘게 뒤에 있다가 앞으로 돌아왔을 때 (Mac 은 다른 앱을 쓰다 Spiralday 가 다시 활성, iPhone · iPad 는 scene 이 active, Android 는 resume, Windows 는 창 포커스 · 복원).
+  앱을 앞에 둔 채 컴퓨터가 60분 넘게 잠들었거나 잠겼다 돌아온 것도 같다 (Mac 잠자기 · 깨어나기, Windows `powerMonitor` 의 절전 · 잠금 — 한 번만).
 - 순서: ① 받아 오기를 시작(§4) ② 끝나거나 5초가 지나면 ③ 카드 차례 — 그때의 캐시로 고른다.
+  켤 때는 플래너 창이 화면에 나와 앞에 올 때까지도 기다린다 (Windows 의 종이 창은 다 그려진 뒤에 보인다 — 받아 오기가 먼저 끝나기 쉽다).
 - 카드 차례에 처음 안내를 띄우는 중이면 `open(firstRun: true)` 의 저장만 하고 카드는 없다.
 - 플래너가 앞에 있고, 다른 창 · 시트 · 메뉴 · 둘러보기 · 동기화 연결이 떠 있지 않고, 글을 쓰는 중도 아니면 `open()` 의 저장을 하고 그 카드를 띄운다.
-  그렇지 않으면 이번에는 건너뛴다 (아무것도 저장하지 않고 다음 ‘열 때’ 다시).
+  그렇지 않으면 이번에는 건너뛴다 (아무것도 저장하지 않고 다음 ‘열 때’ 다시). ‘앞에 있다’는 이 앱이 활성이고 플래너 창이 그 앞 창이라는 뜻 —
+  켜는 사이 다른 앱으로 옮겼으면 건너뛴다 (Mac `NSApp.isActive`, iPhone · iPad `applicationState == .active`, Windows 포커스 창이 종이 창).
+- 본 것을 저장할 수 없는 실행(설정 파일을 읽지 못해 건드리지 않는 실행 등)은 카드를 띄우지 않는다 — 닫아도 다음에 또 뜨게 되니까. 목록은 그대로.
+- 카드를 띄운 실행에서는 저절로 뜨는 둘러보기 · 그 제안을 다음 실행으로 미룬다 (한 번에 하나, 연달아 두 번 뜨지 않게).
+  (2026-10-11 Windows · Android 가 먼저 — iPhone · iPad 의 둘러보기도 카드가 닫히자마자 뜨지 않게 맞춘다)
 - 창이 여럿이어도 앱 하나에 한 번.
 
 ### 5.2 보이는 항목
@@ -246,7 +261,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 ### 8.1 글로만
 
 - SwiftUI 는 `Text(verbatim:)` (`LocalizedStringKey` 는 마크다운을 해석한다). AppKit · UIKit 텍스트 뷰는 링크 · 데이터 감지를 끈다.
-  React 는 텍스트 노드로 (`dangerouslySetInnerHTML` · `innerHTML` 금지), 줄바꿈은 `white-space: pre-line`.
+  React 는 텍스트 노드로 (`dangerouslySetInnerHTML` · `innerHTML` 금지), 줄바꿈 · 띄어쓰기는 적힌 그대로 `white-space: pre-wrap`
+  (`pre-line` 은 이어진 띄어쓰기를 하나로 줄이고 줄 앞 들여쓰기를 지운다 — `Text(verbatim:)` 과 달라진다).
 - 숫자 · 주소 · 날짜를 링크로 바꾸지 않는다. 누를 수 있는 링크는 `link` 하나뿐.
 
 ### 8.2 링크
@@ -262,7 +278,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 - 글자 수: Swift 의 `String.count` 는 글자 묶음, JS 의 `length` 는 UTF-16 — 둘 다 아니고 코드 포인트.
 - 정규식: `\d` 대신 `[0-9]` (Swift 의 `\d` 는 다른 문자의 숫자도 맞춘다). 끝의 `$` 는 ICU · Swift 에서 마지막 줄바꿈 앞에도 맞을 수 있다 → `\z` 나 글자 검사.
 - JSON: `JSONSerialization` 의 NSNumber 는 `true` 와 `1` 을 섞는다 → `version` · `syncOnly` 는 CFBoolean 을 가려 읽거나 Codable 로.
-  짝 없는 서로게이트 · 깊이 · BOM 은 §2.1 대로 직접 확인한다.
+  짝 없는 서로게이트 · 깊이 · BOM 은 §2.1 대로 직접 확인한다 — 파서가 남긴 값이 아니라 적힌 글에서 (같은 키의 덮어써진 값까지).
+  JS 는 `JSON.parse` 앞에 글을 한 번 훑는다 (참고 구현 `rawJsonOk`).
 - 날짜는 달력 날짜 문자열끼리 비교한다 (시각으로 바꾸지 않는다).
 
 ## 9. 소식 올리기
@@ -272,7 +289,8 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 2. 한국어 · 영어 둘 다 쓴다 (`en` 이 없으면 영어로 쓰는 분께도 한국어로 보인다). 앱의 목소리대로 짧고 따뜻하게, 본문 600자 안.
 3. `important` 는 꼭 알아야 할 것만 (요금 · 약관 · 처리방침 · 점검 · 꼭 필요한 업데이트) — 그리고 `expires` 를 꼭.
    미리 알릴 일은 바뀌는 날보다 30일 이상 앞에 올린다. `date` 를 뒷날로 적으면 그날부터 보인다.
-4. 검사: `node Scripts/news-check.mjs site/news/news.json` — 앱이 버릴 항목 · 빠질 링크가 있으면 오류, en · expires 가 없으면 주의.
+4. 검사: `node Scripts/news-check.mjs site/news/news.json` — 앱이 버릴 항목 · 빠질 링크 · 한 객체에 두 번 나온 키가 있으면 오류,
+   en · expires 가 없으면 주의.
    배포 워크플로(`.github/workflows/pages.yml`)도 이 검사를 통과해야 사이트를 올린다.
 5. `main` 에 올리면 GitHub Pages 로 몇 분 안에 나간다 (페이지 캐시 10분). 앱은 다음 ‘열 때’ 받아서, 중요한 소식이면 그때 카드로 띄운다.
 6. 내리기: 항목을 지우면 다음에 받을 때 목록에서 사라진다 (본 기록은 기기에 남는다). `items` 가 비어도 된다.
