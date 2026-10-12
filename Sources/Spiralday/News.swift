@@ -129,6 +129,10 @@ final class NewsCenter: ObservableObject {
     private var awaySince: Date?
     /// 카드 차례에 앱이 앞에 있지 않아 건너뛰었다 (뒤에서 켜짐 · 켜자마자 다른 앱으로) — 앱이 앞으로 오면 바로 ‘열 때’
     private(set) var openWhenActive = false
+    /// 이번 실행에서 카드를 띄웠다 (§5.1 열 때 카드는 하나 — 카드를 닫은 뒤에도 GitHub ⭐ 제안은 다음 실행으로)
+    private(set) var cardShownThisRun = false
+    /// 켤 때의 ‘열 때’ (받아 오기를 5초까지 기다린 뒤의 카드 차례) — GitHub ⭐ 제안은 이것이 끝난 뒤에 정한다
+    private(set) var launchTurn: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var refreshTimer: Timer?
 
@@ -158,7 +162,8 @@ final class NewsCenter: ObservableObject {
         firstRunLaunch = firstRun
         guard launch.opens else { return nil }
         if watch { watchActivity() }
-        return opened(launch: true)
+        launchTurn = opened(launch: true)
+        return launchTurn
     }
 
     /// 앱에 넣은 노트 (Contents/Resources/whats-new.json — build.sh 가 Docs/release-notes/whats-new.json 을 넣는다)
@@ -269,7 +274,10 @@ final class NewsCenter: ObservableObject {
         let r = NewsRules.open(env: env(firstRun: false), state: storage.state, items: items, notes: notes)
         storage.state = r.save
         refreshList()
-        if let card = r.card, let content = content(card) { host.presentCard(content) }
+        if let card = r.card, let content = content(card) {
+            cardShownThisRun = true
+            host.presentCard(content)
+        }
     }
 
     /// 켜 둔 동안 24시간마다 (카드 없이)

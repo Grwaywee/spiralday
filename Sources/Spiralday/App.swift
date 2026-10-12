@@ -30,7 +30,7 @@ struct SpiraldayApp: App {
                         guard !TourController.shared.isRunning else { NSSound.beep(); return }
                         SettingsWindowController.shared.showTutorials(store: delegate.store, state: delegate.state)
                     }
-                    Button("소식…") {
+                    Button(NewsCopy.menu("ko")) {
                         guard !TourController.shared.isRunning else { NSSound.beep(); return }
                         SettingsWindowController.shared.showNews(store: delegate.store, state: delegate.state)
                     }

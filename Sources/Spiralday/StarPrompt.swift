@@ -61,12 +61,20 @@ enum StarPrompt {
         scheduled = true
         Task { @MainActor in
             try? await Task.sleep(for: delay)
+            // 켤 때의 소식 카드 차례가 아직이면 (받아 오기를 5초까지 기다린다) 그 뒤에 정한다 — 이 시트가 먼저 떠 카드를 밀어내지 않게
+            await NewsCenter.shared.launchTurn?.value
             // 창이 내려가 있거나 다른 시트가 떠 있으면 방해하지 않는다
-            // 소식 카드가 떠 있어도 (한 번에 하나만 — 다음에 켤 때 다시)
             guard let w = target(), w.isVisible, !w.isMiniaturized, w.attachedSheet == nil,
-                  !NewsCardController.shared.isShowing else { return }
+                  !yieldsToNews(cardShownThisRun: NewsCenter.shared.cardShownThisRun,
+                                cardShowing: NewsCardController.shared.isShowing) else { return }
             present(on: w, persist: persist)
         }
+    }
+
+    /// 소식 카드를 띄운 실행이면 (떠 있든 이미 닫았든) 이번에는 묻지 않는다 — 다음에 켤 때 다시 (§5.1 열 때 카드는 하나).
+    /// 묻지 않은 것은 적지 않으니 (doneKey 그대로) 다음 실행에서 다시 때를 본다
+    static func yieldsToNews(cardShownThisRun: Bool, cardShowing: Bool) -> Bool {
+        cardShownThisRun || cardShowing
     }
 
     private static func present(on window: NSWindow, persist: Bool) {

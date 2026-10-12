@@ -254,6 +254,64 @@ final class InAppNewsTests: XCTestCase {
         XCTAssertEqual(NewsCopy.noticeCaption(date: "2026-10-20", today: "2026-10-21", lang: "ko"), "소식 · 10월 20일")
     }
 
+    // MARK: 문구 · 날짜 글 · 아이콘 (벡터 copy · dateLabels · icon — 사양 §1.3 표)
+
+    /// Kit NewsCopy 의 글이 벡터의 `copy` 와 글자까지 같다 (’ U+2019 · › U+203A · · U+00B7 · … U+2026 까지).
+    /// 벡터에 키가 늘면 여기도 늘려야 통과한다
+    func testCopyIsTheSharedTable() throws {
+        let copy = try XCTUnwrap(fixture()["copy"] as? [String: [String: String]])
+        let date = "2026-10-20", today = "2026-10-21", app = "1.2.0"
+        let ours: [String: (String) -> String] = [
+            "pane": NewsCopy.paneTitle,
+            "paneSubtitle": NewsCopy.paneSubtitle,
+            "paneNote": NewsCopy.paneNote,
+            "empty": NewsCopy.empty,
+            "fetchSwitch": NewsCopy.fetchToggle,
+            "fetchOn": NewsCopy.fetchOnDetail,
+            "fetchOff": NewsCopy.fetchOffDetail,
+            "kindNotice": { NewsCopy.kind(.notice, $0) },
+            "kindUpdate": { NewsCopy.kind(.update, $0) },
+            "unseen": NewsCopy.unseen,
+            "noticeCaption": { NewsCopy.noticeCaption(date: date, today: today, lang: $0) },
+            "whatsNewCaption": NewsCopy.whatsNewCaption,
+            "whatsNewTitle": { _ in NewsCopy.whatsNewTitle(appVersion: app) },
+            "whatsNewFoot": NewsCopy.whatsNewFootnote,
+            "noteTitle": { NewsCopy.noteTitle(app: app, lang: $0) },
+            "learnMore": NewsCopy.learnMore,
+            "ok": NewsCopy.ok,
+            "menu": NewsCopy.menu,
+        ]
+        XCTAssertEqual(Set(copy.keys), Set(ours.keys), "벡터의 copy 키와 NewsCopy 가 같은 줄들이어야 해요")
+        for (key, t) in copy {
+            guard let f = ours[key] else { continue }
+            for lang in ["ko", "en"] {
+                let want = try XCTUnwrap(t[lang], "\(key).\(lang)")
+                    .replacingOccurrences(of: "{date}", with: NewsRules.displayDate(date, today: today, lang: lang))
+                    .replacingOccurrences(of: "{appVersion}", with: app)
+                    .replacingOccurrences(of: "{app}", with: app)
+                XCTAssertEqual(f(lang), want, "copy.\(key).\(lang)")
+            }
+        }
+        XCTAssertEqual(NewsRules.noteTitle(app).ko, "1.2.0 에서 달라진 점")
+    }
+
+    /// 목록 · 카드의 날짜 글 (벡터 `dateLabels`: [날짜, 오늘, 언어, 보일 글])
+    func testDateLabelsAreTheSharedOnes() throws {
+        let rows = try XCTUnwrap(fixture()["dateLabels"] as? [[String]])
+        XCTAssertGreaterThanOrEqual(rows.count, 8)
+        for r in rows {
+            XCTAssertEqual(NewsRules.displayDate(r[0], today: r[1], lang: r[2]), r[3], "\(r)")
+        }
+    }
+
+    /// ‘소식’ 아이콘: 신문 · #C2783A (벡터 `icon`)
+    func testIconIsTheSharedOne() throws {
+        let icon = try XCTUnwrap(fixture()["icon"] as? [String: String])
+        XCTAssertEqual(icon["symbol"], NewsCopy.iconSymbol)
+        XCTAssertEqual(icon["tint"], NewsCopy.iconTint)
+        XCTAssertFalse(NewsCopy.iconSymbol.contains("megaphone"))
+    }
+
     func testSeenKeepsTheNewest200() {
         let old = (0..<200).map { "old-\($0)" }
         let item = NewsItem(id: "n", date: "2026-10-01", kind: .notice, importance: .important, title: NewsText(ko: "t"),

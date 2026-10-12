@@ -596,8 +596,22 @@ public enum NewsRules {
 
 // MARK: - 소식 문구 (Mac · iPhone · iPad 가 같은 말을 쓴다, §1)
 
+/// 글은 공유 벡터의 `copy` 와 글자까지 같다 (§1.3 표 — `InAppNewsTests.testCopyIsTheSharedTable` 가 본다)
 public enum NewsCopy {
+    /// ‘소식’ 의 아이콘 (§1.3 — 모든 플랫폼이 같은 신문 그림 · 같은 색. 확성기는 쓰지 않는다). 벡터의 `icon`
+    public static let iconSymbol = "newspaper.fill"
+    public static let iconTint = "#C2783A"
+
     public static func paneTitle(_ lang: String) -> String { lang == "ko" ? "소식" : "News" }
+    /// 설정 › 소식의 부제
+    public static func paneSubtitle(_ lang: String) -> String {
+        lang == "ko" ? "새 소식과 업데이트에서 달라진 점을 모아 둬요."
+            : "News from Spiralday and what\u{2019}s new in each update, kept in one place."
+    }
+    /// 도움말 메뉴의 항목 (Mac · iPad)
+    public static func menu(_ lang: String) -> String { lang == "ko" ? "소식\u{2026}" : "News\u{2026}" }
+    /// 목록에서 노트의 제목 (§3 — `NewsRules.noteTitle` 과 같다)
+    public static func noteTitle(app: String, lang: String) -> String { NewsRules.noteTitle(app).pick(lang) }
     /// 카드 위의 작은 글자: ‘소식 · 10월 20일’
     public static func noticeCaption(date: String, today: String, lang: String) -> String {
         "\(lang == "ko" ? "소식" : "News") · \(NewsRules.displayDate(date, today: today, lang: lang))"

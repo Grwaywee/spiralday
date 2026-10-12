@@ -104,6 +104,35 @@ final class InAppNewsMacTests: XCTestCase {
         XCTAssertEqual(host.presented.count, 1)
     }
 
+    /// 열 때 카드는 하나 (§5.1): 카드를 띄운 실행에서는 카드를 닫은 뒤에도 GitHub ⭐ 제안을 다음 실행으로 미룬다
+    func testACardShownThisRunHoldsTheStarPromptUntilTheNextLaunch() async {
+        let host = FakeHost()
+        let (c, _) = center(state: NewsState(lastSeenAppVersion: "1.1.1"), transport: FakeTransport(.failed("x")), host: host)
+        XCTAssertFalse(c.cardShownThisRun)
+        XCTAssertNil(c.launchTurn)
+        let turn = c.start(firstRun: false, watch: false)
+        XCTAssertNotNil(c.launchTurn, "StarPrompt 는 켤 때의 카드 차례가 끝나기를 기다린다")
+        await turn?.value
+        XCTAssertEqual(host.presented.map(\.kind), [.whatsNew])
+        XCTAssertTrue(c.cardShownThisRun, "카드를 닫은 뒤에도 이번 실행에서는 그대로")
+        XCTAssertTrue(StarPrompt.yieldsToNews(cardShownThisRun: c.cardShownThisRun, cardShowing: false), "닫은 뒤에도 묻지 않는다")
+        XCTAssertTrue(StarPrompt.yieldsToNews(cardShownThisRun: false, cardShowing: true))
+        XCTAssertFalse(StarPrompt.yieldsToNews(cardShownThisRun: false, cardShowing: false))
+
+        // 카드가 없던 실행 (볼 것이 없음 · 차례를 건너뜀) 은 그대로 물어도 된다
+        let quiet = FakeHost()
+        let (q, _) = center(state: NewsState(lastSeenAppVersion: "1.2.0", seen: ["app-1.2.0"]), transport: FakeTransport(.failed("x")),
+                            host: quiet)
+        await q.start(firstRun: false, watch: false)?.value
+        XCTAssertEqual(quiet.presented, [])
+        XCTAssertFalse(q.cardShownThisRun)
+        let skipped = FakeHost()
+        skipped.allowed = false
+        let (s, _) = center(state: NewsState(lastSeenAppVersion: "1.1.1"), transport: FakeTransport(.failed("x")), host: skipped)
+        await s.start(firstRun: false, watch: false)?.value
+        XCTAssertFalse(s.cardShownThisRun)
+    }
+
     /// 카드를 띄울 수 없는 차례 (다른 창 · 글 쓰는 중 …) 는 아무것도 적지 않고 다음 ‘열 때’ 다시
     func testASkippedTurnSavesNothing() async {
         let host = FakeHost()
@@ -291,6 +320,16 @@ final class InAppNewsMacTests: XCTestCase {
         XCTAssertFalse(NewsCopy.paneNote("ko").contains("종이"), "Mac 에만 맞는 말(종이 옆)은 쓰지 않는다")
         XCTAssertTrue(NewsCopy.paneNote("ko").contains("달라진 점"), "업데이트 뒤의 달라진 점도 카드로 뜬다")
         XCTAssertTrue(NewsCopy.fetchOnDetail("ko").contains("하루 한 번"), "켜 둔 동안 하루 한 번 받는다는 것도")
+    }
+
+    /// 설정 › 소식의 이름 · 부제 · 아이콘과 도움말 메뉴는 Kit NewsCopy 의 것 (공유 벡터 copy · icon 과 같다 — InAppNewsTests 가 본다)
+    func testTheNewsPaneUsesTheSharedCopyAndIcon() {
+        XCTAssertEqual(SettingsPane.news.title, "소식")
+        XCTAssertEqual(SettingsPane.news.title, NewsCopy.paneTitle("ko"))
+        XCTAssertEqual(SettingsPane.news.subtitle, NewsCopy.paneSubtitle("ko"))
+        XCTAssertEqual(SettingsPane.news.symbol, "newspaper.fill")
+        XCTAssertEqual(SettingsPane.news.tint.hexString, "C2783A")
+        XCTAssertEqual(NewsCopy.menu("ko"), "소식\u{2026}")
     }
 
     // MARK: 바꿔 끼우기

@@ -140,7 +140,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "팔레트"
         case .shortcuts: "단축키"
         case .tutorials: "튜토리얼"
-        case .news: "소식"
+        case .news: NewsCopy.paneTitle("ko")
         case .data: "데이터"
         case .sync: "동기화"
         }
@@ -156,7 +156,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "도구 팔레트를 종이의 어느 쪽에 둘지, 쓰지 않을 때 접어 둘지 골라요. 모든 플래너에 똑같이 적용돼요."
         case .shortcuts: "손을 키보드에 둔 채로 넘기고, 바꾸고, 칠할 수 있어요."
         case .tutorials: "처음 안내와 플래너 둘러보기를 언제든, 보고 싶은 것만 골라 다시 볼 수 있어요."
-        case .news: "새 소식과 업데이트에서 달라진 점을 모아 둬요."
+        case .news: NewsCopy.paneSubtitle("ko")
         case .data: "기록은 적는 즉시 이 Mac 에 자동으로 저장돼요. 동기화를 켜면 내 다른 기기에도 암호화해서 보내요."
         case .sync: "내 다른 기기와 플래너를 맞춰요. 종단간 암호화라 서버도 Spiralday 도 기록을 읽을 수 없고, 계정이 필요 없어요."
         }
@@ -172,7 +172,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: "sidebar.right"
         case .shortcuts: "keyboard.fill"
         case .tutorials: "graduationcap.fill"
-        case .news: "newspaper.fill"
+        case .news: NewsCopy.iconSymbol
         case .data: "externaldrive.fill"
         case .sync: "arrow.triangle.2.circlepath"
         }
@@ -188,7 +188,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .palette: Color(hex: "5E6AD2")
         case .shortcuts: Color(hex: "8A8A93")
         case .tutorials: Color(hex: "2FA3A0")
-        case .news: Color(hex: "C2783A")
+        case .news: Color(hex: NewsCopy.iconTint)
         case .data: Color(hex: "3A84F0")
         case .sync: Color(hex: "2B8FBF")
         }
