@@ -3,11 +3,13 @@
 //
 //   node Scripts/news-check.mjs                       site/news/news.json 검사 + 공유 벡터 자체 시험
 //   node Scripts/news-check.mjs site/news/news.json   소식 파일만 검사 (배포 전 — .github/workflows/pages.yml)
-//   node Scripts/news-check.mjs --fixtures [파일]      Tests/Fixtures/news-rules.json 의 모든 벡터를 이 구현으로 돌려 본다
+//   node Scripts/news-check.mjs --fixtures [파일]      Tests/Fixtures/news-rules.json 의 모든 벡터를 이 구현으로 돌려 보고,
+//                                                    Docs/InAppNews.md 가 벡터와 같은 말을 하는지 (§1.3 문구 표 · 아이콘 · §7 의 sha256 · 크기) 본다
 //
 // 앱은 이 파일을 쓰지 않는다. Mac · iPhone · iPad 는 SpiraldayKit, Windows · Android 는 web/ 의 자기 구현이 같은 벡터
 // (Tests/Fixtures/news-rules.json — 비공개 저장소 web/tests/fixtures/ 에 같은 바이트) 를 통과해야 한다.
 // Node 18 이상, 의존성 없음.
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +26,6 @@ const VERSION_RE = /^[0-9]{1,6}(\.[0-9]{1,6}){0,2}$/;
 const LINK_RE = /^https:\/\/spiralday\.com\/[A-Za-z0-9._~/-]*(#[A-Za-z0-9._~-]*)?$/;
 // 제어 문자(C0 · DEL · C1) · 방향 제어 · 줄 · 문단 구분자. 본문은 \n (U+000A) 하나만 허용
 const BAD_TEXT = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069]/;
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const codePoints = (s) => [...s].length;
@@ -109,89 +110,64 @@ export function validateItem(raw) {
   };
 }
 
-function walkOk(v, depth) {
-  if (typeof v === 'string') return !LONE_SURROGATE.test(v);
-  if (v === null || typeof v !== 'object') return true;
-  if (depth > LIMITS.maxDepth) return false;
-  if (Array.isArray(v)) return v.every((x) => walkOk(x, depth + 1));
-  return Object.keys(v).every((k) => !LONE_SURROGATE.test(k) && walkOk(v[k], depth + 1));
-}
-
-const HIGH_SURROGATE = /^[dD][89abAB][0-9a-fA-F]{2}$/;
-const LOW_SURROGATE = /^[dD][c-fC-F][0-9a-fA-F]{2}$/;
-
 /**
- * JSON.parse 앞에 글을 한 번 훑는다 (§2.1 '어디에든'): JSON.parse 는 같은 키가 둘이면 뒤의 값만 남겨서, 덮어써진 앞 값의
- * 짝 없는 서로게이트 · 깊이를 그 뒤에는 볼 수 없다 — Swift(Kit)의 읽개는 모든 값을 본다. 그래서 글 그대로:
- *   · 문자열 밖의 { [ 가 16단계를 넘는지
- *   · 문자열 안의 \uD800–\uDBFF escape 다음에 꼭 \uDC00–\uDFFF escape 가 오는지, \uDC00–\uDFFF escape 가 홀로 있지 않은지
- *     (escape 가 아닌 서로게이트는 UTF-8 을 엄격히 풀 때 이미 걸린다)
- *   · 같은 객체에 같은 키가 둘 있는지 (앱은 뒤의 것을 쓴다 — 올리기 전 검사만 오류로)
- * 문법이 틀린 글은 그대로 두고 JSON.parse 가 거절하게 한다.
- * → { depthOk, surrogatesOk, duplicateKeys: ['$.items[0].title' 꼴의 자리 …] }
+ * 파서를 거치기 전, 적힌 그대로의 글 (§2.1 '어디에든' — 같은 키가 두 번 나와 덮어써지는 앞의 값까지. JSON.parse 는 뒤의 값만
+ * 남기지만 Mac · iPhone · iPad 의 파서는 앞의 값도 본다): 객체 · 배열은 16단계까지 (맨 위 객체가 1), 서로게이트를 적은 \u escape 는
+ * 모두 짝이 맞는다. JSON.parse 가 받아들인 글에만 쓴다 (escape 꼴은 이미 맞다). UTF-8 을 푼 글 자체에는 짝 없는 서로게이트가 없다.
  */
-export function scanJSONText(s) {
-  let depthOk = true;
-  let surrogatesOk = true;
-  const duplicateKeys = [];
-  // 객체 · 배열마다: obj 이면 본 키 · 다음 글이 키인지 · 지금 키, arr 이면 몇 번째 값인지
-  const stack = [];
-  // 지금 객체를 담은 자리 (예 $.items[0].title)
-  const where = () => '$' + stack.slice(0, -1).map((f) => (f.type === 'arr' ? `[${f.index}]` : `.${f.key}`)).join('');
-  let i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '"') {
-      // 문자열 하나: escape 를 보며 끝 따옴표까지
-      let j = i + 1;
-      let pendingHigh = false;
-      while (j < s.length && s[j] !== '"') {
-        if (s[j] === '\\') {
-          if (s[j + 1] === 'u') {
-            const hex = s.slice(j + 2, j + 6);
-            if (pendingHigh) {
-              if (!LOW_SURROGATE.test(hex)) surrogatesOk = false;
-              pendingHigh = false;
-            } else if (HIGH_SURROGATE.test(hex)) pendingHigh = true;
-            else if (LOW_SURROGATE.test(hex)) surrogatesOk = false;
-            j += 6;
-          } else {
-            if (pendingHigh) surrogatesOk = false;
-            pendingHigh = false;
-            j += 2;
-          }
-        } else {
-          if (pendingHigh) surrogatesOk = false;
-          pendingHigh = false;
-          j += 1;
+export function rawJsonOk(text) {
+  let depth = 0;
+  const hex = (at) => parseInt(text.slice(at, at + 4), 16);
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x7b || c === 0x5b) {
+      if (++depth > LIMITS.maxDepth) return false;
+    } else if (c === 0x7d || c === 0x5d) depth--;
+    else if (c === 0x22) {
+      // 문자열 (키든 값이든): 닫는 따옴표까지
+      for (i++; i < text.length && text.charCodeAt(i) !== 0x22; i++) {
+        if (text.charCodeAt(i) !== 0x5c) continue;
+        i++;
+        if (text[i] !== 'u') continue;
+        const u = hex(i + 1);
+        i += 4;
+        if (u >= 0xdc00 && u <= 0xdfff) return false;
+        if (u >= 0xd800 && u <= 0xdbff) {
+          const low = text[i + 1] === '\\' && text[i + 2] === 'u' ? hex(i + 3) : -1;
+          if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
+          i += 6;
         }
       }
-      if (pendingHigh) surrogatesOk = false;
+    }
+  }
+  return true;
+}
+
+/** 같은 객체 안에 두 번 나온 키들 (올리기 전 검사의 오류 — 파서마다 다르게 읽을 수 있다). JSON.parse 가 받아들인 글에만 쓴다 */
+export function duplicateKeys(text) {
+  const out = [];
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') stack.push({ keys: new Set(), expectKey: true });
+    else if (c === '[') stack.push(null);
+    else if (c === '}' || c === ']') stack.pop();
+    else if (c === ',') {
       const top = stack[stack.length - 1];
-      if (top && top.type === 'obj' && top.expectKey) {
-        let key;
-        try { key = JSON.parse(s.slice(i, j + 1)); } catch { key = s.slice(i + 1, j); }
-        if (top.keys.has(key)) duplicateKeys.push(`${where()}.${key}`);
-        top.keys.add(key);
-        top.key = key;
+      if (top) top.expectKey = true;
+    } else if (c === '"') {
+      const start = i;
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++;
+      const top = stack[stack.length - 1];
+      if (top && top.expectKey) {
+        const key = JSON.parse(text.slice(start, i + 1));
+        if (top.keys.has(key)) out.push(key);
+        else top.keys.add(key);
         top.expectKey = false;
       }
-      i = j + 1;
-      continue;
     }
-    if (c === '{' || c === '[') {
-      stack.push(c === '{' ? { type: 'obj', keys: new Set(), expectKey: true, key: null } : { type: 'arr', index: 0 });
-      if (stack.length > LIMITS.maxDepth) depthOk = false;
-    } else if (c === '}' || c === ']') {
-      stack.pop();
-    } else if (c === ',') {
-      const top = stack[stack.length - 1];
-      if (top && top.type === 'obj') top.expectKey = true;
-      else if (top) top.index += 1;
-    }
-    i += 1;
   }
-  return { depthOk, surrogatesOk, duplicateKeys };
+  return out;
 }
 
 /** 받은 바이트 → { accepted:false, reason } 또는 { accepted:true, items, dropped, linkRemoved } */
@@ -207,10 +183,7 @@ export function parseFeed(bytes) {
   } catch {
     return { accepted: false, reason: 'not JSON (UTF-8)' };
   }
-  // 덮어써진 값까지 (같은 키가 둘일 때) — 글 그대로 본다
-  const scan = scanJSONText(text);
-  if (!scan.depthOk || !scan.surrogatesOk) return { accepted: false, reason: 'too deep or lone surrogate' };
-  if (!walkOk(doc, 1)) return { accepted: false, reason: 'too deep or lone surrogate' };
+  if (!rawJsonOk(text)) return { accepted: false, reason: 'too deep or lone surrogate (an overwritten duplicate key counts too)' };
   if (!isObject(doc)) return { accepted: false, reason: 'not an object' };
   if (typeof doc.version !== 'number' || doc.version !== 1) return { accepted: false, reason: 'version' };
   if (!Array.isArray(doc.items)) return { accepted: false, reason: 'items' };
@@ -339,6 +312,20 @@ export function markListSeen({ env, state, items, notes }) {
   return { ...state, seen };
 }
 
+const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * 목록 줄 · 카드 위 작은 글자의 날짜 (Docs/InAppNews.md §1.2 · §1.3): 올해면 ‘10월 20일’ · ‘Oct 20’, 아니면 ‘2025년 12월 3일’ · ‘Dec 3, 2025’.
+ * 달력 날짜 글 그대로 — 시각(UTC)으로 바꾸지 않는다. 날짜 꼴이 아니면 글 그대로
+ */
+export function dateLabel(date, today, lang) {
+  if (!isDate(date)) return date;
+  const [y, m, d] = date.split('-').map((x) => parseInt(x, 10));
+  const thisYear = typeof today === 'string' && today.slice(0, 4) === date.slice(0, 4);
+  if (lang === 'ko') return thisYear ? `${m}월 ${d}일` : `${y}년 ${m}월 ${d}일`;
+  return thisYear ? `${MONTHS_EN[m - 1]} ${d}` : `${MONTHS_EN[m - 1]} ${d}, ${y}`;
+}
+
 // MARK: - 공유 벡터 (Tests/Fixtures/news-rules.json)
 
 /** 벡터 안의 {"$repeat": X, "times": n} 를 펼친다 (Docs/InAppNews.md §7) */
@@ -418,6 +405,53 @@ export function runFixtures(file) {
     const got = c.status === 200 && body && parseFeed(body).accepted ? 'replace' : 'keep';
     check(`fetch: ${c.name}`, got, r);
   }
+  for (const [date, today, lang, label] of fx.dateLabels) check(`dateLabels ${date} (today ${today}, ${lang})`, dateLabel(date, today, lang), label);
+  for (const [key, t] of Object.entries(fx.copy)) check(`copy.${key}`, copyProblems(t), []);
+  check('icon', /^#[0-9A-F]{6}$/.test(fx.icon.tint) && typeof fx.icon.symbol === 'string' && fx.icon.symbol !== '', true);
+  return { n, fails };
+}
+
+const placeholders = (s) => (s.match(/\{[A-Za-z]+\}/g) ?? []).sort();
+
+/** 문구 한 줄 { ko, en } 의 문제들 (없으면 []): 둘 다 있고, 한 줄이고, 자리 표시({date} …)가 같고, en 에 곧은 따옴표가 없다 */
+export function copyProblems(t) {
+  const out = [];
+  if (!isObject(t)) return ['not { ko, en }'];
+  for (const lang of ['ko', 'en']) {
+    const s = t[lang];
+    if (typeof s !== 'string' || s.trim() === '' || s !== s.trim()) out.push(`${lang}: empty or padded`);
+    else if (BAD_TEXT.test(s) || s.includes('\n')) out.push(`${lang}: a control character or a line break`);
+  }
+  if (out.length) return out;
+  if (JSON.stringify(placeholders(t.ko)) !== JSON.stringify(placeholders(t.en))) out.push('ko and en have different placeholders');
+  if (/['"]/.test(t.en)) out.push("en: a straight quote (use ’)");
+  return out;
+}
+
+/** 이 저장소의 사양(Docs/InAppNews.md)이 벡터와 같은 말을 하는지: §1.3 의 문구 표 · 아이콘, §7 의 바이트(sha256 · 크기) */
+export function checkSpec(fixtureFile, docFile) {
+  const bytes = fs.readFileSync(fixtureFile);
+  const fx = JSON.parse(bytes.toString('utf8'));
+  const doc = fs.readFileSync(docFile, 'utf8');
+  const fails = [];
+  let n = 0;
+  const rows = new Map();
+  for (const line of doc.split('\n')) {
+    const m = /^\| `([A-Za-z]+)` \|(.*)\|$/.exec(line);
+    if (m) rows.set(m[1], m[2].split('|').map((c) => c.trim()));
+  }
+  for (const [key, t] of Object.entries(fx.copy)) {
+    n++;
+    const cells = rows.get(key);
+    if (!cells) fails.push(`${path.basename(docFile)} §1.3: no row for copy.${key}`);
+    else if (cells[1] !== t.ko || cells[2] !== t.en) fails.push(`${path.basename(docFile)} §1.3 copy.${key}\n    want | ${t.ko} | ${t.en} |\n    got  | ${cells[1]} | ${cells[2]} |`);
+  }
+  n++;
+  if (!doc.includes(`\`${fx.icon.symbol}\``) || !doc.includes(`\`${fx.icon.tint}\``)) fails.push(`${path.basename(docFile)}: the icon \`${fx.icon.symbol}\` · \`${fx.icon.tint}\` is not written`);
+  n++;
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  const size = `${bytes.length.toLocaleString('en-US')} 바이트`;
+  if (!doc.includes(`sha256 \`${sha}\``) || !doc.includes(size)) fails.push(`${path.basename(docFile)} §7: write the vectors' bytes as sha256 \`${sha}\` · ${size}`);
   return { n, fails };
 }
 
@@ -429,13 +463,13 @@ export function checkSiteFeed(file, today = localToday()) {
   const bytes = fs.readFileSync(file);
   const r = parseFeed(bytes);
   if (!r.accepted) return { errors: [`앱이 이 파일 전체를 읽지 않아요: ${r.reason}`], warnings, items: [] };
-  // 같은 키가 둘이면 앱은 뒤의 것을 쓰지만, 쓴 사람이 보는 것과 앱이 쓰는 것이 달라지기 쉬워 올리기 전에는 막는다
-  const text = new TextDecoder('utf-8').decode(bytes[0] === 0xef ? bytes.subarray(3) : bytes);
-  for (const k of scanJSONText(text).duplicateKeys) errors.push(`같은 키가 두 번 있어요: ${k} (앱은 뒤의 것만 써요 — 하나만 남겨 주세요)`);
   for (const d of r.dropped) errors.push(`items[${d.index}]${d.id ? ` (${d.id})` : ''} 을 앱이 버려요: ${d.reason}`);
   for (const id of r.linkRemoved) errors.push(`${id}: link 가 https://spiralday.com/… 이 아니라 앱이 링크를 빼요`);
-  const doc = JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/, ''));
+  const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
+  const doc = JSON.parse(text);
   if (bytes[0] === 0xef) warnings.push('파일 맨 앞에 BOM 이 있어요 (앱은 읽지만 빼 주세요)');
+  // 같은 객체에 같은 키가 두 번: 앱마다 다르게 읽을 수 있어 올리지 않는다 (앞의 값은 버려지거나 파일 전체를 버리게 한다)
+  for (const k of new Set(duplicateKeys(text))) errors.push(`같은 키 "${k}" 가 한 객체 안에 두 번 있어요 — 하나만 남겨 주세요 (앱마다 다르게 읽을 수 있어요)`);
   for (const it of r.items) {
     if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}-/.test(it.id)) warnings.push(`${it.id}: id 는 날짜로 시작하게 (예: ${it.date}-sync-check)`);
     if (it.title.en === undefined || it.body.en === undefined) warnings.push(`${it.id}: 영어(en) 가 없어 영어로 쓰는 앱에도 한국어로 보여요`);
@@ -477,6 +511,14 @@ function main(argv) {
     for (const f of fails) console.log(`  ✗ ${f}`);
     console.log(fails.length ? `✗ ${path.relative(root, fixtureFile)} — ${fails.length}/${n} 틀림` : `✓ ${path.relative(root, fixtureFile)} — ${n}개 모두 맞음`);
     failed ||= fails.length > 0;
+    // 사양과 벡터가 같은 말을 하는지 (문구 표 · 아이콘 · 벡터의 바이트)
+    const docFile = path.join(root, 'Docs/InAppNews.md');
+    if (fs.existsSync(docFile)) {
+      const spec = checkSpec(fixtureFile, docFile);
+      for (const f of spec.fails) console.log(`  ✗ ${f}`);
+      console.log(spec.fails.length ? `✗ ${path.relative(root, docFile)} — 벡터와 다른 곳 ${spec.fails.length}/${spec.n}` : `✓ ${path.relative(root, docFile)} — 문구 ${spec.n - 2}줄 · 아이콘 · 벡터의 바이트가 벡터와 같음`);
+      failed ||= spec.fails.length > 0;
+    }
   }
   process.exit(failed ? 1 : 0);
 }

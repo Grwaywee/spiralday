@@ -10,7 +10,7 @@ final class InAppNewsTests: XCTestCase {
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     static let fixtureURL = root.appendingPathComponent("Tests/Fixtures/news-rules.json")
     /// 공유 벡터의 바이트 (sha256). 이 값이 바뀌면 비공개 저장소의 web/tests/fixtures/news-rules.json 도 같은 바이트로 함께 바꾼다
-    static let fixtureSHA256 = "895881e84b712db185dd88b3bdd39a20f1e31e6ec993e711b8e9dae801097433"
+    static let fixtureSHA256 = "9b64bb475da6f2628729da9f46b20ddee44046ca1ff6ba34a49796bc53976890"
 
     private func fixture() throws -> [String: Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: Self.fixtureURL)) as? [String: Any])
@@ -23,7 +23,7 @@ final class InAppNewsTests: XCTestCase {
         let hex = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         XCTAssertEqual(hex, Self.fixtureSHA256,
                        "news-rules.json 이 바뀌었어요 — 비공개 저장소 web/tests/fixtures/news-rules.json 에 같은 바이트로 복사하고 이 값을 함께 바꿔요")
-        XCTAssertEqual(data.count, 62_370)
+        XCTAssertEqual(data.count, 66_262)
         // 비공개 저장소가 옆에 있으면 (SPIRALDAY_APPS_REPO=<spiralday-apps 경로>) 그 파일과 바이트를 견준다
         if let apps = ProcessInfo.processInfo.environment["SPIRALDAY_APPS_REPO"], !apps.isEmpty {
             let other = URL(fileURLWithPath: apps).appendingPathComponent("web/tests/fixtures/news-rules.json")
