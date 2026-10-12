@@ -258,9 +258,21 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
   ‘열 때’로 친다 — 60분을 기다리지 않는다. 한 번도 앞에 온 적이 없는 앱은 ‘뒤로 간 때’가 없어, 이렇게 하지 않으면 업데이트 노트 · 중요한 소식이
   다음에 60분 넘게 자리를 비울 때까지 밀린다.
 - 본 것을 저장할 수 없는 실행(설정 파일을 읽지 못해 건드리지 않는 실행 등)은 카드를 띄우지 않는다 — 닫아도 다음에 또 뜨게 되니까. 목록은 그대로.
-- **열 때 카드는 하나**: 카드를 띄운 실행에서는 저절로 뜨는 둘러보기 · 제안을 다음 실행으로 미룬다 — 카드가 떠 있는 동안만이 아니라,
-  카드가 닫힌 뒤에도 그 실행에서는 (한 번에 하나, 연달아 두 번 뜨지 않게). 미루는 것: iPhone · iPad 는 켤 때의 둘러보기 시작 카드 · 이어 보기,
-  Android 는 둘러보기 시작 카드 · ‘새로 생긴 기능’ · 이어 보기, Windows 는 처음 둘러보기, Mac 은 GitHub ⭐ 제안.
+- **열 때 카드는 하나**: 카드(소식 카드든 이번에 달라진 점 카드든)를 띄운 실행에서는 저절로 뜨는 둘러보기 · 제안을 다음 실행으로 미룬다 —
+  카드가 떠 있는 동안만이 아니라, 카드가 닫힌 뒤에도 그 실행에서는 (한 번에 하나, 연달아 두 번 뜨지 않게). 미루는 것: iPhone · iPad 는 켤 때의
+  둘러보기 시작 카드 · 이어 보기, Android 는 둘러보기 시작 카드 · ‘새로 생긴 기능’ · 이어 보기, Windows 는 처음 둘러보기 · GitHub ⭐ 부탁,
+  Mac 은 GitHub ⭐ 제안.
+- **GitHub ⭐ 제안과 카드가 같은 실행에 겹칠 때** (Mac · Windows — 서로 다른 날로 7일째, 켜고 4초 뒤에 한 번 묻는다). 어느 쪽이 먼저든
+  한 번에 하나만 뜨니 둘 다 ‘열 때 카드는 하나’를 지킨다:
+  - Mac — 소식이 먼저. ⭐ 제안은 4초 뒤 켤 때의 카드 차례(받아 오기 5초까지 + 자리 잡기 1.5초)가 끝나기를 기다렸다가 정하고,
+    그 실행에서 카드를 띄웠으면 다음 실행으로 (`Sources/Spiralday/StarPrompt.swift` 의 `schedule` — `NewsCenter.launchTurn` 을 기다린 뒤
+    `yieldsToNews`, 시험 `InAppNewsMacTests.testACardShownThisRunHoldsTheStarPromptUntilTheNextLaunch`).
+  - Windows — ⭐ 부탁은 종이 창이 열리고 4초 뒤에 한 번 정하고, 카드 차례를 기다리지 않는다. 그때 이 실행에서 카드를 이미 띄웠으면(떠 있든 닫았든)
+    다음 실행으로 (`web/src/shell/starRules.ts:83` `canPresent` ← `StarPrompt.tsx:33` `newsCardShownThisRun()`, 카드를 띄울 때
+    `web/src/news/controller.ts:112` `noteNewsCardShown()` — 2026-10-12 `web/in-app-news` 4206d18 의 줄).
+    카드 차례가 4초보다 늦으면 — 주로 받아 오기가 4초를 넘을 때 (받아 오기는 5초까지) — ⭐ 대화상자가 먼저 뜨고, 소식의 카드 차례는 그 대화상자
+    (`role="alertdialog"`)를 보고 건너뛴다 (`web/src/news/controller.ts:108` `newsBusy` → `:79` `appUiOpen`,
+    `web/src/tour/mobile/controller.ts:152`). 건너뛴 차례는 아무것도 저장하지 않으니 그 소식은 다음 ‘열 때’ 뜬다.
 - 창이 여럿이어도 앱 하나에 한 번.
 
 ### 5.2 보이는 항목
@@ -352,6 +364,15 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 - web: `web/src/core/news.ts` (`NEWS_COPY` · `newsDateLabel` · `rawJsonOk`), `web/tests/news.test.ts`.
 - 참고 구현: `node Scripts/news-check.mjs --fixtures` 가 모든 벡터를 통과하고, 이 문서가 벡터와 같은 말을 하는지(§1.3 표 · 아이콘 · 위의 바이트) 본다.
 
+합치는 순서 — Kit 가 먼저:
+
+1. 공개 저장소 `feature/in-app-news` (Kit `InAppNews.swift` · `InAppNewsFetch.swift` · `NewsCopy` 와 Mac. 이 브랜치의 사양 · 벡터 · 검사기도
+   품고 있다) 를 `main` 에 합친다.
+2. 그 `main` 커밋으로 iPhone · iPad 시험을 다시 돌린 뒤에 `ios/in-app-news` 를 합친다 (비공개 저장소 `sync` 로 — `apple/README.md`).
+   iPhone · iPad 는 옆 체크아웃(`../paper-planner`)의 Kit 로 빌드하는데 지금 `main` 에는 소식 Kit 가 없어, 먼저 합치면 `main` 으로 하는 빌드가
+   깨진다. 그때까지 로컬은 옆 체크아웃을 `feature/in-app-news` 로, CI 는 `scripts/use-remote-kit.sh feature/in-app-news`.
+3. Windows · Android 는 Kit 를 쓰지 않아 (web 의 자기 구현) 이 순서와 상관없다. `windows-1.0.0` 은 `web/in-app-news` 를 이미 품고 있다.
+
 ## 8. 보안
 
 ### 8.1 글로만
@@ -418,18 +439,16 @@ Mac · iPhone · iPad · Windows · Android 가 똑같이 동작하도록 이 �
 | Windows · Android (web) | `news.ts` + 벡터 시험 · `SHARED` 에 더하기 · 메인 프로세스 / 네이티브 받아 오기 · 카드 · 설정 › 소식 · `whats-new.json` |
 | 사이트 | 처리방침 반영 (§10) — 첫 앱 버전보다 먼저 |
 
-### 이 사양에 맞출 곳 (2026-10-12, 각 브랜치를 읽고 — 맞추면 지운다)
+### 이 사양과 맞춘 브랜치 (2026-10-12 확인)
 
-- **모두**: 공유 벡터를 §7 의 바이트로 바꾸고 고정해 둔 sha256 · 크기도 함께 (지금 Mac `feature/in-app-news` 는 `895881e8…`,
-  iPhone · iPad `ios/in-app-news` 는 `7435675d…`, Windows · Android `web/in-app-news` · `windows-1.0.0` 은 `7a4a436a…` — 셋 다 다르다).
-  `copy` · `dateLabels` · `icon` 을 각자의 시험에 더한다 (Kit `NewsCopy` · web `NEWS_COPY` 의 글이 표와 같은지).
-- **Mac**: 문구 · 아이콘은 이미 같다. 이 문서 · 벡터 · `Scripts/news-check.mjs` 는 이 브랜치 것으로 (Mac 브랜치의 `scanJSONText` 는
-  여기의 `rawJsonOk` · `duplicateKeys` 와 같은 일을 한다). GitHub ⭐ 제안은 카드가 **떠 있는 동안**만 건너뛰어, 카드를 닫은 뒤 같은 실행에서
-  뜰 수 있다 — 카드를 띄운 실행에서는 다음 실행으로 미룬다 (§5.1).
-- **iPhone · iPad**: 설정 › 소식 맨 아래에 `paneNote` 줄을 더하고, 타일 색 `#3B9FD1` → `#C2783A`. `fetchOn` 은 Kit 를 따른다
-  (Kit 가 c9ff3a3 이후여야 ‘(켜 둔 동안은 하루 한 번)’ 이 들어간다). 카드 제목은 `NewsCopy.whatsNewTitle(appVersion:)` 로 부른다.
-- **Windows · Android**: `NEWS_COPY.fetchOn` 에 ‘(켜 둔 동안은 하루 한 번)’ 을 넣고, `paneNote` 를 더해 설정 › 소식 맨 아래에.
-  아이콘은 확성기 `#E8774A` → 신문 `#C2783A`.
+모든 브랜치가 이 사양에 맞는다 — 공유 벡터는 §7 의 바이트 그대로이고 고정해 둔 sha256 · 크기도 같다. `copy` · `dateLabels` · `icon` 시험,
+신문 타일 `#C2783A`, `fetchOn` · `paneNote`, 열 때 카드는 하나(§5.1)도 모두 들어 있다. 확인한 커밋:
+
+- Mac · Kit — 공개 저장소 `feature/in-app-news` bd3d62c (벡터 · `Scripts/news-check.mjs` 는 이 브랜치와 같은 파일, 이 문서도 이 브랜치에서 합쳐 간다)
+- iPhone · iPad — 비공개 저장소 `ios/in-app-news` 04033a2
+- Windows · Android (web) — `web/in-app-news` 4206d18, `windows-1.0.0` 009ff33 (`web/in-app-news` 를 품고 있다)
+
+사양 · 벡터를 바꾸면 위 브랜치를 다시 맞추고 이 목록도 고친다.
 
 ### 출시 전 확인 — 소식이 들어간 첫 버전 (플랫폼마다)
 
