@@ -3,11 +3,13 @@
 //
 //   node Scripts/news-check.mjs                       site/news/news.json 검사 + 공유 벡터 자체 시험
 //   node Scripts/news-check.mjs site/news/news.json   소식 파일만 검사 (배포 전 — .github/workflows/pages.yml)
-//   node Scripts/news-check.mjs --fixtures [파일]      Tests/Fixtures/news-rules.json 의 모든 벡터를 이 구현으로 돌려 본다
+//   node Scripts/news-check.mjs --fixtures [파일]      Tests/Fixtures/news-rules.json 의 모든 벡터를 이 구현으로 돌려 보고,
+//                                                    Docs/InAppNews.md 가 벡터와 같은 말을 하는지 (§1.3 문구 표 · 아이콘 · §7 의 sha256 · 크기) 본다
 //
 // 앱은 이 파일을 쓰지 않는다. Mac · iPhone · iPad 는 SpiraldayKit, Windows · Android 는 web/ 의 자기 구현이 같은 벡터
 // (Tests/Fixtures/news-rules.json — 비공개 저장소 web/tests/fixtures/ 에 같은 바이트) 를 통과해야 한다.
 // Node 18 이상, 의존성 없음.
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -310,6 +312,20 @@ export function markListSeen({ env, state, items, notes }) {
   return { ...state, seen };
 }
 
+const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * 목록 줄 · 카드 위 작은 글자의 날짜 (Docs/InAppNews.md §1.2 · §1.3): 올해면 ‘10월 20일’ · ‘Oct 20’, 아니면 ‘2025년 12월 3일’ · ‘Dec 3, 2025’.
+ * 달력 날짜 글 그대로 — 시각(UTC)으로 바꾸지 않는다. 날짜 꼴이 아니면 글 그대로
+ */
+export function dateLabel(date, today, lang) {
+  if (!isDate(date)) return date;
+  const [y, m, d] = date.split('-').map((x) => parseInt(x, 10));
+  const thisYear = typeof today === 'string' && today.slice(0, 4) === date.slice(0, 4);
+  if (lang === 'ko') return thisYear ? `${m}월 ${d}일` : `${y}년 ${m}월 ${d}일`;
+  return thisYear ? `${MONTHS_EN[m - 1]} ${d}` : `${MONTHS_EN[m - 1]} ${d}, ${y}`;
+}
+
 // MARK: - 공유 벡터 (Tests/Fixtures/news-rules.json)
 
 /** 벡터 안의 {"$repeat": X, "times": n} 를 펼친다 (Docs/InAppNews.md §7) */
@@ -389,6 +405,53 @@ export function runFixtures(file) {
     const got = c.status === 200 && body && parseFeed(body).accepted ? 'replace' : 'keep';
     check(`fetch: ${c.name}`, got, r);
   }
+  for (const [date, today, lang, label] of fx.dateLabels) check(`dateLabels ${date} (today ${today}, ${lang})`, dateLabel(date, today, lang), label);
+  for (const [key, t] of Object.entries(fx.copy)) check(`copy.${key}`, copyProblems(t), []);
+  check('icon', /^#[0-9A-F]{6}$/.test(fx.icon.tint) && typeof fx.icon.symbol === 'string' && fx.icon.symbol !== '', true);
+  return { n, fails };
+}
+
+const placeholders = (s) => (s.match(/\{[A-Za-z]+\}/g) ?? []).sort();
+
+/** 문구 한 줄 { ko, en } 의 문제들 (없으면 []): 둘 다 있고, 한 줄이고, 자리 표시({date} …)가 같고, en 에 곧은 따옴표가 없다 */
+export function copyProblems(t) {
+  const out = [];
+  if (!isObject(t)) return ['not { ko, en }'];
+  for (const lang of ['ko', 'en']) {
+    const s = t[lang];
+    if (typeof s !== 'string' || s.trim() === '' || s !== s.trim()) out.push(`${lang}: empty or padded`);
+    else if (BAD_TEXT.test(s) || s.includes('\n')) out.push(`${lang}: a control character or a line break`);
+  }
+  if (out.length) return out;
+  if (JSON.stringify(placeholders(t.ko)) !== JSON.stringify(placeholders(t.en))) out.push('ko and en have different placeholders');
+  if (/['"]/.test(t.en)) out.push("en: a straight quote (use ’)");
+  return out;
+}
+
+/** 이 저장소의 사양(Docs/InAppNews.md)이 벡터와 같은 말을 하는지: §1.3 의 문구 표 · 아이콘, §7 의 바이트(sha256 · 크기) */
+export function checkSpec(fixtureFile, docFile) {
+  const bytes = fs.readFileSync(fixtureFile);
+  const fx = JSON.parse(bytes.toString('utf8'));
+  const doc = fs.readFileSync(docFile, 'utf8');
+  const fails = [];
+  let n = 0;
+  const rows = new Map();
+  for (const line of doc.split('\n')) {
+    const m = /^\| `([A-Za-z]+)` \|(.*)\|$/.exec(line);
+    if (m) rows.set(m[1], m[2].split('|').map((c) => c.trim()));
+  }
+  for (const [key, t] of Object.entries(fx.copy)) {
+    n++;
+    const cells = rows.get(key);
+    if (!cells) fails.push(`${path.basename(docFile)} §1.3: no row for copy.${key}`);
+    else if (cells[1] !== t.ko || cells[2] !== t.en) fails.push(`${path.basename(docFile)} §1.3 copy.${key}\n    want | ${t.ko} | ${t.en} |\n    got  | ${cells[1]} | ${cells[2]} |`);
+  }
+  n++;
+  if (!doc.includes(`\`${fx.icon.symbol}\``) || !doc.includes(`\`${fx.icon.tint}\``)) fails.push(`${path.basename(docFile)}: the icon \`${fx.icon.symbol}\` · \`${fx.icon.tint}\` is not written`);
+  n++;
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  const size = `${bytes.length.toLocaleString('en-US')} 바이트`;
+  if (!doc.includes(`sha256 \`${sha}\``) || !doc.includes(size)) fails.push(`${path.basename(docFile)} §7: write the vectors' bytes as sha256 \`${sha}\` · ${size}`);
   return { n, fails };
 }
 
@@ -448,6 +511,14 @@ function main(argv) {
     for (const f of fails) console.log(`  ✗ ${f}`);
     console.log(fails.length ? `✗ ${path.relative(root, fixtureFile)} — ${fails.length}/${n} 틀림` : `✓ ${path.relative(root, fixtureFile)} — ${n}개 모두 맞음`);
     failed ||= fails.length > 0;
+    // 사양과 벡터가 같은 말을 하는지 (문구 표 · 아이콘 · 벡터의 바이트)
+    const docFile = path.join(root, 'Docs/InAppNews.md');
+    if (fs.existsSync(docFile)) {
+      const spec = checkSpec(fixtureFile, docFile);
+      for (const f of spec.fails) console.log(`  ✗ ${f}`);
+      console.log(spec.fails.length ? `✗ ${path.relative(root, docFile)} — 벡터와 다른 곳 ${spec.fails.length}/${spec.n}` : `✓ ${path.relative(root, docFile)} — 문구 ${spec.n - 2}줄 · 아이콘 · 벡터의 바이트가 벡터와 같음`);
+      failed ||= spec.fails.length > 0;
+    }
   }
   process.exit(failed ? 1 : 0);
 }

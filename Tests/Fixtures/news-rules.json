@@ -1,5 +1,5 @@
 {
-  "about": "In-app news ('소식', Docs/InAppNews.md): which feed the app reads, which items it lists, which one becomes the one-time card, what it remembers — the same vectors for the Mac · iPhone · iPad (SpiraldayKit) and Windows · Android (web). The private repo's web/tests/fixtures/news-rules.json is the same bytes as this file (Tests/Fixtures/news-rules.json). Reference implementation: Scripts/news-check.mjs (open · list · markListSeen; node Scripts/news-check.mjs --fixtures). Owner decision 2026-10-11: no accounts, no push — a static feed on spiralday.com and notes bundled with the app.",
+  "about": "In-app news ('소식', Docs/InAppNews.md): which feed the app reads, which items it lists, which one becomes the one-time card, what it remembers, and the words it shows — the same vectors for the Mac · iPhone · iPad (SpiraldayKit) and Windows · Android (web). The private repo's web/tests/fixtures/news-rules.json is the same bytes as this file (Tests/Fixtures/news-rules.json). Reference implementation: Scripts/news-check.mjs (open · list · markListSeen; node Scripts/news-check.mjs --fixtures). Owner decision 2026-10-11: no accounts, no push — a static feed on spiralday.com and notes bundled with the app.",
   "version": 1,
   "conventions": {
     "feed": "parse · select: 'feed' is the JSON the server sends (serialize it with any JSON writer, then hand the BYTES to the parser), or the name of one in 'feeds', or null (nothing cached). 'feedText' is the exact text instead (UTF-8), 'feedBase64' the exact bytes. 'bom': true puts EF BB BF in front. 'padToBytes': n appends ASCII spaces until the body is n bytes.",
@@ -9,7 +9,10 @@
     "text": "Lengths are Unicode code points (Swift unicodeScalars.count, JS [...s].length) — not UTF-16 units, not grapheme clusters.",
     "patterns": "All patterns are ASCII only and match the whole string: no \\d (Swift's matches other digits), and a final line break does not match ($ in ICU · Swift may match before it).",
     "dates": "dates · versions.valid · links: [value, ok]. A value that is not a string is never ok. versions.compare: [a, b, sign of a − b].",
-    "fetch": "status null = timeout or no connection. body: valid = a feed the parser accepts, invalid = one it rejects, tooBig = more than limits.maxBytes. replace = store this body (and its ETag · Last-Modified) as the cache; keep = the previous cache stays as it is."
+    "fetch": "status null = timeout or no connection. body: valid = a feed the parser accepts, invalid = one it rejects, tooBig = more than limits.maxBytes. replace = store this body (and its ETag · Last-Modified) as the cache; keep = the previous cache stays as it is.",
+    "copy": "Every word of the card and Settings › 소식, character for character (Docs/InAppNews.md §1.3 — the same table): { ko, en }, the app's screen language picks one (Mac · Windows · Android show ko only today). Placeholders: {date} = the dateLabels rule, {appVersion} = the app's own version (never the note's), {app} = the note's app as written. The en apostrophe is ’ (U+2019), the path sign › (U+203A), the dot · (U+00B7), the menu's … (U+2026). menu: only where there is a Help menu (Mac, iPad).",
+    "dateLabels": "[date, today, lang, label]: the year of today → '10월 20일' · 'Oct 20', any other year → '2025년 12월 3일' · 'Dec 3, 2025' (no leading zeros, en months Jan … Dec). The calendar date as written — never through a UTC time.",
+    "icon": "The tile of Settings › 소식 on every platform: SF Symbols newspaper.fill (Windows · Android draw the same newspaper), tint as written."
   },
   "request": {
     "url": "https://spiralday.com/news/news.json",
@@ -179,12 +182,22 @@
     { "name": "nesting 16 deep is fine", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[]]]]]]]]]]]]]]] }, "expect": { "accepted": true, "ids": [] } },
     { "name": "nesting 17 deep is not", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]] }, "expect": { "accepted": false } },
     {
-      "name": "a duplicated key: the value it overwrites counts too — a lone surrogate there and the file is not read (JSON.parse keeps only the later value)",
+      "name": "a key written twice: the later value counts (like JSON.parse)",
+      "feedText": "{\"version\":2,\"version\":1,\"items\":[]}",
+      "expect": { "accepted": true, "ids": [] }
+    },
+    {
+      "name": "a key written twice: the later value counts, so a wrong later value rejects the file",
+      "feedText": "{\"version\":1,\"version\":2,\"items\":[]}",
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "a key written twice: the overwritten value may not hold a lone surrogate either (JSON.parse keeps only the later value — scan the text first)",
       "feedText": "{\"version\":1,\"x\":\"\\ud800\",\"x\":\"ok\",\"items\":[{\"id\":\"a\",\"date\":\"2026-10-01\",\"kind\":\"notice\",\"importance\":\"important\",\"title\":{\"ko\":\"제목\"},\"body\":{\"ko\":\"본문\"},\"expires\":\"2099-12-31\"}]}",
       "expect": { "accepted": false }
     },
     {
-      "name": "a duplicated key whose overwritten value nests 17 deep: not read",
+      "name": "a key written twice: the overwritten value may not nest 17 deep either",
       "feedText": "{\"version\":1,\"x\":[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]],\"x\":0,\"items\":[]}",
       "expect": { "accepted": false }
     },
@@ -994,5 +1007,36 @@
     { "name": "404", "status": 404, "expect": "keep" },
     { "name": "503", "status": 503, "expect": "keep" },
     { "name": "timeout (5 s) or no connection", "status": null, "expect": "keep" }
-  ]
+  ],
+  "copy": {
+    "pane": { "ko": "소식", "en": "News" },
+    "paneSubtitle": { "ko": "새 소식과 업데이트에서 달라진 점을 모아 둬요.", "en": "News from Spiralday and what’s new in each update, kept in one place." },
+    "paneNote": { "ko": "업데이트한 뒤 달라진 점과 꼭 알아야 할 소식만 앱을 열 때 한 번 보여 드려요. 푸시 알림 · 배지는 없어요.", "en": "Only what’s new after an update and news you need to know show once when you open the app. No push notifications or badges." },
+    "empty": { "ko": "아직 소식이 없어요.", "en": "No news yet." },
+    "fetchSwitch": { "ko": "spiralday.com 에서 소식 받기", "en": "Get news from spiralday.com" },
+    "fetchOn": { "ko": "앱을 열 때(켜 둔 동안은 하루 한 번) spiralday.com 의 소식 파일을 읽어 와요. 설치 번호나 기기 정보는 보내지 않아요.", "en": "When you open the app (and once a day while it stays open), it reads the news file on spiralday.com. No install ID or device information is sent." },
+    "fetchOff": { "ko": "받아 오지 않아요. 이미 받은 소식과 이번에 달라진 점은 그대로 볼 수 있어요.", "en": "News isn’t fetched. You can still read the news you already have and what’s new in this version." },
+    "kindNotice": { "ko": "알림", "en": "Notice" },
+    "kindUpdate": { "ko": "업데이트", "en": "Update" },
+    "unseen": { "ko": "새 소식", "en": "New" },
+    "noticeCaption": { "ko": "소식 · {date}", "en": "News · {date}" },
+    "whatsNewCaption": { "ko": "이번에 달라진 점", "en": "What’s new" },
+    "whatsNewTitle": { "ko": "Spiralday {appVersion}", "en": "Spiralday {appVersion}" },
+    "whatsNewFoot": { "ko": "설정 › 소식에서 다시 볼 수 있어요.", "en": "You can read this again in Settings › News." },
+    "noteTitle": { "ko": "{app} 에서 달라진 점", "en": "What’s new in {app}" },
+    "learnMore": { "ko": "자세히 보기", "en": "Learn more" },
+    "ok": { "ko": "확인", "en": "OK" },
+    "menu": { "ko": "소식…", "en": "News…" }
+  },
+  "dateLabels": [
+    ["2026-10-20", "2026-10-12", "ko", "10월 20일"],
+    ["2026-01-05", "2026-10-12", "ko", "1월 5일"],
+    ["2025-12-03", "2026-10-12", "ko", "2025년 12월 3일"],
+    ["2027-01-02", "2026-12-31", "ko", "2027년 1월 2일"],
+    ["2026-10-20", "2026-10-12", "en", "Oct 20"],
+    ["2026-05-09", "2026-10-12", "en", "May 9"],
+    ["2025-12-03", "2026-10-12", "en", "Dec 3, 2025"],
+    ["2024-09-30", "2026-10-12", "en", "Sep 30, 2024"]
+  ],
+  "icon": { "symbol": "newspaper.fill", "tint": "#C2783A" }
 }
