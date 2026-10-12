@@ -72,9 +72,41 @@ check_required_fixes() {
   fi
   echo "✓ 고친 커밋 ${#REQUIRED_FIXES[@]}개가 모두 들어 있어요 ($(git rev-parse --short HEAD))"
 }
+# 앱 안 소식 (Docs/InAppNews.md): 버전 꼴이면 1.2 → 1.2.0 처럼 세 자리 숫자로 (아니면 그대로 — 어떤 버전과도 같지 않게)
+news_version() {
+  local v=$1
+  [[ $v =~ '^[0-9]{1,6}(\.[0-9]{1,6}){0,2}$' ]] || { echo "x$v"; return }
+  local p=(${(s:.:)v})
+  echo "$((10#${p[1]})).$((10#${p[2]:-0})).$((10#${p[3]:-0}))"
+}
+# 이번 버전의 ‘이번에 달라진 점’ 노트가 있는지 — 없으면 업데이트해도 카드가 없다 (작은 고침 버전은 빼도 되니 멈추지는 않고 한 줄만)
+check_whats_new_note() {
+  local f=Docs/release-notes/whats-new.json n i app want
+  want=$(news_version "$VERSION")
+  n=$(plutil -extract notes raw -o - "$f" 2>/dev/null) || n=0
+  for (( i = 0; i < n; i++ )); do
+    app=$(plutil -extract "notes.$i.app" raw -o - "$f" 2>/dev/null) || continue
+    [ "$(news_version "$app")" = "$want" ] && return 0
+  done
+  echo "⚠︎ $f 에 $VERSION 노트가 없어요 — 이 버전은 업데이트해도 ‘이번에 달라진 점’ 카드가 없어요 (작은 고침이면 괜찮아요)"
+}
+# 출시 빌드만: 소식이 들어간 앱이 나가기 전에 할 것 (Docs/InAppNews.md §11) — 알려 주기만 하고 멈추지는 않는다
+check_news_site() {
+  if ! grep -q 'news/news.json' site/privacy.html 2>/dev/null; then
+    echo "⚠︎ site/privacy.html 에 앱 안 ‘소식’이 아직 없어요 — 소식이 들어간 첫 버전보다 먼저 처리방침을 올려요 (Docs/InAppNews.md §10)"
+  fi
+  # 앱은 넘겨주기(3xx)를 따르지 않는다: 이 주소가 바로 200 이어야 소식을 받는다
+  local code
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 --proto '=https' -A Spiralday \
+    https://spiralday.com/news/news.json 2>/dev/null) || code="연결 실패"
+  if [ "$code" != 200 ]; then
+    echo "⚠︎ https://spiralday.com/news/news.json 이 200 이 아니에요 ($code) — 앱이 소식을 받지 못해요 (site/news/news.json 을 main 에 합쳤는지 확인)"
+  fi
+}
 if [ -n "$SIGN_ID" ] || [ "$RELEASE" = 1 ] || [ "$FIX_CHECK_ONLY" = 1 ]; then
   check_required_fixes
-  [ "$FIX_CHECK_ONLY" = 1 ] && exit 0
+  check_news_site
+  [ "$FIX_CHECK_ONLY" = 1 ] && { check_whats_new_note; exit 0 }
 fi
 
 # 빌드한 컴퓨터의 경로가 실행 파일에 남지 않게 소스 경로를 저장소 기준(.)으로 적는다
@@ -170,3 +202,4 @@ else
 fi
 codesign --verify --deep --strict "$APP"
 echo "✓ $APP  (${SIGN_ID:-애드혹 서명})"
+check_whats_new_note

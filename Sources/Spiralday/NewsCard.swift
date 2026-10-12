@@ -7,7 +7,8 @@ import SpiraldayKit
 // 소식 카드 (Docs/InAppNews.md §1.1) — 종이 위에 그리지 않는다: 플래너 창 옆 여백에 붙는 작은 카드 (팔레트처럼 본 창의 child window).
 //   · 자리: 팔레트의 반대쪽 → 아래 → 위 → 팔레트 너머 순서로, 화면 안에 들어가고 팔레트와 겹치지 않는 첫 자리.
 //     스프링이 튀어나온 쪽이면 그만큼 더 띄운다. 어디에도 자리가 없으면(창이 화면을 꽉 채울 때) 종이 아래 가운데에 겹친다
-//   · 닫기: [확인] · Return · Esc · 카드 밖 누르기 · [자세히 보기](시스템 브라우저로 열고 닫는다). 띄우는 순간 본 것이라 다시 뜨지 않는다
+//   · 닫기: [확인] · Return · Esc · 카드 밖 누르기 · [자세히 보기](시스템 브라우저로 열고 닫는다) · 플래너 단축키(← → · T W D H · 1–7 …
+//     — 카드는 플래너에 딸린 패널이라 단축키가 그대로 먹고, 누르면 카드는 닫힌다). 띄우는 순간 본 것이라 다시 뜨지 않는다
 //   · 소리 · 진동 없음, 움직임은 살짝 나타나기뿐 (동작 줄이기면 그것도 없음). 글은 Text(verbatim:) — HTML · 마크다운을 해석하지 않는다
 //   · VoiceOver: 카드가 열쇠 창이 되고 ‘소식: 제목’을 알린다
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,6 +109,10 @@ final class NewsCardController: NewsCardHost {
     /// 지금 띄운 카드 · 그 창 (시험용)
     var shown: NewsCardContent? { content }
     var panelForTests: NewsCardPanel? { panel }
+    /// 카드가 열쇠 창이 되는지 (Return · Esc · VoiceOver). 시험은 끈다 — 비활성 패널이 열쇠 창이 되면 시험을 돌리는 동안 쓰던 앱의 키를 빼앗는다
+    var takesKey = true
+    /// 자리를 잡을 화면 (시험은 화면 밖 창 둘레의 가짜 화면을 준다)
+    var visibleFrameOverride: NSRect?
 
     /// 본 창이 열리면 (AppDelegate.openPlanner)
     func attach(planner: NSWindow, state: AppState, sync: SyncController?) {
@@ -134,12 +139,31 @@ final class NewsCardController: NewsCardHost {
         TourController.shared.$kind.map { $0 != nil }.removeDuplicates().filter { $0 }
             .sink { [weak self] _ in self?.dismiss() }
             .store(in: &bag)
+        // 카드가 열쇠 창일 때 플래너 단축키를 누르면: 단축키는 플래너가 처리하고 (카드는 플래너에 딸린 패널 — WindowController) 카드는 닫는다
+        state.didTakePlannerKey = { [weak self] w in self?.plannerKeyTaken(in: w) }
+    }
+
+    /// 플래너가 단축키를 처리했다 — 그 키가 카드에서 왔으면 카드를 닫는다 (열쇠는 플래너로)
+    func plannerKeyTaken(in window: NSWindow?) {
+        guard let p = panel, let window, window === p else { return }
+        dismiss()
     }
 
     // MARK: NewsCardHost
 
     var onboardingVisible: Bool {
         NSApp.windows.contains { $0.identifier == OnboardingController.windowIdentifier && $0.isVisible }
+    }
+
+    /// 앱이 앞에 있는지 (뒤에서 켜진 앱은 처음 앞으로 올 때가 ‘열 때’ — NewsCenter)
+    var appIsActive: Bool {
+        let active = NSApp.isActive || qaIgnoresFocus
+        // 바꿔 끼운 실행(QA)에서는 왜 건너뛰었는지 적는다
+        if !active, !NewsCenter.shared.launch.persists, NewsCenter.shared.launch.opens {
+            print("소식: 이번 카드 차례는 건너뛰어요 — 앱이 앞에 있지 않음 (앞으로 올 때 다시)")
+            fflush(stdout)
+        }
+        return active
     }
 
     func canPresentCard() -> Bool {
@@ -184,10 +208,12 @@ final class NewsCardController: NewsCardHost {
         guard w.attachedSheet == nil else { return "플래너 창에 시트" }
         // 플래너가 앞에: 열쇠 창이 플래너이거나 그 팔레트
         guard let key = keyWindow, key === w || key.parent === w else { return "다른 창이 앞에 있음" }
-        // 다른 창(설정 · PDF · 업데이트 · 처음 안내) · 팝오버가 떠 있지 않다
+        // 다른 창(설정 · PDF · 업데이트 · 처음 안내) · 팝오버가 떠 있지 않다. 팝오버(D-day 등)는 띄운 창의 자식 창이라 자식인지 보기 전에 본다
         if let o = windows.first(where: { o in
-            guard o !== w, o.parent !== w, o.isVisible else { return false }
-            return o.styleMask.contains(.titled) || o.className.contains("Popover") || o.attachedSheet != nil
+            guard o !== w, o.isVisible else { return false }
+            if o.className.contains("Popover") { return true }
+            guard o.parent !== w else { return false }
+            return o.styleMask.contains(.titled) || o.attachedSheet != nil
         }) { return "다른 창이 떠 있음 (\(o.className) \(o.title))" }
         // 둘러보기 · 동기화 연결 · 메뉴 · 칠하는 중 · 넘기는 중 · 글을 쓰는 중이 아니다
         if tourRunning { return "둘러보는 중" }
@@ -239,7 +265,7 @@ final class NewsCardController: NewsCardHost {
         w.addChildWindow(p, ordered: .above)
         let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         p.alphaValue = reduce ? 1 : 0
-        p.makeKeyAndOrderFront(nil)
+        if takesKey { p.makeKeyAndOrderFront(nil) } else { p.orderFront(nil) }
         if !reduce {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.22
@@ -286,7 +312,7 @@ final class NewsCardController: NewsCardHost {
     /// 창 옆 제자리로
     func reposition() {
         guard let p = panel, let w = planner, let state else { return }
-        let vis = (w.screen ?? NSScreen.main)?.visibleFrame ?? w.frame
+        let vis = visibleFrameOverride ?? (w.screen ?? NSScreen.main)?.visibleFrame ?? w.frame
         let pal = w.childWindows?.first { $0 is PalettePanel } as? PalettePanel
         let placed = NewsCardPlacement.place(p.frame.size, page: w.frame, palette: pal?.isVisible == true ? pal?.frame : nil,
                                              paletteSide: pal?.isVisible == true ? pal?.side : nil, kind: state.kind, visible: vis)

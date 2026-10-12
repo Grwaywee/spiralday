@@ -61,13 +61,17 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
         // 이 창(과 팔레트)의 키 · 스크롤만 플래너가 받는다 — PDF 내보내기 · 설정 · 업데이트 창 · 팝오버의 것은 그 창으로
         state.plannerWindow = window
-        state.isPlannerPanel = { $0 is PalettePanel }
+        state.isPlannerPanel = Self.isPlannerPanel
         wire()
         updateTitle()
         palette = PaletteController(parent: window, store: store, state: state, model: .shared)
         // 종이 밖 고리만 자식 창에 (종이 위 앞 가닥은 RootView 의 넘김 오버레이 아래와 넘김 스냅숏에)
         rings = RingWindowController(parent: window, part: .outsidePaper)
     }
+
+    /// 플래너에 딸린 패널: 팔레트, 그리고 소식 카드 — 카드가 열쇠 창인 동안에도 ← → · T W D H · 1–7 같은 단축키가 먹고,
+    /// 누르면 카드는 닫힌다 (NewsCardController.plannerKeyTaken)
+    nonisolated static func isPlannerPanel(_ w: NSWindow) -> Bool { w is PalettePanel || w is NewsCardPanel }
 
     /// 자식 창에 그리는 고리 부분 (시험용)
     var ringPart: RingPart? { rings?.part }

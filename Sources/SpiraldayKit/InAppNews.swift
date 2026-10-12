@@ -603,7 +603,10 @@ public enum NewsCopy {
         "\(lang == "ko" ? "소식" : "News") · \(NewsRules.displayDate(date, today: today, lang: lang))"
     }
     public static func whatsNewCaption(_ lang: String) -> String { lang == "ko" ? "이번에 달라진 점" : "What\u{2019}s new" }
-    public static func whatsNewTitle(_ app: String) -> String { "Spiralday \(app)" }
+    /// 이번에 달라진 점 카드의 제목: 지금 **앱 버전** (§1.1 — 노트를 `1.2` 로 적어도 앱 1.2.0 이면 ‘Spiralday 1.2.0’, Windows · Android 와 같다)
+    public static func whatsNewTitle(appVersion: String) -> String { "Spiralday \(appVersion)" }
+    @available(*, deprecated, renamed: "whatsNewTitle(appVersion:)", message: "노트에 적힌 버전이 아니라 앱 버전을 넘겨요 (§1.1)")
+    public static func whatsNewTitle(_ app: String) -> String { whatsNewTitle(appVersion: app) }
     public static func whatsNewFootnote(_ lang: String) -> String {
         lang == "ko" ? "설정 › 소식에서 다시 볼 수 있어요." : "You can read this again in Settings \u{203A} News."
     }
@@ -620,9 +623,18 @@ public enum NewsCopy {
         lang == "ko" ? "spiralday.com 에서 소식 받기" : "Get news from spiralday.com"
     }
     public static func fetchOnDetail(_ lang: String) -> String {
-        lang == "ko" ? "앱을 열 때 spiralday.com 의 소식 파일을 읽어 와요. 설치 번호나 기기 정보는 보내지 않아요."
-            : "When you open the app, it reads the news file on spiralday.com. No install ID or device information is sent."
+        lang == "ko" ? "앱을 열 때(켜 둔 동안은 하루 한 번) spiralday.com 의 소식 파일을 읽어 와요. 설치 번호나 기기 정보는 보내지 않아요."
+            : "When you open the app (and once a day while it stays open), it reads the news file on spiralday.com. "
+                + "No install ID or device information is sent."
     }
+    /// 설정 › 소식의 설명 한 줄 (모든 플랫폼이 같은 말 — 카드 · 시트 · 대화상자 어느 모양에도 맞게)
+    public static func paneNote(_ lang: String) -> String {
+        lang == "ko" ? "업데이트한 뒤 달라진 점과 꼭 알아야 할 소식만 앱을 열 때 한 번 보여 드려요. 푸시 알림 · 배지는 없어요."
+            : "Only what\u{2019}s new after an update and news you need to know show once when you open the app. "
+                + "No push notifications or badges."
+    }
+    /// 안 본 줄 · ‘소식’ 항목의 점을 읽어 주는 말 (VoiceOver · 화면 읽기)
+    public static func unseen(_ lang: String) -> String { lang == "ko" ? "새 소식" : "New" }
     public static func fetchOffDetail(_ lang: String) -> String {
         lang == "ko" ? "받아 오지 않아요. 이미 받은 소식과 이번에 달라진 점은 그대로 볼 수 있어요."
             : "News isn\u{2019}t fetched. You can still read the news you already have and what\u{2019}s new in this version."
@@ -633,7 +645,8 @@ public enum NewsCopy {
 
 /// 소식 피드 · 노트만 읽는 엄격한 JSON 읽개 (RFC 8259). 받아들이지 않는 것 (§2.1):
 /// 65,536 바이트 초과는 parseFeed 가 먼저 본다 · 맨 앞 BOM 하나는 뗀다 · UTF-8 이 아님 · 짝 없는 서로게이트 (escape 로 적은 것도) ·
-/// 16단계보다 깊은 객체 · 배열. 같은 키가 둘이면 뒤의 것 (JS JSON.parse 와 같다).
+/// 16단계보다 깊은 객체 · 배열. 같은 키가 둘이면 뒤의 것 (JS JSON.parse 와 같다) — 덮어써진 앞 값도 글을 읽으며 모두 보므로
+/// 그 안의 짝 없는 서로게이트 · 깊이도 파일을 거절한다 (§2.1 ‘어디에든’, 공유 벡터 ‘a key written twice …’).
 enum NewsJSON: Equatable {
     case object([String: NewsJSON])
     case array([NewsJSON])

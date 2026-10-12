@@ -27,6 +27,9 @@ enum NewsQA {
      {"id":"2026-10-16-guide","date":"2026-10-16","kind":"update","importance":"normal",
       "title":{"ko":"spiralday.com 에 쓰는 법을 새로 적었어요"},
       "body":{"ko":"형광펜으로 분류하는 법과 PDF 로 뽑는 법을 사진과 함께 적었어요."},"link":"https://spiralday.com/"},
+     {"id":"2025-12-31-year-end","date":"2025-12-31","kind":"update","importance":"normal",
+      "title":{"ko":"시험용: 작년의 두 자리 월 · 일"},
+      "body":{"ko":"날짜 칸에 ‘2025년 12월 31일’이 한 줄로 들어가는지 보는 시험용 글이에요."}},
      {"id":"2025-12-03-hello","date":"2025-12-03","kind":"notice","importance":"normal",
       "title":{"ko":"Spiralday 소식은 여기에 모아 둬요"},
       "body":{"ko":"알림은 띄우지 않아요. 꼭 알아야 할 것만 앱을 열 때 한 번 보여 드려요."}}
@@ -72,7 +75,8 @@ enum NewsQA {
             let emptyPane = NewsSettingsPane(center: empty, snapshot: true).formStyle(.grouped)
             done(await capture(emptyPane, size: CGSize(width: 530, height: 460), dark: dark, background: true,
                                to: dir.appendingPathComponent("pane-empty-\(s).png")), "pane-empty-\(s)")
-            let off = qaCenter(notes: notes, version: version, seen: ["2026-10-20-sync-check", "2026-10-16-guide", "app-\(version)"])
+            let off = qaCenter(notes: notes, version: version,
+                               seen: ["2026-10-20-sync-check", "2026-10-16-guide", "2025-12-31-year-end", "app-\(version)"])
             off.setFetchEnabled(false)
             let offPane = NewsSettingsPane(center: off, snapshot: true).formStyle(.grouped)
             done(await capture(offPane, size: CGSize(width: 530, height: 600), dark: dark, background: true,

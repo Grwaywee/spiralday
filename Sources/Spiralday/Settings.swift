@@ -2385,6 +2385,8 @@ struct SettingsIconTile: View {
             )
             .frame(width: size, height: size)
             .shadow(color: .black.opacity(0.12), radius: 0.5, y: 0.5)
+            // 꾸밈 그림: 옆에 이름이 늘 있다 — VoiceOver 가 기호 이름(newspaper.fill 등)을 함께 읽지 않게
+            .accessibilityHidden(true)
     }
 }
 

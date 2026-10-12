@@ -31,6 +31,8 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 
 - **띄우는 순간 본 것**으로 저장한다 (§5.4). [확인] · Esc · 바깥 누르기 · 아래로 쓸기 · 뒤로 가기 — 어떻게 닫아도, 그 사이 앱이 꺼져도 다시 뜨지 않는다.
 - [자세히 보기]는 시스템 브라우저로 열고(§8.2) 카드를 닫는다.
+- 카드가 키보드를 잡고 있어도 플래너 단축키는 그대로 먹는다 (Mac: ← → · T W D H · E · 1–7 은 플래너가 처리하고 카드는 닫힌다.
+  Return · Esc · Tab · 스페이스는 카드 몫). 앱을 켜자마자 → 를 누르는 분이 반응 없이 기다리지 않게.
 
 ### 1.2 설정 › 소식
 
@@ -41,8 +43,14 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
   UTC 시각으로 바꾸지 말 것 (JS 의 `new Date('2026-10-20')` 은 UTC 자정이라 미국에서는 19일로 보인다).
 - 비었을 때: ‘아직 소식이 없어요.’ (en No news yet.) — 오프라인 · 받기 실패도 같은 화면. 오류 문구는 보이지 않는다.
 - 스위치: ‘spiralday.com 에서 소식 받기’ (기본 켬, en Get news from spiralday.com).
-  - 켰을 때 설명: ‘앱을 열 때 spiralday.com 의 소식 파일을 읽어 와요. 설치 번호나 기기 정보는 보내지 않아요.’
+  - 켰을 때 설명: ‘앱을 열 때(켜 둔 동안은 하루 한 번) spiralday.com 의 소식 파일을 읽어 와요. 설치 번호나 기기 정보는 보내지 않아요.’
+    (en When you open the app (and once a day while it stays open), it reads the news file on spiralday.com. No install ID or device information is sent.)
   - 껐을 때 설명: ‘받아 오지 않아요. 이미 받은 소식과 이번에 달라진 점은 그대로 볼 수 있어요.’
+- 설명 한 줄 (모든 플랫폼이 같은 말 — Kit `NewsCopy.paneNote` · web `NEWS_COPY`, 카드 · 시트 · 대화상자 어느 모양에도 맞게 ‘종이 옆’ · ‘카드’ 는 쓰지 않는다):
+  ‘업데이트한 뒤 달라진 점과 꼭 알아야 할 소식만 앱을 열 때 한 번 보여 드려요. 푸시 알림 · 배지는 없어요.’
+  (en Only what’s new after an update and news you need to know show once when you open the app. No push notifications or badges.)
+- 화면 읽기: 안 본 줄 앞과 ‘소식’ 항목의 점은 ‘새 소식’ (en New). 항목 아이콘의 기호 이름은 읽지 않는다.
+- 아이콘: 신문(SF Symbols `newspaper` — Windows · Android 도 같은 모양의 그림), 바탕색 `#C2783A`. 확성기는 ‘알림’ 느낌이 강해 쓰지 않는다.
 - 점: 안 본 줄이 있으면 설정 안의 ‘소식’ 항목(Mac 설정 창의 옆 목록, 모바일 · Windows 설정 목록)에만 작은 점. 종이 · 팔레트 · 설정 버튼 · 앱 아이콘에는 아무것도 없다.
 - 목록을 열면: 이번에 보이는 점은 그대로 두고(무엇이 새것인지 보이게) 보이는 줄을 모두 본 것으로 저장한다(§5.5) → ‘소식’ 항목의 점은 바로 사라지고, 다음에 열면 줄의 점도 없다.
 
@@ -104,6 +112,10 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 4. 객체 · 배열이 16단계보다 깊다 (맨 위 객체가 1단계, `items` 가 2, 항목이 3, `title` 이 4)
 5. 맨 위가 객체가 아니다 · `version` 이 숫자 1 이 아니다 (`"1"` · `true` · 2 도 아님) · `items` 가 배열이 아니다
 
+같은 객체에 같은 키가 둘이면 뒤의 값을 쓴다 (JS `JSON.parse` 와 같다). 그래도 3 · 4 는 **덮어써진 앞 값에도** 본다 —
+`JSON.parse` 는 앞 값을 버리므로 JS 는 풀기 전에 글을 한 번 훑는다 (참고 구현 `scanJSONText`: 문자열 밖 괄호의 깊이, 문자열 안 `\uD800`–`\uDFFF`
+escape 의 짝). 공유 벡터 `parse` 의 ‘a key written twice …’ 셋. 올리기 전 검사(§9)는 같은 키가 둘인 파일을 오류로 막는다.
+
 ## 3. 앱에 넣는 노트 — 이번에 달라진 점
 
 플랫폼마다 앱 묶음 안에 `whats-new.json` 을 넣는다:
@@ -117,8 +129,17 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 - 목록에서는 id `app-<app>` (적힌 그대로), 제목 ‘`<app>` 에서 달라진 점’ (en ‘What’s new in `<app>`’), 종류 업데이트, 보통, 링크 없음.
 - 글: 그 버전의 릴리스 노트(Mac 은 `Docs/release-notes/<ver>.md`)를 3–5줄로 줄인 같은 목소리. 설치 안내는 빼고 600자 안.
   작은 고침 버전은 노트를 빼도 된다 (카드 없이 지나간다).
+- 카드 제목은 지금 **앱 버전** (‘Spiralday 1.2.0’ — 노트를 `1.2` 로 적어도). Kit `NewsCopy.whatsNewTitle(appVersion:)`, web `cardView` 와 같다.
+- 글 안의 길 표기는 ‘설정 › …’ (카드 아래 글 · 목록과 같게 — 릴리스 노트 .md 의 → 는 그대로 둬도 된다).
+- 소식이 처음 들어가는 버전의 노트에는 플랫폼마다 같은 뜻의 안내를 넣는다 (날짜는 실제 출시일):
+  ‘- 설정 › 소식이 생겼어요. 새 소식과 업데이트에서 달라진 점을 여기에 모아 둬요’ ·
+  ‘- 꼭 알려 드릴 일이 있을 때만, 앱을 열 때 이렇게 한 번 알려 드려요. 푸시 알림은 보내지 않아요’
+  (en ‘- Settings › News is new. News and what’s new in each update are kept there’ ·
+  ‘- Only when there’s something you need to know, a note like this shows once when you open the app. No push notifications’).
 - Mac: `Docs/release-notes/whats-new.json` 에 버전마다 적고 `build.sh` 가 `Spiralday.app/Contents/Resources/whats-new.json` 으로 넣는다
-  (출시 빌드는 이 파일도 커밋한 그대로여야 만든다). `InAppNewsTests.testBundledNotesAreAllRead` 가 노트가 모두 읽히는지 · 릴리스 노트가 있는 버전인지 본다.
+  (출시 빌드는 이 파일도 커밋한 그대로여야 만든다). `build.sh` 의 `VERSION` 과 숫자로 같은 노트가 없으면 빌드 끝에 한 줄로 알린다
+  (작은 고침 버전은 빼도 되니 멈추지는 않는다). `InAppNewsTests.testBundledNotesAreAllRead` 가 노트가 모두 읽히는지 · 릴리스 노트가 있는 버전인지 ·
+  길 표기를 본다.
 
 ## 4. 받아 오기
 
@@ -163,8 +184,11 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 - 앱을 새로 켰을 때, 또는 60분 넘게 뒤에 있다가 앞으로 돌아왔을 때 (Mac 은 다른 앱을 쓰다 Spiralday 가 다시 활성, iPhone · iPad 는 scene 이 active, Android 는 resume, Windows 는 창 포커스 · 복원).
 - 순서: ① 받아 오기를 시작(§4) ② 끝나거나 5초가 지나면 ③ 카드 차례 — 그때의 캐시로 고른다.
 - 카드 차례에 처음 안내를 띄우는 중이면 `open(firstRun: true)` 의 저장만 하고 카드는 없다.
-- 플래너가 앞에 있고, 다른 창 · 시트 · 메뉴 · 둘러보기 · 동기화 연결이 떠 있지 않고, 글을 쓰는 중도 아니면 `open()` 의 저장을 하고 그 카드를 띄운다.
+- 플래너가 앞에 있고, 다른 창 · 시트 · 메뉴 · 팝오버 · 둘러보기 · 동기화 연결이 떠 있지 않고, 글을 쓰는 중도 아니면 `open()` 의 저장을 하고 그 카드를 띄운다.
   그렇지 않으면 이번에는 건너뛴다 (아무것도 저장하지 않고 다음 ‘열 때’ 다시).
+- 카드 차례에 앱이 앞에 있지 않아 건너뛰었으면 (뒤에서 켜진 앱 — Mac 로그인 항목 · `open -g`, 켜자마자 다른 앱으로 간 경우) 앱이 **처음 앞으로 올 때**를
+  ‘열 때’로 친다 — 60분을 기다리지 않는다. 한 번도 앞에 온 적이 없는 앱은 ‘뒤로 간 때’가 없어, 이렇게 하지 않으면 업데이트 노트 · 중요한 소식이
+  다음에 60분 넘게 자리를 비울 때까지 밀린다.
 - 창이 여럿이어도 앱 하나에 한 번.
 
 ### 5.2 보이는 항목
@@ -253,7 +277,8 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 ### 8.1 글로만
 
 - SwiftUI 는 `Text(verbatim:)` (`LocalizedStringKey` 는 마크다운을 해석한다). AppKit · UIKit 텍스트 뷰는 링크 · 데이터 감지를 끈다.
-  React 는 텍스트 노드로 (`dangerouslySetInnerHTML` · `innerHTML` 금지), 줄바꿈은 `white-space: pre-line`.
+  React 는 텍스트 노드로 (`dangerouslySetInnerHTML` · `innerHTML` 금지), 줄바꿈 · 띄어쓰기는 글 그대로 `white-space: pre-wrap`
+  (`pre-line` 은 이어진 띄어쓰기와 줄 앞 들여쓰기를 줄인다 — ‘- 하나\n  - 둘’ 이 Mac · iPhone · iPad 의 `Text(verbatim:)` 와 같게 보이도록).
 - 숫자 · 주소 · 날짜를 링크로 바꾸지 않는다. 누를 수 있는 링크는 `link` 하나뿐.
 
 ### 8.2 링크
@@ -269,7 +294,8 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 - 글자 수: Swift 의 `String.count` 는 글자 묶음, JS 의 `length` 는 UTF-16 — 둘 다 아니고 코드 포인트.
 - 정규식: `\d` 대신 `[0-9]` (Swift 의 `\d` 는 다른 문자의 숫자도 맞춘다). 끝의 `$` 는 ICU · Swift 에서 마지막 줄바꿈 앞에도 맞을 수 있다 → `\z` 나 글자 검사.
 - JSON: `JSONSerialization` 의 NSNumber 는 `true` 와 `1` 을 섞는다 → `version` · `syncOnly` 는 CFBoolean 을 가려 읽거나 Codable 로.
-  짝 없는 서로게이트 · 깊이 · BOM 은 §2.1 대로 직접 확인한다.
+  짝 없는 서로게이트 · 깊이 · BOM 은 §2.1 대로 직접 확인한다. JS 의 `JSON.parse` 는 같은 키의 앞 값을 버리므로, 풀고 난 값만 보면
+  덮어써진 값의 서로게이트 · 깊이를 놓친다 → 풀기 전에 글을 훑는다 (§2.1).
 - 날짜는 달력 날짜 문자열끼리 비교한다 (시각으로 바꾸지 않는다).
 
 ## 9. 소식 올리기
@@ -279,7 +305,7 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 2. 한국어 · 영어 둘 다 쓴다 (`en` 이 없으면 영어로 쓰는 분께도 한국어로 보인다). 앱의 목소리대로 짧고 따뜻하게, 본문 600자 안.
 3. `important` 는 꼭 알아야 할 것만 (요금 · 약관 · 처리방침 · 점검 · 꼭 필요한 업데이트) — 그리고 `expires` 를 꼭.
    미리 알릴 일은 바뀌는 날보다 30일 이상 앞에 올린다. `date` 를 뒷날로 적으면 그날부터 보인다.
-4. 검사: `node Scripts/news-check.mjs site/news/news.json` — 앱이 버릴 항목 · 빠질 링크가 있으면 오류, en · expires 가 없으면 주의.
+4. 검사: `node Scripts/news-check.mjs site/news/news.json` — 앱이 버릴 항목 · 빠질 링크 · 같은 키가 둘인 곳이 있으면 오류, en · expires 가 없으면 주의.
    배포 워크플로(`.github/workflows/pages.yml`)도 이 검사를 통과해야 사이트를 올린다.
 5. `main` 에 올리면 GitHub Pages 로 몇 분 안에 나간다 (페이지 캐시 10분). 앱은 다음 ‘열 때’ 받아서, 중요한 소식이면 그때 카드로 띄운다.
 6. 내리기: 항목을 지우면 다음에 받을 때 목록에서 사라진다 (본 기록은 기기에 남는다). `items` 가 비어도 된다.
@@ -311,8 +337,18 @@ iPhone · iPad 는 시트(iPhone 은 중간 높이), Windows · Android 는 앱�
 | Windows · Android (web) | `news.ts` + 벡터 시험 · `SHARED` 에 더하기 · 메인 프로세스 / 네이티브 받아 오기 · 카드 · 설정 › 소식 · `whats-new.json` |
 | 사이트 | 처리방침 반영 (§10) — 첫 앱 버전보다 먼저 |
 
+### 출시 전 확인 — 소식이 들어간 첫 버전 (플랫폼마다)
+
+1. 개인정보 처리방침(§10)을 **먼저** 올린다. Mac `build.sh` 의 출시 빌드는 `site/privacy.html` 에 소식(`news/news.json`)이 없으면 알린다.
+2. `site/news/news.json` 을 `main` 에 합친 뒤 `curl -sI https://spiralday.com/news/news.json` 이 넘겨주기 없이 `200` 인지 본다
+   (Mac 출시 빌드도 확인해 알린다). 앱은 3xx 를 따르지 않아, 주소가 바뀌거나 넘겨주면 모든 앱에서 소식이 소리 없이 끊긴다.
+3. 그 버전의 ‘이번에 달라진 점’ 노트를 넣는다 (§3 — 소식 안내 한 줄과 실제 출시일). Mac 은 없으면 `build.sh` 가 한 줄로 알린다.
+
 기본값으로 적어 두었고, 바꾸려면 정해 주실 것:
 
 1. ‘spiralday.com 에서 소식 받기’ 스위치를 둔다 (기본 켬).
 2. 업데이트 직후 중요한 소식이 함께 있으면 중요한 소식이 먼저, 이번에 달라진 점은 다음 ‘열 때’.
 3. 중요한 소식은 새로 설치한 분께도 `expires` 전까지 한 번 뜬다.
+4. Mac: 창이 화면을 꽉 채워(최대화 · 전체 화면) 종이 옆에 자리가 없을 때 — 지금은 카드가 종이 아래 가운데(메모 · 타임테이블 위)에 겹친다.
+   그대로 둘지, 그때만 창 시트로 띄울지.
+5. Windows · Android 의 카드는 플래너를 어둡게 덮는 대화상자, Mac · iPhone · iPad 는 덮지 않는다 — 덮개를 옅게 맞출지.

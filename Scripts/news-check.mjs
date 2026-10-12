@@ -117,17 +117,99 @@ function walkOk(v, depth) {
   return Object.keys(v).every((k) => !LONE_SURROGATE.test(k) && walkOk(v[k], depth + 1));
 }
 
+const HIGH_SURROGATE = /^[dD][89abAB][0-9a-fA-F]{2}$/;
+const LOW_SURROGATE = /^[dD][c-fC-F][0-9a-fA-F]{2}$/;
+
+/**
+ * JSON.parse 앞에 글을 한 번 훑는다 (§2.1 '어디에든'): JSON.parse 는 같은 키가 둘이면 뒤의 값만 남겨서, 덮어써진 앞 값의
+ * 짝 없는 서로게이트 · 깊이를 그 뒤에는 볼 수 없다 — Swift(Kit)의 읽개는 모든 값을 본다. 그래서 글 그대로:
+ *   · 문자열 밖의 { [ 가 16단계를 넘는지
+ *   · 문자열 안의 \uD800–\uDBFF escape 다음에 꼭 \uDC00–\uDFFF escape 가 오는지, \uDC00–\uDFFF escape 가 홀로 있지 않은지
+ *     (escape 가 아닌 서로게이트는 UTF-8 을 엄격히 풀 때 이미 걸린다)
+ *   · 같은 객체에 같은 키가 둘 있는지 (앱은 뒤의 것을 쓴다 — 올리기 전 검사만 오류로)
+ * 문법이 틀린 글은 그대로 두고 JSON.parse 가 거절하게 한다.
+ * → { depthOk, surrogatesOk, duplicateKeys: ['$.items[0].title' 꼴의 자리 …] }
+ */
+export function scanJSONText(s) {
+  let depthOk = true;
+  let surrogatesOk = true;
+  const duplicateKeys = [];
+  // 객체 · 배열마다: obj 이면 본 키 · 다음 글이 키인지 · 지금 키, arr 이면 몇 번째 값인지
+  const stack = [];
+  // 지금 객체를 담은 자리 (예 $.items[0].title)
+  const where = () => '$' + stack.slice(0, -1).map((f) => (f.type === 'arr' ? `[${f.index}]` : `.${f.key}`)).join('');
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '"') {
+      // 문자열 하나: escape 를 보며 끝 따옴표까지
+      let j = i + 1;
+      let pendingHigh = false;
+      while (j < s.length && s[j] !== '"') {
+        if (s[j] === '\\') {
+          if (s[j + 1] === 'u') {
+            const hex = s.slice(j + 2, j + 6);
+            if (pendingHigh) {
+              if (!LOW_SURROGATE.test(hex)) surrogatesOk = false;
+              pendingHigh = false;
+            } else if (HIGH_SURROGATE.test(hex)) pendingHigh = true;
+            else if (LOW_SURROGATE.test(hex)) surrogatesOk = false;
+            j += 6;
+          } else {
+            if (pendingHigh) surrogatesOk = false;
+            pendingHigh = false;
+            j += 2;
+          }
+        } else {
+          if (pendingHigh) surrogatesOk = false;
+          pendingHigh = false;
+          j += 1;
+        }
+      }
+      if (pendingHigh) surrogatesOk = false;
+      const top = stack[stack.length - 1];
+      if (top && top.type === 'obj' && top.expectKey) {
+        let key;
+        try { key = JSON.parse(s.slice(i, j + 1)); } catch { key = s.slice(i + 1, j); }
+        if (top.keys.has(key)) duplicateKeys.push(`${where()}.${key}`);
+        top.keys.add(key);
+        top.key = key;
+        top.expectKey = false;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (c === '{' || c === '[') {
+      stack.push(c === '{' ? { type: 'obj', keys: new Set(), expectKey: true, key: null } : { type: 'arr', index: 0 });
+      if (stack.length > LIMITS.maxDepth) depthOk = false;
+    } else if (c === '}' || c === ']') {
+      stack.pop();
+    } else if (c === ',') {
+      const top = stack[stack.length - 1];
+      if (top && top.type === 'obj') top.expectKey = true;
+      else if (top) top.index += 1;
+    }
+    i += 1;
+  }
+  return { depthOk, surrogatesOk, duplicateKeys };
+}
+
 /** 받은 바이트 → { accepted:false, reason } 또는 { accepted:true, items, dropped, linkRemoved } */
 export function parseFeed(bytes) {
   let b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (b.length > LIMITS.maxBytes) return { accepted: false, reason: 'too big' };
   if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) b = b.subarray(3);
   let doc;
+  let text;
   try {
-    doc = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(b));
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(b);
+    doc = JSON.parse(text);
   } catch {
     return { accepted: false, reason: 'not JSON (UTF-8)' };
   }
+  // 덮어써진 값까지 (같은 키가 둘일 때) — 글 그대로 본다
+  const scan = scanJSONText(text);
+  if (!scan.depthOk || !scan.surrogatesOk) return { accepted: false, reason: 'too deep or lone surrogate' };
   if (!walkOk(doc, 1)) return { accepted: false, reason: 'too deep or lone surrogate' };
   if (!isObject(doc)) return { accepted: false, reason: 'not an object' };
   if (typeof doc.version !== 'number' || doc.version !== 1) return { accepted: false, reason: 'version' };
@@ -347,6 +429,9 @@ export function checkSiteFeed(file, today = localToday()) {
   const bytes = fs.readFileSync(file);
   const r = parseFeed(bytes);
   if (!r.accepted) return { errors: [`앱이 이 파일 전체를 읽지 않아요: ${r.reason}`], warnings, items: [] };
+  // 같은 키가 둘이면 앱은 뒤의 것을 쓰지만, 쓴 사람이 보는 것과 앱이 쓰는 것이 달라지기 쉬워 올리기 전에는 막는다
+  const text = new TextDecoder('utf-8').decode(bytes[0] === 0xef ? bytes.subarray(3) : bytes);
+  for (const k of scanJSONText(text).duplicateKeys) errors.push(`같은 키가 두 번 있어요: ${k} (앱은 뒤의 것만 써요 — 하나만 남겨 주세요)`);
   for (const d of r.dropped) errors.push(`items[${d.index}]${d.id ? ` (${d.id})` : ''} 을 앱이 버려요: ${d.reason}`);
   for (const id of r.linkRemoved) errors.push(`${id}: link 가 https://spiralday.com/… 이 아니라 앱이 링크를 빼요`);
   const doc = JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/, ''));

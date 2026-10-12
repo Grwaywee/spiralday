@@ -69,8 +69,10 @@ public final class AppState: ObservableObject {
     private var swipe = DesktopSwipeTracker()
     /// 플래너 종이 창 (호스트가 정한다). 이 창의 키 · 스크롤만 플래너가 받는다 — 다른 창(PDF 내보내기 · 설정 · 업데이트 · 팝오버)은 그 창으로
     public weak var plannerWindow: NSWindow?
-    /// 플래너에 딸린 패널인지 (팔레트 — 키는 플래너 단축키로 본다). 호스트가 정한다
+    /// 플래너에 딸린 패널인지 (팔레트 · 소식 카드 — 키는 플래너 단축키로 본다). 호스트가 정한다
     public var isPlannerPanel: ((NSWindow) -> Bool)?
+    /// 플래너 단축키를 처리한 뒤 (그 키가 온 창과 함께) — 소식 카드가 열쇠 창일 때 단축키를 누르면 카드를 닫는 데 쓴다
+    public var didTakePlannerKey: ((NSWindow?) -> Void)?
     #endif
 
     public init(kind: PageKind = .daily, today: Date = Date()) {
@@ -426,10 +428,12 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// 처리했으면 true (이벤트를 먹는다)
-    private func handleKey(_ e: NSEvent) -> Bool {
-        handleKey(window: inputWindow(e.window), responder: Self.inputResponder(e.window), keyCode: e.keyCode,
-                  characters: e.charactersIgnoringModifiers, modifiers: e.modifierFlags)
+    /// 처리했으면 true (이벤트를 먹는다). 시험이 진짜 NSEvent 로 부를 수 있게 internal
+    func handleKey(_ e: NSEvent) -> Bool {
+        let taken = handleKey(window: inputWindow(e.window), responder: Self.inputResponder(e.window), keyCode: e.keyCode,
+                              characters: e.charactersIgnoringModifiers, modifiers: e.modifierFlags)
+        if taken { didTakePlannerKey?(e.window) }
+        return taken
     }
 
     /// 키 하나 (시험이 창 · 칸을 정해 부른다). 처리했으면 true

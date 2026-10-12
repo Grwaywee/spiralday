@@ -179,6 +179,21 @@
     { "name": "nesting 16 deep is fine", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[]]]]]]]]]]]]]]] }, "expect": { "accepted": true, "ids": [] } },
     { "name": "nesting 17 deep is not", "feed": { "version": 1, "items": [], "x": [[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]] }, "expect": { "accepted": false } },
     {
+      "name": "a key written twice: the later value counts",
+      "feedText": "{\"version\":2,\"version\":1,\"items\":[]}",
+      "expect": { "accepted": true, "ids": [] }
+    },
+    {
+      "name": "a key written twice: the overwritten value may not hold a lone surrogate either",
+      "feedText": "{\"version\":1,\"x\":\"\\ud800\",\"x\":\"ok\",\"items\":[{\"id\":\"a\",\"date\":\"2026-10-01\",\"kind\":\"notice\",\"importance\":\"important\",\"title\":{\"ko\":\"제목\"},\"body\":{\"ko\":\"본문\"},\"expires\":\"2026-12-31\"}]}",
+      "expect": { "accepted": false }
+    },
+    {
+      "name": "a key written twice: the overwritten value may not nest 17 deep either",
+      "feedText": "{\"version\":1,\"items\":[],\"x\":[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]],\"x\":0}",
+      "expect": { "accepted": false }
+    },
+    {
       "name": "only the first 50 items are read",
       "feed": {
         "version": 1,

@@ -6,7 +6,8 @@ import SpiraldayKit
 // ─────────────────────────────────────────────────────────────────────────────
 // 앱 안 ‘소식’ (Docs/InAppNews.md) — 사장님 결정 2026-10-11: 계정 · 푸시 없이.
 //   · ‘열 때’(§5.1): 앱을 켤 때, 60분 넘게 다른 앱을 쓰다(또는 잠자다) 돌아왔을 때. 받아 오기를 시작하고 끝나거나 5초가 지나면
-//     카드 차례 — 그때의 캐시로 고른다 (규칙은 SpiraldayKit NewsRules · 받기는 NewsFetcher)
+//     카드 차례 — 그때의 캐시로 고른다 (규칙은 SpiraldayKit NewsRules · 받기는 NewsFetcher).
+//     뒤에서 켜진 앱(로그인 항목 · open -g)처럼 카드 차례에 앱이 앞에 있지 않았으면, 처음 앞으로 올 때를 ‘열 때’로 친다
 //   · 카드: 종이 위가 아니라 종이 옆 여백의 작은 카드 (NewsCardController). 띄우는 순간 본 것으로 적는다 — 어떻게 닫아도 다시 뜨지 않는다
 //   · 설정 › 소식: 목록과 ‘소식’ 항목의 작은 점 (종이 · 팔레트 · 설정 단추 · Dock 아이콘에는 아무것도 없다)
 //   · 받기: https://spiralday.com/news/news.json 에 GET 하나 (설치 번호 · 기기 정보 · 쿼리 문자열 · 쿠키 없음), 마지막 시도 뒤
@@ -67,6 +68,8 @@ struct NewsLaunch: Equatable {
 protocol NewsCardHost: AnyObject {
     /// 처음 안내 창이 떠 있는지
     var onboardingVisible: Bool { get }
+    /// 앱이 앞에 있는지 (아니면 카드 차례를 건너뛰고, 앱이 앞으로 올 때 다시 — NewsCenter.cameBack)
+    var appIsActive: Bool { get }
     /// 지금 카드를 띄워도 되는지 (§5.1: 플래너가 앞에 있고, 다른 창 · 시트 · 메뉴 · 둘러보기 · 동기화 연결이 없고, 글을 쓰는 중이 아님)
     func canPresentCard() -> Bool
     func presentCard(_ content: NewsCardContent)
@@ -124,6 +127,8 @@ final class NewsCenter: ObservableObject {
     private var fetchTask: Task<Void, Never>?
     private var paneOpen = false
     private var awaySince: Date?
+    /// 카드 차례에 앱이 앞에 있지 않아 건너뛰었다 (뒤에서 켜짐 · 켜자마자 다른 앱으로) — 앱이 앞으로 오면 바로 ‘열 때’
+    private(set) var openWhenActive = false
     private var observers: [NSObjectProtocol] = []
     private var refreshTimer: Timer?
 
@@ -200,9 +205,14 @@ final class NewsCenter: ObservableObject {
 
     @discardableResult
     func cameBack() -> Task<Void, Never>? {
-        guard let since = awaySince else { return nil }
+        let since = awaySince
         awaySince = nil
-        guard now().timeIntervalSince(since) > TimeInterval(NewsRules.Request.openAfterAwayMinutes * 60) else { return nil }
+        // 앞에 없어 건너뛴 카드 차례가 있으면 (뒤에서 켜진 앱이 처음 앞으로 옴) 얼마 만이든 ‘열 때’
+        if openWhenActive {
+            openWhenActive = false
+            return opened(launch: false)
+        }
+        guard let since, now().timeIntervalSince(since) > TimeInterval(NewsRules.Request.openAfterAwayMinutes * 60) else { return nil }
         return opened(launch: false)
     }
 
@@ -251,7 +261,11 @@ final class NewsCenter: ObservableObject {
             refreshList()
             return
         }
-        guard !onboarding, let host, host.canPresentCard() else { return }
+        guard !onboarding, let host else { return }
+        // 앱이 앞에 있지 않다 (뒤에서 켜짐 등): 아무것도 적지 않고, 앞으로 올 때 다시
+        guard host.appIsActive else { openWhenActive = true; return }
+        guard host.canPresentCard() else { return }
+        openWhenActive = false
         let r = NewsRules.open(env: env(firstRun: false), state: storage.state, items: items, notes: notes)
         storage.state = r.save
         refreshList()
@@ -362,8 +376,9 @@ final class NewsCenter: ObservableObject {
                                    link: it.link.flatMap { NewsRules.isAllowedLink($0) ? URL(string: $0) : nil }, footnote: nil)
         case .whatsNew(let app):
             guard let n = notes.first(where: { $0.app == app }) else { return nil }
+            // 제목은 앱 버전 (§1.1 — 노트를 ‘1.2’ 로 적어도 ‘Spiralday 1.2.0’)
             return NewsCardContent(kind: .whatsNew, id: NewsRules.noteID(n), caption: NewsCopy.whatsNewCaption(lang),
-                                   title: NewsCopy.whatsNewTitle(n.app), body: n.body.pick(lang), link: nil,
+                                   title: NewsCopy.whatsNewTitle(appVersion: appVersion), body: n.body.pick(lang), link: nil,
                                    footnote: NewsCopy.whatsNewFootnote(lang))
         }
     }

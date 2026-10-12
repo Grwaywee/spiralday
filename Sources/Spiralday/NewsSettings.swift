@@ -54,7 +54,8 @@ struct NewsSettingsPane: View {
             } header: {
                 SettingsSectionTitle(title: "받기")
             } footer: {
-                SettingsFootnote(text: "알림 · 배지는 띄우지 않아요. 꼭 알아야 할 소식만 앱을 열 때 종이 옆에 작은 카드로 한 번 보여 드려요.")
+                // 모든 플랫폼이 같은 말 (Kit NewsCopy — Windows · Android 의 NEWS_COPY 와 같게)
+                SettingsFootnote(text: NewsCopy.paneNote(center.lang))
             }
         }
         .onAppear {
@@ -66,7 +67,28 @@ struct NewsSettingsPane: View {
 }
 
 /// 한 줄: 날짜 · 종류 · (점) 제목, 누르면 본문과 [자세히 보기]
-private struct NewsRowView: View {
+struct NewsRowView: View {
+    /// 날짜 칸: 가장 긴 날짜(‘2025년 12월 31일’ · ‘Sep 30, 2025’)도 한 줄에 들어가게 글꼴로 잰다 — 92pt 로 두었더니 작년의 두 자리 월 · 일이 꺾였다
+    static let dateWidth: CGFloat = {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        let widest = (["0000년 00월 00일"] + months.map { "\($0) 00, 0000" })
+            .map { NSAttributedString(string: $0, attributes: [.font: font]).size().width }
+            .max() ?? 100
+        return ceil(widest) + 2
+    }()
+    /// 종류 칸 (‘업데이트’ · ‘알림’ · Update · Notice 중 가장 긴 것, 적어도 44pt)
+    static let kindWidth: CGFloat = {
+        let font = NSFont.systemFont(ofSize: 10.5, weight: .medium)
+        let widest = [NewsKind.notice, .update].flatMap { [NewsCopy.kind($0, "ko"), NewsCopy.kind($0, "en")] }
+            .map { NSAttributedString(string: $0, attributes: [.font: font]).size().width }
+            .max() ?? 44
+        return max(44, ceil(widest) + 2)
+    }()
+    static let columnSpacing: CGFloat = 10
+    /// 펼친 본문의 들여쓰기 (날짜 · 종류 칸 다음)
+    static var bodyIndent: CGFloat { dateWidth + columnSpacing + kindWidth }
+
     let row: NewsRow
     let unseen: Bool
     let today: String
@@ -77,16 +99,18 @@ private struct NewsRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: Self.columnSpacing) {
                     Text(verbatim: NewsRules.displayDate(row.date, today: today, lang: lang))
                         .font(.system(size: 12))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
-                        .frame(width: 92, alignment: .leading)
+                        .lineLimit(1)
+                        .frame(width: Self.dateWidth, alignment: .leading)
                     Text(verbatim: NewsCopy.kind(row.kind, lang))
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .leading)
+                        .lineLimit(1)
+                        .frame(width: Self.kindWidth, alignment: .leading)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         // 안 본 줄의 작은 점 (자리는 늘 비워 둬 제목이 흔들리지 않게)
                         Circle()
@@ -134,7 +158,7 @@ private struct NewsRowView: View {
                         .help("spiralday.com 에서 자세히 봐요 (브라우저로 열려요)")
                     }
                 }
-                .padding(.leading, 146)
+                .padding(.leading, Self.bodyIndent)
                 .padding(.bottom, 4)
             }
         }
@@ -143,7 +167,7 @@ private struct NewsRowView: View {
 
     private var accessibilityTitle: String {
         let date = NewsRules.displayDate(row.date, today: today, lang: lang)
-        return [unseen ? "안 본 소식" : nil, date, NewsCopy.kind(row.kind, lang), row.title].compactMap { $0 }.joined(separator: ", ")
+        return [unseen ? NewsCopy.unseen(lang) : nil, date, NewsCopy.kind(row.kind, lang), row.title].compactMap { $0 }.joined(separator: ", ")
     }
 }
 
@@ -156,7 +180,7 @@ struct NewsSidebarDot: View {
             Circle()
                 .fill(Color.accentColor)
                 .frame(width: 7, height: 7)
-                .accessibilityLabel("안 본 소식이 있어요")
+                .accessibilityLabel(NewsCopy.unseen(center.lang))
         }
     }
 }

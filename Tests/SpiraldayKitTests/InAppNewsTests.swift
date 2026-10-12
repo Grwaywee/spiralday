@@ -10,7 +10,7 @@ final class InAppNewsTests: XCTestCase {
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     static let fixtureURL = root.appendingPathComponent("Tests/Fixtures/news-rules.json")
     /// 공유 벡터의 바이트 (sha256). 이 값이 바뀌면 비공개 저장소의 web/tests/fixtures/news-rules.json 도 같은 바이트로 함께 바꾼다
-    static let fixtureSHA256 = "7435675d90ad9066ef8ba45883d1793e348ac236430cc579588b469932ddf5d9"
+    static let fixtureSHA256 = "895881e84b712db185dd88b3bdd39a20f1e31e6ec993e711b8e9dae801097433"
 
     private func fixture() throws -> [String: Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: Self.fixtureURL)) as? [String: Any])
@@ -23,7 +23,7 @@ final class InAppNewsTests: XCTestCase {
         let hex = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         XCTAssertEqual(hex, Self.fixtureSHA256,
                        "news-rules.json 이 바뀌었어요 — 비공개 저장소 web/tests/fixtures/news-rules.json 에 같은 바이트로 복사하고 이 값을 함께 바꿔요")
-        XCTAssertEqual(data.count, 61_546)
+        XCTAssertEqual(data.count, 62_370)
         // 비공개 저장소가 옆에 있으면 (SPIRALDAY_APPS_REPO=<spiralday-apps 경로>) 그 파일과 바이트를 견준다
         if let apps = ProcessInfo.processInfo.environment["SPIRALDAY_APPS_REPO"], !apps.isEmpty {
             let other = URL(fileURLWithPath: apps).appendingPathComponent("web/tests/fixtures/news-rules.json")
@@ -200,6 +200,8 @@ final class InAppNewsTests: XCTestCase {
             for b in notes[(i + 1)...] { XCTAssertNotEqual(NewsRules.compareVersions(a.app, b.app), 0, "같은 버전의 노트가 둘: \(a.app)") }
             XCTAssertNotNil(a.body.en, "\(a.app): 영어도 적어요")
             XCTAssertFalse(a.body.ko.contains("설치"), "\(a.app): 설치 안내는 빼요")
+            // 소식 안의 길 표기는 ‘설정 › …’ 하나로 (카드 아래 글 · iPhone · iPad · Windows · Android 와 같게)
+            XCTAssertFalse(a.body.ko.contains("설정 →") || (a.body.en ?? "").contains("Settings →"), "\(a.app): ‘설정 › …’ 로 적어요")
             // 릴리스 노트가 있는 버전만
             XCTAssertTrue(FileManager.default.fileExists(atPath: Self.root.appendingPathComponent("Docs/release-notes/\(a.app).md").path),
                           "\(a.app): Docs/release-notes/\(a.app).md 가 없어요")

@@ -3,6 +3,9 @@ import XCTest
 @testable import SpiraldayKit
 @testable import Spiralday
 
+/// 팝오버 창처럼 클래스 이름에 Popover 가 든 창 (SwiftUI .popover 의 _NSPopoverWindow)
+final class FakePopoverWindow: NSWindow {}
+
 /// Mac 의 앱 안 소식 (Docs/InAppNews.md): ‘열 때’ · 카드 차례 · 처음 설치 · 받아 오기 실패 · 60분 규칙 · 설정 › 소식의 점 ·
 /// 카드 자리 (종이 · 팔레트를 가리지 않음) · 바꿔 끼우기는 출시 서명 앱에서 안 됨. 메모리 저장소 · 가짜 받기 · 화면 밖 창으로만.
 @MainActor
@@ -12,7 +15,9 @@ final class InAppNewsMacTests: XCTestCase {
     final class FakeHost: NewsCardHost {
         var onboardingVisible = false
         var allowed = true
+        var active = true
         var presented: [NewsCardContent] = []
+        var appIsActive: Bool { active }
         func canPresentCard() -> Bool { allowed }
         func presentCard(_ content: NewsCardContent) { presented.append(content) }
     }
@@ -194,6 +199,50 @@ final class InAppNewsMacTests: XCTestCase {
         XCTAssertEqual(host.presented.map(\.kind), [.whatsNew])
     }
 
+    /// 뒤에서 켜진 앱 (로그인 항목 · open -g): 켤 때의 카드 차례는 앞에 있지 않아 건너뛰고 아무것도 적지 않는다.
+    /// 한 번도 앞에 온 적이 없어 ‘뒤로 간 때’가 비어 있어도, 처음 앞으로 올 때가 ‘열 때’다 (얼마 만이든)
+    func testABackgroundLaunchOpensWhenTheAppFirstComesForward() async {
+        for minutes in [61.0, 2.0] {
+            let host = FakeHost()
+            host.active = false
+            var clock = Self.today
+            let (c, storage) = center(state: NewsState(lastSeenAppVersion: "1.1.1"), transport: FakeTransport(.failed("x")), host: host)
+            c.now = { clock }
+            await c.start(firstRun: false, watch: false)?.value
+            XCTAssertEqual(host.presented, [], "\(minutes)분: 앞에 있지 않으면 카드가 없다")
+            XCTAssertEqual(storage.state, NewsState(lastSeenAppVersion: "1.1.1"), "\(minutes)분: 아무것도 적지 않는다")
+            XCTAssertTrue(c.openWhenActive)
+            clock = Self.today.addingTimeInterval(minutes * 60)
+            host.active = true
+            await c.cameBack()?.value
+            XCTAssertEqual(host.presented.map(\.kind), [.whatsNew], "\(minutes)분 뒤 처음 앞으로: 이번에 달라진 점")
+            XCTAssertFalse(c.openWhenActive)
+            // 그 뒤로는 다시 60분 규칙
+            c.wentAway()
+            clock = clock.addingTimeInterval(5 * 60)
+            XCTAssertNil(c.cameBack())
+        }
+    }
+
+    /// 이번에 달라진 점 카드의 제목은 앱 버전 (§1.1): 노트를 ‘1.2’ 로 적어도 앱 1.2.0 이면 ‘Spiralday 1.2.0’ — Windows · Android 와 같다.
+    /// 목록의 줄 제목은 노트에 적힌 그대로 (§3)
+    func testTheWhatsNewTitleIsTheAppVersion() async {
+        let host = FakeHost()
+        let storage = NewsMemoryStorage(state: NewsState(lastSeenAppVersion: "1.1.1"))
+        let c = NewsCenter()
+        c.configure(NewsLaunch(source: .none, persists: false, opens: true),
+                    notes: [NewsNote(app: "1.2", date: "2026-10-16", body: NewsText(ko: "- 달라진 점", en: "- Changed"))],
+                    appVersion: "1.2.0", syncOn: { false }, storage: storage)
+        c.now = { Self.today }
+        c.cardWait = 0.3
+        c.launchSettle = 0
+        c.host = host
+        await c.start(firstRun: false, watch: false)?.value
+        XCTAssertEqual(host.presented.map(\.title), ["Spiralday 1.2.0"])
+        XCTAssertEqual(host.presented.first?.id, "app-1.2")
+        XCTAssertEqual(c.rows.map(\.title), ["1.2 에서 달라진 점"])
+    }
+
     /// 데모: 받지 않고 카드도 없다 (목록은 노트로)
     func testTheDemoNeitherFetchesNorShowsCards() async {
         let host = FakeHost()
@@ -222,6 +271,26 @@ final class InAppNewsMacTests: XCTestCase {
         c.paneHidden()
         c.paneShown()
         XCTAssertEqual(c.paneUnseen, [], "다음에 열면 점이 없다")
+    }
+
+    /// 설정 › 소식의 날짜 칸: 작년의 두 자리 월 · 일(‘2025년 12월 31일’)도 한 줄에 — 펼친 본문은 날짜 · 종류 칸 다음에서 시작
+    func testTheDateColumnFitsTheLongestDate() {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        for d in ["2025-12-31", "2025-11-28", "2026-10-20"] {
+            let s = NewsRules.displayDate(d, today: "2026-10-21", lang: "ko")
+            let w = NSAttributedString(string: s, attributes: [.font: font]).size().width
+            XCTAssertLessThanOrEqual(w, NewsRowView.dateWidth, "\(s) (\(w)pt)")
+        }
+        XCTAssertGreaterThan(NewsRowView.dateWidth, 92, "예전 92pt 로는 ‘2025년 12월 31일’이 꺾였다")
+        XCTAssertEqual(NewsRowView.bodyIndent, NewsRowView.dateWidth + NewsRowView.columnSpacing + NewsRowView.kindWidth)
+    }
+
+    /// 설정 › 소식의 말: 모든 플랫폼이 같은 문장 (Kit NewsCopy — Windows · Android 의 NEWS_COPY 와 같게)
+    func testTheNewsPaneWordsAreTheSharedOnes() {
+        XCTAssertEqual(NewsCopy.unseen("ko"), "새 소식")
+        XCTAssertFalse(NewsCopy.paneNote("ko").contains("종이"), "Mac 에만 맞는 말(종이 옆)은 쓰지 않는다")
+        XCTAssertTrue(NewsCopy.paneNote("ko").contains("달라진 점"), "업데이트 뒤의 달라진 점도 카드로 뜬다")
+        XCTAssertTrue(NewsCopy.fetchOnDetail("ko").contains("하루 한 번"), "켜 둔 동안 하루 한 번 받는다는 것도")
     }
 
     // MARK: 바꿔 끼우기
@@ -293,28 +362,43 @@ final class InAppNewsMacTests: XCTestCase {
 
     // MARK: 카드 창
 
-    /// 진짜 카드 창: 플래너 창의 child · 종이 옆 · VoiceOver 이름 · Esc 로 닫힘
-    func testTheCardPanelOpensBesideThePlannerAndClosesWithEscape() async throws {
-        let screenFrame = try XCTUnwrap(NSScreen.main?.visibleFrame)
-        let planner = NSWindow(contentRect: NSRect(x: screenFrame.midX - 200, y: screenFrame.midY - 250, width: 400, height: 500),
-                               styleMask: [.titled], backing: .buffered, defer: false)
+    /// 화면 밖의 창 (시험이 화면에 창을 띄우거나 쓰던 앱의 키를 빼앗지 않게). 제목 막대가 있어도 화면 안으로 끌려오지 않는다
+    final class OffscreenWindow: NSWindow {
+        override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+    }
+
+    /// 화면 밖 플래너 창과 그 둘레의 가짜 화면 (카드 자리를 잡는 곳)
+    private func offscreenPlanner() -> (NSWindow, NSRect) {
+        let planner = OffscreenWindow(contentRect: NSRect(x: -12_000, y: 200, width: 400, height: 500), styleMask: [.titled],
+                                      backing: .buffered, defer: false)
         planner.isReleasedWhenClosed = false
+        planner.orderFrontRegardless()
+        return (planner, planner.frame.insetBy(dx: -600, dy: -200))
+    }
+
+    private static let card = NewsCardContent(kind: .notice, id: "n", caption: "소식 · 10월 20일", title: "제목", body: "본문",
+                                              link: URL(string: "https://spiralday.com/"), footnote: nil)
+
+    /// 진짜 카드 창: 플래너 창의 child · 종이 옆 · VoiceOver 이름 · Esc 로 닫힘. 화면 밖 창 · 열쇠 창이 되지 않게 (시험만)
+    func testTheCardPanelOpensBesideThePlannerAndClosesWithEscape() async throws {
+        let (planner, vis) = offscreenPlanner()
         defer { planner.orderOut(nil) }
-        planner.orderFront(nil)
         let state = AppState(kind: .daily)
         let cards = NewsCardController()
+        cards.takesKey = false
+        cards.visibleFrameOverride = vis
         cards.attach(planner: planner, state: state, sync: nil)
-        let content = NewsCardContent(kind: .notice, id: "n", caption: "소식 · 10월 20일", title: "제목", body: "본문",
-                                      link: URL(string: "https://spiralday.com/"), footnote: nil)
-        cards.presentCard(content)
+        cards.presentCard(Self.card)
         let panel = try XCTUnwrap(cards.panelForTests)
+        defer { panel.orderOut(nil) }
         XCTAssertTrue(cards.isShowing)
         XCTAssertTrue(panel.parent === planner)
+        XCTAssertFalse(panel.isKeyWindow, "시험에서는 열쇠 창이 되지 않는다")
         XCTAssertEqual(panel.accessibilityLabel(), "소식")
         XCTAssertEqual(panel.frame.width, NewsCardPlacement.width + 2 * NewsCardPlacement.margin, "카드 크기를 잰다 (0 × 0 이 아니다)")
         XCTAssertGreaterThan(panel.frame.height, 120)
-        XCTAssertTrue(panel.frame.intersection(planner.frame).isEmpty || !screenFrame.insetBy(dx: 400, dy: 0).contains(planner.frame),
-                      "자리가 있으면 종이를 가리지 않는다")
+        XCTAssertTrue(panel.frame.intersection(planner.frame).isEmpty, "자리가 있으면 종이를 가리지 않는다 \(panel.frame)")
+        XCTAssertTrue(vis.contains(panel.frame), "화면 안")
         panel.cancelOperation(nil)
         XCTAssertFalse(cards.isShowing, "Esc 로 바로 닫힌 것으로")
         try await Task.sleep(for: .milliseconds(500))
@@ -322,12 +406,50 @@ final class InAppNewsMacTests: XCTestCase {
         XCTAssertFalse(panel.isVisible)
     }
 
-    /// §5.1 의 조건: 플래너가 앞에 · 다른 창 없음 · 글 쓰는 중 아님 · 둘러보기 · 동기화 연결 · 메뉴 아님
-    func testCardsWaitWhileTheUserIsBusy() {
-        let planner = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 300, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
-        planner.isReleasedWhenClosed = false
+    /// 카드가 열쇠 창일 때 플래너 단축키(← → · T W D H · 1–7 …): 카드의 키도 플래너 단축키로 보고, 처리하면 카드를 닫는다.
+    /// Return · Esc · Tab · 스페이스는 카드 몫 (플래너 창에서 온 단축키는 카드를 닫지 않는다)
+    func testAPlannerShortcutTypedOnTheCardWorksAndClosesIt() throws {
+        let (planner, vis) = offscreenPlanner()
         defer { planner.orderOut(nil) }
-        planner.orderFront(nil)
+        let store = PlannerStore(inMemory: true)
+        let state = AppState(kind: .daily)
+        state.store = store
+        state.plannerWindow = planner
+        state.isPlannerPanel = MainWindowController.isPlannerPanel
+        let cards = NewsCardController()
+        cards.takesKey = false
+        cards.visibleFrameOverride = vis
+        cards.attach(planner: planner, state: state, sync: nil)
+        cards.presentCard(Self.card)
+        let panel = try XCTUnwrap(cards.panelForTests)
+        defer { panel.orderOut(nil) }
+        XCTAssertEqual(state.inputWindow(panel), .plannerPanel, "카드는 플래너에 딸린 패널")
+        func key(_ code: UInt16, _ chars: String, in w: NSWindow) -> Bool {
+            let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
+                                     context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+            return state.handleKey(e)
+        }
+        // 카드 몫의 키: 플래너가 먹지 않고 카드도 그대로
+        XCTAssertFalse(key(36, "\r", in: panel), "Return")
+        XCTAssertFalse(key(48, "\t", in: panel), "Tab")
+        XCTAssertFalse(key(49, " ", in: panel), "스페이스")
+        XCTAssertFalse(key(53, "\u{1b}", in: panel), "Esc 는 카드로 (cancelOperation)")
+        XCTAssertTrue(cards.isShowing)
+        // 플래너 창에서 누른 단축키는 카드를 닫지 않는다
+        let pen = store.categories[1].id
+        XCTAssertTrue(key(19, "2", in: planner))
+        XCTAssertTrue(cards.isShowing)
+        state.pickTool(AppState.eraser)
+        // 카드에서 누른 단축키: 플래너가 처리하고 카드는 닫힌다
+        XCTAssertTrue(key(19, "2", in: panel), "카드가 열쇠 창이어도 1–7 펜")
+        XCTAssertEqual(state.tool, pen)
+        XCTAssertFalse(cards.isShowing, "단축키를 누르면 카드는 닫힌다")
+    }
+
+    /// §5.1 의 조건: 플래너가 앞에 · 다른 창 없음 · 글 쓰는 중 아님 · 둘러보기 · 동기화 연결 · 메뉴 · 팝오버 아님
+    func testCardsWaitWhileTheUserIsBusy() {
+        let (planner, _) = offscreenPlanner()
+        defer { planner.orderOut(nil) }
         let state = AppState(kind: .daily)
         func may(key: NSWindow? = planner, windows: [NSWindow] = [], tour: Bool = false, sync: Bool = false, tracking: Bool = false) -> Bool {
             NewsCardController.mayPresent(planner: planner, windows: [planner] + windows, keyWindow: key, state: state,
@@ -341,12 +463,26 @@ final class InAppNewsMacTests: XCTestCase {
         state.editingKey = "comment"
         XCTAssertFalse(may(), "글을 쓰는 중")
         state.editingKey = nil
-        let settings = NSWindow(contentRect: NSRect(x: 500, y: 100, width: 300, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+        let settings = OffscreenWindow(contentRect: NSRect(x: -11_000, y: 200, width: 300, height: 300), styleMask: [.titled],
+                                       backing: .buffered, defer: false)
         settings.isReleasedWhenClosed = false
         defer { settings.orderOut(nil) }
-        settings.orderFront(nil)
+        settings.orderFrontRegardless()
         XCTAssertFalse(may(windows: [settings]), "설정 · PDF 같은 다른 창")
         settings.orderOut(nil)
         XCTAssertTrue(may(windows: [settings]))
+        // 팝오버 (D-day 등): 띄운 플래너 창의 자식 창이어도 막는다
+        let popover = FakePopoverWindow(contentRect: NSRect(x: -11_800, y: 300, width: 200, height: 120), styleMask: [.borderless],
+                                        backing: .buffered, defer: false)
+        popover.isReleasedWhenClosed = false
+        defer { popover.orderOut(nil) }
+        planner.addChildWindow(popover, ordered: .above)
+        defer { planner.removeChildWindow(popover) }
+        popover.orderFrontRegardless()
+        XCTAssertTrue(popover.parent === planner)
+        XCTAssertTrue(popover.className.contains("Popover"))
+        XCTAssertFalse(may(windows: [popover]), "플래너 자식 팝오버")
+        popover.orderOut(nil)
+        XCTAssertTrue(may(windows: [popover]))
     }
 }
